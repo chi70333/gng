@@ -457,24 +457,15 @@ export async function cancelUserOrder(input: {
       throw new ConflictError('배송 준비 이후 주문은 고객센터로 취소를 요청해 주세요.');
     }
 
-    await releaseReservedStock(tx, order.id);
-    await releaseOrderBenefits(tx, order);
     await tx.payment.updateMany({
       where: { orderId: order.id, status: { in: ['pending', 'approved'] } },
       data: { status: 'cancelled' },
     });
-    await tx.order.update({
-      where: { id: order.id },
-      data: { status: 'cancelled' },
-    });
-    await tx.orderStatusHistory.create({
-      data: {
-        orderId: order.id,
-        fromStatus: order.status,
-        toStatus: 'cancelled',
-        actor: 'user',
-        reason: input.reason || 'user:cancel',
-      },
+    await transitionOrderStatus(tx, {
+      order,
+      nextStatus: 'cancelled',
+      actor: 'user',
+      reason: input.reason || 'user:cancel',
     });
 
     return { orderNo: order.orderNo, status: 'cancelled' };
