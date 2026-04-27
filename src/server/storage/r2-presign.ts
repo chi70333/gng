@@ -7,7 +7,7 @@ const REGION = 'auto';
 const SERVICE = 's3';
 
 type R2Config = {
-  accountId: string;
+  endpointUrl: string;
   accessKeyId: string;
   secretAccessKey: string;
   bucket: string;
@@ -31,22 +31,33 @@ const extensionByContentType: Record<AdminProductImageUploadInput['contentType']
 };
 
 function requireR2Config(): R2Config {
+  const endpointUrl = process.env.R2_ENDPOINT_URL
+    ? process.env.R2_ENDPOINT_URL
+    : process.env.R2_ACCOUNT_ID
+      ? `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`
+      : undefined;
   const config = {
-    accountId: process.env.R2_ACCOUNT_ID,
+    endpointUrl,
     accessKeyId: process.env.R2_ACCESS_KEY_ID,
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
     bucket: process.env.R2_BUCKET,
     publicUrl: process.env.R2_PUBLIC_URL,
   };
 
-  if (
-    !config.accountId ||
-    !config.accessKeyId ||
-    !config.secretAccessKey ||
-    !config.bucket ||
-    !config.publicUrl
-  ) {
-    throw new ValidationError('이미지 업로드 CDN 환경변수가 설정되지 않았습니다.');
+  const missingKeys = [
+    ['R2_ENDPOINT_URL 또는 R2_ACCOUNT_ID', config.endpointUrl],
+    ['R2_ACCESS_KEY_ID', config.accessKeyId],
+    ['R2_SECRET_ACCESS_KEY', config.secretAccessKey],
+    ['R2_BUCKET', config.bucket],
+    ['R2_PUBLIC_URL', config.publicUrl],
+  ]
+    .filter((entry): entry is [string, undefined] => !entry[1])
+    .map(([key]) => key);
+
+  if (missingKeys.length > 0) {
+    throw new ValidationError(
+      `이미지 업로드 CDN 환경변수가 설정되지 않았습니다. 누락: ${missingKeys.join(', ')}`,
+    );
   }
 
   return config as R2Config;
@@ -109,7 +120,7 @@ export function createPresignedProductImageUpload(
 ): PresignedProductImageUpload {
   const config = requireR2Config();
   const key = createProductImageKey(input);
-  const host = `${config.accountId}.r2.cloudflarestorage.com`;
+  const host = new URL(config.endpointUrl).host;
   const now = new Date();
   const { amzDate, dateStamp } = toAmzDate(now);
   const credentialScope = `${dateStamp}/${REGION}/${SERVICE}/aws4_request`;

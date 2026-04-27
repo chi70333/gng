@@ -21,7 +21,7 @@ vi.mock('@/server/db', () => ({
   },
 }));
 
-import { registerSocialUser, registerUser } from './auth.service';
+import { linkSocialUser, registerSocialUser, registerUser } from './auth.service';
 
 const registerInput = {
   loginId: 'user01',
@@ -178,5 +178,92 @@ describe('auth registration service', () => {
     mocks.transaction.mockRejectedValueOnce({ code: 'P2002' });
 
     await expect(registerSocialUser(socialInput)).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it('logs in an already linked social account as a member', async () => {
+    const updateUser = {
+      id: 4n,
+      email: 'linked@example.com',
+      name: 'Linked User',
+    };
+    const txUserUpdate = vi.fn().mockResolvedValueOnce(updateUser);
+    const txSocialFindUnique = vi.fn().mockResolvedValueOnce({
+      user: { ...updateUser, status: 'active' },
+    });
+    mocks.transaction.mockImplementationOnce(async (callback) =>
+      callback({
+        user: {
+          update: txUserUpdate,
+        },
+        userSocialAccount: {
+          findUnique: txSocialFindUnique,
+        },
+      }),
+    );
+
+    const user = await linkSocialUser({
+      provider: 'kakao',
+      providerUid: 'kakao-linked',
+      email: updateUser.email,
+      name: updateUser.name,
+    });
+
+    expect(user).toEqual({
+      id: '4',
+      email: updateUser.email,
+      name: updateUser.name,
+      userKind: 'member',
+    });
+    expect(txUserUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 4n },
+        data: { lastLoginAt: expect.any(Date), loginCount: { increment: 1 } },
+      }),
+    );
+  });
+
+  it('links an existing active email user on first social login', async () => {
+    const existingUser = {
+      id: 5n,
+      email: 'existing@example.com',
+      name: 'Existing User',
+      status: 'active',
+    };
+    const txSocialFindUnique = vi.fn().mockResolvedValueOnce(null);
+    const txUserFindUnique = vi.fn().mockResolvedValueOnce(existingUser);
+    const txSocialCreate = vi.fn().mockResolvedValueOnce({});
+    const txUserUpdate = vi.fn().mockResolvedValueOnce({
+      id: existingUser.id,
+      email: existingUser.email,
+      name: existingUser.name,
+    });
+    mocks.transaction.mockImplementationOnce(async (callback) =>
+      callback({
+        user: {
+          findUnique: txUserFindUnique,
+          update: txUserUpdate,
+        },
+        userSocialAccount: {
+          findUnique: txSocialFindUnique,
+          create: txSocialCreate,
+        },
+      }),
+    );
+
+    const user = await linkSocialUser({
+      provider: 'kakao',
+      providerUid: 'kakao-first-login',
+      email: existingUser.email,
+      name: existingUser.name,
+    });
+
+    expect(user.userKind).toBe('member');
+    expect(txSocialCreate).toHaveBeenCalledWith({
+      data: {
+        userId: 5n,
+        provider: 'kakao',
+        providerUid: 'kakao-first-login',
+      },
+    });
   });
 });

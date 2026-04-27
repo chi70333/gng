@@ -152,7 +152,7 @@ export default async function AdminUsersPage({
           className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 font-bold text-red-700 hover:bg-red-100"
         >
           <Trash2 size={16} />
-          그리드 삭제
+          삭제
         </button>
       </form>
 

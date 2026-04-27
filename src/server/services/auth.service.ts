@@ -272,7 +272,32 @@ export async function linkSocialUser(input: SocialLoginInput): Promise<AuthUser>
       });
     }
 
-    throw new SocialAccountNotRegisteredError();
+    const emailUser = await tx.user.findUnique({
+      where: { email: input.email },
+      select: { id: true, email: true, name: true, status: true },
+    });
+
+    if (!emailUser) {
+      throw new SocialAccountNotRegisteredError();
+    }
+
+    if (emailUser.status !== 'active') {
+      throw new Error('SOCIAL_ACCOUNT_INACTIVE');
+    }
+
+    await tx.userSocialAccount.create({
+      data: {
+        userId: emailUser.id,
+        provider: input.provider,
+        providerUid: input.providerUid,
+      },
+    });
+
+    return tx.user.update({
+      where: { id: emailUser.id },
+      data: { lastLoginAt: new Date(), loginCount: { increment: 1 } },
+      select: { id: true, email: true, name: true },
+    });
   });
 
   return { id: user.id.toString(), email: user.email, name: user.name, userKind: 'member' };

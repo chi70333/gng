@@ -146,6 +146,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         user.id = linkedUser.id;
         user.email = linkedUser.email;
         user.name = linkedUser.name;
+        user.userKind = linkedUser.userKind;
         return true;
       } catch (err) {
         if (err instanceof SocialAccountNotRegisteredError) {
