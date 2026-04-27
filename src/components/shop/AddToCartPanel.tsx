@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from 'react';
 import { CreditCard, ShoppingBag } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/cn';
+import { useToast } from '@/components/ui/ToastProvider';
 import type { ProductDetail, ProductSku } from '@/server/repositories/product.repository';
 
 type AddToCartPanelProps = {
@@ -13,6 +14,9 @@ type AddToCartPanelProps = {
 
 type CartResponse = {
   ok: boolean;
+  data?: {
+    items: unknown[];
+  };
   error?: { message?: string };
 };
 
@@ -46,11 +50,19 @@ function findMatchingSku(
   );
 }
 
+function cartErrorMessage(message?: string): string {
+  if (!message) return '장바구니에 상품을 담지 못했습니다.';
+  if (/^\d+$/.test(message)) {
+    return `재고가 부족합니다. 현재 구매 가능한 수량은 ${message}개입니다.`;
+  }
+  return message;
+}
+
 export default function AddToCartPanel({ options, skus }: AddToCartPanelProps) {
   const router = useRouter();
+  const { showToast } = useToast();
   const [selected, setSelected] = useState<Record<string, string>>({});
   const [quantity, setQuantity] = useState(1);
-  const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const selectedSku = useMemo(() => {
@@ -65,36 +77,72 @@ export default function AddToCartPanel({ options, skus }: AddToCartPanelProps) {
     selectedSku.stock - selectedSku.reserved >= quantity &&
     !isPending;
 
-  function submitCartItem(nextPath?: '/order'): void {
+  function submitCartItem(checkout = false): void {
     if (!selectedSku) {
-      setMessage(options.length > 0 ? '옵션을 모두 선택해 주세요.' : '구매 가능한 상품이 없습니다.');
+      showToast({
+        variant: 'info',
+        title: options.length > 0 ? '옵션을 선택해 주세요.' : '구매 가능한 상품이 없습니다.',
+      });
       return;
     }
 
-    startTransition(async () => {
-      setMessage(null);
+    startTransition(() => {
+      void (async () => {
+        let res: Response;
+        let body: CartResponse;
 
-      const res = await fetch('/api/cart', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ skuId: selectedSku.id, quantity }),
-      });
-      const body = (await res.json()) as CartResponse;
+        try {
+          res = await fetch('/api/cart', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            cache: 'no-store',
+            body: JSON.stringify({ skuId: selectedSku.id, quantity }),
+          });
+          body = (await res.json()) as CartResponse;
+        } catch {
+          showToast({
+            variant: 'error',
+            title: '장바구니 담기 실패',
+            description: '잠시 후 다시 시도해 주세요.',
+          });
+          return;
+        }
 
-      if (!res.ok || !body.ok) {
-        setMessage(body.error?.message ?? '장바구니에 상품을 담지 못했습니다.');
-        return;
-      }
+        if (!res.ok || !body.ok) {
+          showToast({
+            variant: 'error',
+            title: '장바구니 담기 실패',
+            description: cartErrorMessage(body.error?.message),
+          });
+          return;
+        }
 
-      router.refresh();
+        if (checkout && (!body.data || body.data.items.length === 0)) {
+          showToast({
+            variant: 'error',
+            title: '바로 구매 실패',
+            description: '주문서로 이동할 상품이 없습니다. 다시 시도해 주세요.',
+          });
+          return;
+        }
 
-      if (nextPath) {
-        router.push(nextPath);
-        return;
-      }
+        if (checkout) {
+          window.location.assign('/order');
+          return;
+        }
 
-      setMessage('장바구니에 담았습니다.');
+        router.refresh();
+        showToast({
+          variant: 'success',
+          title: '장바구니에 담았습니다.',
+          description: '수량 변경과 주문은 장바구니에서 이어서 할 수 있습니다.',
+          action: {
+            label: '장바구니 보기',
+            onClick: () => router.push('/cart'),
+          },
+        });
+      })();
     });
   }
 
@@ -171,8 +219,6 @@ export default function AddToCartPanel({ options, skus }: AddToCartPanelProps) {
         </div>
       </div>
 
-      {message && <p className="text-sm text-neutral-500">{message}</p>}
-
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <button
           type="button"
@@ -186,7 +232,7 @@ export default function AddToCartPanel({ options, skus }: AddToCartPanelProps) {
         <button
           type="button"
           disabled={!canAdd}
-          onClick={() => submitCartItem('/order')}
+          onClick={() => submitCartItem(true)}
           className="flex h-12 items-center justify-center gap-2 rounded-xl bg-neutral-900 text-sm font-semibold text-white transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500"
         >
           <CreditCard size={18} />

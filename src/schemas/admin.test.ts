@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { adminLoginSchema, adminPermissionSchema } from './admin-auth';
 import { adminBoardFormSchema, adminPostFormSchema } from './admin-board';
-import { adminProductFormSchema } from './admin-product';
+import { adminProductFormSchema, adminProductListQuerySchema } from './admin-product';
 import { adminOrderStatusFormSchema } from './admin-order';
 import {
   adminUserBulkDeleteFormSchema,
@@ -59,6 +59,18 @@ describe('admin schemas', () => {
     expect(parsed.pointRate).toBe(3);
   });
 
+  it('treats blank product list filters as unset', () => {
+    const parsed = adminProductListQuerySchema.parse({
+      q: '',
+      status: '',
+      categoryId: '',
+      stock: '',
+      page: '',
+    });
+
+    expect(parsed).toEqual({ q: '', page: 1 });
+  });
+
   it('rejects product form without categories', () => {
     expect(
       adminProductFormSchema.safeParse({
@@ -83,6 +95,26 @@ describe('admin schemas', () => {
         ...productForm,
         useStock: '2',
         stock: '0',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('allows large posted stock for unlimited stock products', () => {
+    expect(
+      adminProductFormSchema.safeParse({
+        ...productForm,
+        useStock: '1',
+        stock: '1999998',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects stock quantity over the managed stock limit', () => {
+    expect(
+      adminProductFormSchema.safeParse({
+        ...productForm,
+        useStock: '2',
+        stock: '1000000',
       }).success,
     ).toBe(false);
   });

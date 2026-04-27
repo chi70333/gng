@@ -1,8 +1,9 @@
 // Legacy sources: cart.php, cart_ok.php, cart_ok_ajax.php, cart_del_ajax.php
-// Cache: per-user Redis cart, 30d TTL. No page/API public cache.
+// Cache: Redis cart 30d TTL. On Vercel without Redis env, DB CartSnapshot keeps checkout durable.
 
+import type { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { keys, redis } from '@/server/redis';
+import { isRedisConfigured, keys, redis } from '@/server/redis';
 import { prisma } from '@/server/db';
 import { ConflictError, NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
@@ -39,6 +40,33 @@ function cartKey(identity: CartIdentity): string {
     : keys.cartGuest(identity.id);
 }
 
+function shouldUseDbCartFallback(): boolean {
+  return !isRedisConfigured && Boolean(process.env.VERCEL);
+}
+
+function isCartItem(value: unknown): value is CartItem {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  return (
+    typeof item.skuId === 'string' &&
+    typeof item.productId === 'string' &&
+    typeof item.slug === 'string' &&
+    typeof item.name === 'string' &&
+    (typeof item.thumbnail === 'string' || item.thumbnail === null) &&
+    (typeof item.optionSummary === 'string' || item.optionSummary === null) &&
+    typeof item.unitPrice === 'string' &&
+    typeof item.quantity === 'number' &&
+    typeof item.addedAt === 'string' &&
+    typeof item.isAvailable === 'boolean' &&
+    typeof item.availableQuantity === 'number' &&
+    (typeof item.stockMessage === 'string' || item.stockMessage === null)
+  );
+}
+
+function parseCartItems(value: unknown): CartItem[] {
+  return Array.isArray(value) ? value.filter(isCartItem) : [];
+}
+
 function summarizeOptions(optionValues: unknown): string | null {
   if (!optionValues || typeof optionValues !== 'object' || Array.isArray(optionValues)) {
     return null;
@@ -59,6 +87,19 @@ function withSubtotal(items: CartItem[]): Cart {
 }
 
 async function readItems(identity: CartIdentity): Promise<CartItem[]> {
+  if (shouldUseDbCartFallback()) {
+    const snapshot = await prisma.cartSnapshot.findUnique({
+      where: { key: cartKey(identity) },
+      select: { items: true, expiresAt: true },
+    });
+    if (!snapshot) return [];
+    if (snapshot.expiresAt <= new Date()) {
+      await prisma.cartSnapshot.deleteMany({ where: { key: cartKey(identity) } });
+      return [];
+    }
+    return parseCartItems(snapshot.items);
+  }
+
   try {
     return (await redis.get<CartItem[]>(cartKey(identity))) ?? [];
   } catch (err) {
@@ -68,6 +109,26 @@ async function readItems(identity: CartIdentity): Promise<CartItem[]> {
 }
 
 async function writeItems(identity: CartIdentity, items: CartItem[]): Promise<void> {
+  if (shouldUseDbCartFallback()) {
+    await prisma.cartSnapshot.upsert({
+      where: { key: cartKey(identity) },
+      create: {
+        key: cartKey(identity),
+        identityType: identity.type,
+        identityId: identity.id,
+        items: items as unknown as Prisma.InputJsonValue,
+        expiresAt: new Date(Date.now() + CART_TTL_SECONDS * 1000),
+      },
+      update: {
+        identityType: identity.type,
+        identityId: identity.id,
+        items: items as unknown as Prisma.InputJsonValue,
+        expiresAt: new Date(Date.now() + CART_TTL_SECONDS * 1000),
+      },
+    });
+    return;
+  }
+
   await redis.set(cartKey(identity), items, { ex: CART_TTL_SECONDS });
 }
 
@@ -285,6 +346,11 @@ export async function mergeCart(
 
   const hydrated = await hydrateItems(merged);
   await writeItems(target, hydrated);
+  if (shouldUseDbCartFallback()) {
+    await prisma.cartSnapshot.deleteMany({ where: { key: cartKey(source) } });
+    return withSubtotal(hydrated);
+  }
+
   try {
     await redis.del(cartKey(source));
   } catch (err) {
@@ -295,6 +361,11 @@ export async function mergeCart(
 }
 
 export async function clearCart(identity: CartIdentity): Promise<Cart> {
+  if (shouldUseDbCartFallback()) {
+    await prisma.cartSnapshot.deleteMany({ where: { key: cartKey(identity) } });
+    return { items: [], subtotal: '0' };
+  }
+
   try {
     await redis.del(cartKey(identity));
   } catch (err) {

@@ -22,12 +22,17 @@ const imageRowSchema = z.object({
 
 export const adminProductStatusSchema = z.enum(['draft', 'active', 'sold_out', 'hidden']);
 
+const emptyStringToUndefined = (value: unknown) => (value === '' ? undefined : value);
+
 export const adminProductListQuerySchema = z.object({
   q: z.string().trim().max(100).optional().default(''),
-  status: adminProductStatusSchema.optional(),
-  categoryId: z.coerce.bigint().optional(),
-  stock: z.enum(['low', 'managed', 'unlimited']).optional(),
-  page: z.coerce.number().int().min(1).max(1000).optional().default(1),
+  status: z.preprocess(emptyStringToUndefined, adminProductStatusSchema.optional()),
+  categoryId: z.preprocess(emptyStringToUndefined, z.coerce.bigint().optional()),
+  stock: z.preprocess(emptyStringToUndefined, z.enum(['low', 'managed', 'unlimited']).optional()),
+  page: z.preprocess(
+    emptyStringToUndefined,
+    z.coerce.number().int().min(1).max(1000).optional().default(1),
+  ),
 });
 
 export const adminProductFormSchema = z
@@ -51,7 +56,7 @@ export const adminProductFormSchema = z
     display: z.enum(['1', '0']).default('1'),
     isEmpty: z.enum(['0', '1']).default('0'),
     useStock: z.enum(['1', '2']).default('1'),
-    stock: z.coerce.number().int().min(0).max(999999).default(0),
+    stock: z.coerce.number().int().min(0).default(0),
     pointRate: z.coerce.number().min(0).max(100).default(0),
     expectedShipDays: z.coerce.number().int().min(0).max(99).default(0),
     buyMin: z.coerce.number().int().min(1).max(999999).default(1),
@@ -68,12 +73,20 @@ export const adminProductFormSchema = z
       .transform((rows) => rows.filter((row) => row.url !== '')),
   })
   .superRefine((value, ctx) => {
-    if (value.useStock === '2' && value.stock < 1) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['stock'],
-        message: '재고 수량은 1개 이상 입력해주세요.',
-      });
+    if (value.useStock === '2') {
+      if (value.stock < 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['stock'],
+          message: '재고 수량은 1개 이상 입력해주세요.',
+        });
+      } else if (value.stock > 999999) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['stock'],
+          message: '재고 수량은 999999개를 초과할 수 없습니다.',
+        });
+      }
     }
 
     if (value.buyUseMax === '0') {

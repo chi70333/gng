@@ -187,7 +187,8 @@ export function ProductForm({
   const selected = product?.categories.map((item) => item.categoryId.toString()) ?? [];
   const selectedSet = new Set(selected);
   const primaryCategoryId = selected[0] ?? '';
-  const stock = product?.skus.reduce((sum, sku) => sum + sku.stock, 0) ?? 0;
+  const stock =
+    legacy.useStock === '1' ? 0 : (product?.skus.reduce((sum, sku) => sum + sku.stock, 0) ?? 0);
   const images =
     product?.images && product.images.length > 0
       ? product.images

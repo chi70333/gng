@@ -2,13 +2,14 @@ import type { Metadata, Viewport } from 'next';
 import { Suspense } from 'react';
 import './globals.css';
 import RouteProgressBar from '@/components/layout/RouteProgressBar';
+import { ToastProvider } from '@/components/ui/ToastProvider';
 
 export const metadata: Metadata = {
   title: {
     default: 'GNG',
     template: '%s | GNG',
   },
-  description: 'GNG 쇼핑몰 — 최신 트렌드 패션을 만나보세요.',
+  description: 'GNG 쇼핑몰에서 최신 트렌드 상품을 만나보세요.',
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'),
   openGraph: {
     type: 'website',
@@ -17,8 +18,7 @@ export const metadata: Metadata = {
   },
 };
 
-// 모바일 우선: 기본 viewport + 확대 허용, theme color.
-// docs/06-mobile.md 참조.
+// 모바일 우선: 기본 viewport + 확대 허용, theme color. docs/06-mobile.md 참조.
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
@@ -30,10 +30,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ko">
       <body className="flex min-h-dvh flex-col bg-neutral-50 text-neutral-900 antialiased">
-        <Suspense fallback={null}>
-          <RouteProgressBar />
-        </Suspense>
-        {children}
+        <ToastProvider>
+          <Suspense fallback={null}>
+            <RouteProgressBar />
+          </Suspense>
+          {children}
+        </ToastProvider>
       </body>
     </html>
   );

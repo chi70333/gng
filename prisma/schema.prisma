@@ -358,6 +358,20 @@ model Wishlist {
   @@index([userId, createdAt(sort: Desc)])
 }
 
+model CartSnapshot {
+  id           BigInt   @id @default(autoincrement())
+  key          String   @unique
+  identityType String
+  identityId   String
+  items        Json     @db.JsonB
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([identityType, identityId])
+  @@index([expiresAt])
+}
+
 // ============================================================
 // 쿠폰 / 프로모션
 // ============================================================

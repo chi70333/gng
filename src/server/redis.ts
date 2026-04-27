@@ -1,23 +1,54 @@
 import { Redis } from '@upstash/redis';
 
-// Upstash Redis REST 클라이언트.
 // 세션/장바구니/캐시/rate-limit 의 1급 저장소. docs/07-traffic.md 참조.
 export const isRedisConfigured =
   Boolean(process.env.UPSTASH_REDIS_REST_URL) &&
   Boolean(process.env.UPSTASH_REDIS_REST_TOKEN);
 
-const noopRedis = {
-  get: async <T>(): Promise<T | null> => null,
-  set: async (): Promise<'OK'> => 'OK',
-  del: async (): Promise<number> => 0,
+type MemoryEntry = {
+  value: unknown;
+  expiresAt: number | null;
+};
+
+const memoryStore = new Map<string, MemoryEntry>();
+
+function isExpired(entry: MemoryEntry): boolean {
+  return entry.expiresAt !== null && entry.expiresAt <= Date.now();
+}
+
+const memoryRedis = {
+  get: async <T>(key: string): Promise<T | null> => {
+    const entry = memoryStore.get(key);
+    if (!entry) return null;
+    if (isExpired(entry)) {
+      memoryStore.delete(key);
+      return null;
+    }
+    return entry.value as T;
+  },
+  set: async (
+    key: string,
+    value: unknown,
+    options?: { ex?: number },
+  ): Promise<'OK'> => {
+    memoryStore.set(key, {
+      value,
+      expiresAt: options?.ex ? Date.now() + options.ex * 1000 : null,
+    });
+    return 'OK';
+  },
+  del: async (key: string): Promise<number> => {
+    const existed = memoryStore.delete(key);
+    return existed ? 1 : 0;
+  },
 };
 
 export const redis = isRedisConfigured
   ? Redis.fromEnv()
-  : (noopRedis as unknown as Redis);
+  : (memoryRedis as unknown as Redis);
 
 /**
- * 키 네임스페이스 헬퍼. 어디서든 일관되게 쓸 것.
+ * 런타임 네임스페이스 헬퍼. 어디서든 일관되게 키를 만든다.
  */
 export const keys = {
   product: (id: bigint | number | string) => `product:${id}`,
