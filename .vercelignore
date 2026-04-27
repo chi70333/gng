@@ -9,5 +9,5 @@ playwright-report
 test-results
 *.log
 
-legacy
+/legacy
 tsconfig.tsbuildinfo
