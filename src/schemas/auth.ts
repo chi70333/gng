@@ -42,18 +42,20 @@ const mobilePhoneSchema = z
     message: '휴대전화번호를 정확히 입력해 주세요.',
   });
 
-const koreanZipCodeSchema = z
-  .string()
-  .trim()
-  .regex(/^\d{5}$/, '우편번호를 5자리 숫자로 입력해 주세요.');
-
 const optionalTrimmedString = (max: number) =>
   z.string().trim().max(max).optional().or(z.literal(''));
 
 const addressFields = {
-  zipCode: koreanZipCodeSchema,
-  address1: z.string().trim().min(3, '주소를 입력해 주세요.').max(200),
-  address2: z.string().trim().min(1, '상세주소를 입력해 주세요.').max(200),
+  zipCode: z
+    .string()
+    .trim()
+    .refine((value) => value === '' || /^\d{5}$/.test(value), {
+      message: '우편번호를 5자리 숫자로 입력해 주세요.',
+    })
+    .optional()
+    .or(z.literal('')),
+  address1: optionalTrimmedString(200),
+  address2: optionalTrimmedString(200),
 };
 
 const businessFields = {
