@@ -122,7 +122,7 @@ export default function AddToCartPanel({ options, skus }: AddToCartPanelProps) {
           showToast({
             variant: 'error',
             title: '바로 구매 실패',
-            description: '주문서로 이동할 상품이 없습니다. 다시 시도해 주세요.',
+            description: '결제로 이동할 상품이 없습니다. 다시 시도해 주세요.',
           });
           return;
         }

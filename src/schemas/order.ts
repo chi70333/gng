@@ -2,23 +2,29 @@ import { z } from 'zod';
 
 export const paymentMethodSchema = z.enum(['card', 'bank', 'vbank', 'mobile', 'transfer']);
 
+function blankToUndefined(value: unknown) {
+  if (value == null) return undefined;
+  if (typeof value === 'string' && value.trim() === '') return undefined;
+  return value;
+}
+
 export const createOrderSchema = z.object({
-  buyerName: z.string().trim().min(2).max(50).optional(),
-  buyerEmail: z.string().trim().email().max(120).optional(),
-  buyerPhone: z.string().trim().min(9).max(20).optional(),
+  buyerName: z.preprocess(blankToUndefined, z.string().trim().min(2).max(50).optional()),
+  buyerEmail: z.preprocess(blankToUndefined, z.string().trim().email().max(120).optional()),
+  buyerPhone: z.preprocess(blankToUndefined, z.string().trim().min(9).max(20).optional()),
   receiver: z.string().trim().min(2).max(50),
   phone: z.string().trim().min(9).max(20),
-  receiverEmail: z.string().trim().email().max(120).optional(),
-  receiverPhone2: z.string().trim().min(9).max(20).optional(),
+  receiverEmail: z.preprocess(blankToUndefined, z.string().trim().email().max(120).optional()),
+  receiverPhone2: z.preprocess(blankToUndefined, z.string().trim().min(9).max(20).optional()),
   zipCode: z.string().trim().min(4).max(10),
   address1: z.string().trim().min(3).max(200),
   address2: z.string().trim().max(200).optional().or(z.literal('')),
   memo: z.string().trim().max(500).optional().or(z.literal('')),
-  channel: z.string().trim().max(40).optional(),
+  channel: z.preprocess(blankToUndefined, z.string().trim().max(40).optional()),
   deliveryType: z.enum(['default', 'new', 'same_as_buyer']).optional(),
   paymentMethod: paymentMethodSchema.optional(),
   depositorName: z.string().trim().max(50).optional().or(z.literal('')),
-  depositDueDate: z.coerce.date().optional(),
+  depositDueDate: z.preprocess(blankToUndefined, z.coerce.date().optional()),
   cashReceiptType: z.enum(['none', 'personal', 'business']).default('none'),
   cashReceiptIdentity: z.string().trim().max(40).optional().or(z.literal('')),
   taxInvoiceRequested: z.coerce.boolean().default(false),

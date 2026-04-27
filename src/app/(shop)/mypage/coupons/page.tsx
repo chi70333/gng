@@ -129,7 +129,7 @@ export default async function CouponsPage({ searchParams }: CouponPageProps) {
 
       {searchParams.issued && (
         <p className="mb-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
-          쿠폰이 발급되었습니다. 주문서에서 사용할 수 있습니다.
+          쿠폰이 발급되었습니다. 결제 단계에서 사용할 수 있습니다.
         </p>
       )}
       {searchParams.error && (

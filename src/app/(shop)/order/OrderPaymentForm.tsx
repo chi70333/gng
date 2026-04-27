@@ -1,0 +1,689 @@
+'use client';
+
+import Image from 'next/image';
+import { Search, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useFormStatus } from 'react-dom';
+import { FormattedNumberInput } from '@/components/ui/FormattedNumberInput';
+import { formatKRW, formatNumber } from '@/lib/format';
+import { createOrderAction } from './actions';
+
+type PaymentAddress = {
+  id: string;
+  label: string | null;
+  isDefault: boolean;
+  receiver: string;
+  phone: string;
+  zipCode: string;
+  address1: string;
+  address2: string | null;
+};
+
+type PaymentCoupon = {
+  id: string;
+  label: string;
+  discountType: 'percent' | 'amount';
+  discountValue: number;
+  minOrderAmount: number | null;
+  maxDiscount: number | null;
+};
+
+type PaymentUser = {
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  defaultAddress: PaymentAddress | null;
+  addresses: PaymentAddress[];
+  pointBalance: number;
+  coupons: PaymentCoupon[];
+};
+
+type PaymentCartItem = {
+  skuId: string;
+  name: string;
+  thumbnail: string | null;
+  optionSummary: string | null;
+  unitPrice: string;
+  quantity: number;
+};
+
+export type OrderPaymentFormProps = {
+  orderUser: PaymentUser | null;
+  sessionName: string | null;
+  sessionEmail: string | null;
+  cartItems: PaymentCartItem[];
+  subtotal: number;
+  shippingFee: number;
+  hasUnavailableItem: boolean;
+  error?: string;
+};
+
+type DaumPostcodeData = {
+  zonecode: string;
+  roadAddress: string;
+  jibunAddress: string;
+  bname: string;
+  buildingName: string;
+  apartment: 'Y' | 'N';
+  userSelectedType: 'R' | 'J';
+};
+
+type DaumPostcode = {
+  embed: (element: HTMLElement) => void;
+};
+
+type DaumPostcodeConstructor = new (options: {
+  oncomplete: (data: DaumPostcodeData) => void;
+  onresize?: (size: { height: number }) => void;
+  width?: string;
+  height?: string;
+}) => DaumPostcode;
+
+type PostcodeWindow = Window & {
+  kakao?: {
+    Postcode: DaumPostcodeConstructor;
+  };
+  daum?: {
+    Postcode: DaumPostcodeConstructor;
+  };
+};
+
+const postcodeScriptId = 'daum-postcode-script';
+const postcodeScriptSrc = 'https://t1.kakaocdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js';
+const fieldClass =
+  'min-h-11 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-neutral-300';
+const labelClass = 'mb-1 block text-xs font-semibold text-neutral-700';
+
+function loadPostcodeScript(): Promise<void> {
+  const postcodeWindow = window as PostcodeWindow;
+  if (postcodeWindow.kakao?.Postcode || postcodeWindow.daum?.Postcode) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    const existingScript = document.getElementById(postcodeScriptId) as HTMLScriptElement | null;
+    const script = existingScript ?? document.createElement('script');
+
+    script.id = postcodeScriptId;
+    script.src = postcodeScriptSrc;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('POSTCODE_SCRIPT_LOAD_FAILED'));
+
+    if (!existingScript) {
+      document.head.appendChild(script);
+    }
+  });
+}
+
+function buildRoadAddress(data: DaumPostcodeData): string {
+  if (data.userSelectedType !== 'R') return data.jibunAddress;
+
+  const extras = [data.bname, data.buildingName && data.apartment === 'Y' ? data.buildingName : '']
+    .filter(Boolean)
+    .join(', ');
+
+  return extras ? `${data.roadAddress} (${extras})` : data.roadAddress;
+}
+
+function toWon(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.floor(value));
+}
+
+function pointValue(value: string): number {
+  if (!value) return 0;
+  return toWon(Number(value.replace(/,/g, '')));
+}
+
+function calculateCouponDiscount(coupon: PaymentCoupon | undefined, subtotal: number): number {
+  if (!coupon) return 0;
+  if (coupon.minOrderAmount != null && subtotal < coupon.minOrderAmount) return 0;
+
+  const raw =
+    coupon.discountType === 'percent'
+      ? Math.floor((subtotal * coupon.discountValue) / 100)
+      : coupon.discountValue;
+  const capped = coupon.maxDiscount != null ? Math.min(raw, coupon.maxDiscount) : raw;
+  return Math.min(toWon(capped), subtotal);
+}
+
+function PaymentSubmitButton({
+  finalTotal,
+  disabled,
+}: {
+  finalTotal: number;
+  disabled: boolean;
+}) {
+  const { pending } = useFormStatus();
+
+  return (
+    <button
+      type="submit"
+      disabled={disabled || pending}
+      className="flex min-h-12 w-full items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500"
+    >
+      {pending ? '처리 중' : `${formatKRW(finalTotal)} 구매하기`}
+    </button>
+  );
+}
+
+export function OrderPaymentForm({
+  orderUser,
+  sessionName,
+  sessionEmail,
+  cartItems,
+  subtotal,
+  shippingFee,
+  hasUnavailableItem,
+  error,
+}: OrderPaymentFormProps) {
+  const defaultAddress = orderUser?.defaultAddress ?? null;
+  const [receiver, setReceiver] = useState(defaultAddress?.receiver ?? orderUser?.name ?? '');
+  const [phone, setPhone] = useState(defaultAddress?.phone ?? orderUser?.phone ?? '');
+  const [zipCode, setZipCode] = useState(defaultAddress?.zipCode ?? '');
+  const [address1, setAddress1] = useState(defaultAddress?.address1 ?? '');
+  const [address2, setAddress2] = useState(defaultAddress?.address2 ?? '');
+  const [couponIssueId, setCouponIssueId] = useState('');
+  const [pointsToUse, setPointsToUse] = useState('');
+  const [postcodeOpen, setPostcodeOpen] = useState(false);
+  const [postcodeError, setPostcodeError] = useState('');
+  const [postcodeLayerHeight, setPostcodeLayerHeight] = useState(480);
+  const detailAddressRef = useRef<HTMLInputElement>(null);
+  const postcodeLayerRef = useRef<HTMLDivElement>(null);
+
+  const selectedCoupon = useMemo(
+    () => orderUser?.coupons.find((coupon) => coupon.id === couponIssueId),
+    [couponIssueId, orderUser?.coupons],
+  );
+  const couponDiscount = calculateCouponDiscount(selectedCoupon, subtotal);
+  const payableBeforePoints = toWon(subtotal + shippingFee - couponDiscount);
+  const maxUsablePoints = Math.min(orderUser?.pointBalance ?? 0, payableBeforePoints);
+  const appliedPoints = Math.min(pointValue(pointsToUse), maxUsablePoints);
+  const finalTotal = toWon(payableBeforePoints - appliedPoints);
+
+  useEffect(() => {
+    if (pointValue(pointsToUse) > maxUsablePoints) {
+      setPointsToUse(maxUsablePoints > 0 ? String(maxUsablePoints) : '');
+    }
+  }, [maxUsablePoints, pointsToUse]);
+
+  useEffect(() => {
+    if (!postcodeOpen) return;
+
+    let ignore = false;
+
+    const embedPostcode = async () => {
+      setPostcodeError('');
+
+      try {
+        await loadPostcodeScript();
+        if (ignore) return;
+
+        const postcodeWindow = window as PostcodeWindow;
+        const Postcode = postcodeWindow.kakao?.Postcode ?? postcodeWindow.daum?.Postcode;
+        const layer = postcodeLayerRef.current;
+        if (!Postcode || !layer) throw new Error('POSTCODE_API_UNAVAILABLE');
+
+        layer.replaceChildren();
+
+        new Postcode({
+          width: '100%',
+          height: '100%',
+          onresize: (size) => setPostcodeLayerHeight(Math.max(size.height, 420)),
+          oncomplete: (data) => {
+            setZipCode(data.zonecode);
+            setAddress1(buildRoadAddress(data));
+            setPostcodeOpen(false);
+            window.setTimeout(() => detailAddressRef.current?.focus(), 0);
+          },
+        }).embed(layer);
+      } catch {
+        setPostcodeOpen(false);
+        setPostcodeError('주소 검색을 불러오지 못했습니다. 우편번호와 주소를 직접 입력해 주세요.');
+      }
+    };
+
+    void embedPostcode();
+
+    return () => {
+      ignore = true;
+    };
+  }, [postcodeOpen]);
+
+  const selectAddress = (address: PaymentAddress) => {
+    setReceiver(address.receiver);
+    setPhone(address.phone);
+    setZipCode(address.zipCode);
+    setAddress1(address.address1);
+    setAddress2(address.address2 ?? '');
+    window.setTimeout(() => detailAddressRef.current?.focus(), 0);
+  };
+
+  const updatePoint = (value: string) => {
+    if (!value) {
+      setPointsToUse('');
+      return;
+    }
+    setPointsToUse(String(Math.min(pointValue(value), maxUsablePoints)));
+  };
+
+  return (
+    <>
+      <div className="mx-auto grid max-w-6xl gap-4 px-3 py-4 lg:grid-cols-[minmax(0,1fr)_300px] lg:px-4">
+        <section>
+          <h1 className="mb-3 text-lg font-bold text-neutral-900">결제하기</h1>
+          {error && (
+            <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
+              입력 정보를 확인해 주세요. 재고가 부족하거나 필수 정보가 누락되었을 수 있습니다.
+            </p>
+          )}
+          {hasUnavailableItem && (
+            <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              구매할 수 없는 상품이 있습니다. 장바구니에서 수량 또는 상품을 조정해 주세요.
+            </p>
+          )}
+
+          <form action={createOrderAction} className="space-y-3">
+            <section className="rounded-lg border border-neutral-200 bg-white p-3">
+              <h2 className="text-sm font-bold text-neutral-900">구매자 정보</h2>
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                <label className="block">
+                  <span className={labelClass}>이름</span>
+                  <input
+                    name="buyerName"
+                    required
+                    defaultValue={orderUser?.name ?? sessionName ?? ''}
+                    className={fieldClass}
+                  />
+                </label>
+                <label className="block">
+                  <span className={labelClass}>연락처</span>
+                  <input
+                    name="buyerPhone"
+                    type="tel"
+                    required
+                    defaultValue={orderUser?.phone ?? ''}
+                    className={fieldClass}
+                  />
+                </label>
+                <label className="block md:col-span-2">
+                  <span className={labelClass}>이메일</span>
+                  <input
+                    name="buyerEmail"
+                    type="email"
+                    defaultValue={orderUser?.email ?? sessionEmail ?? ''}
+                    className={fieldClass}
+                  />
+                </label>
+              </div>
+            </section>
+
+            <section className="rounded-lg border border-neutral-200 bg-white p-3">
+              <h2 className="text-sm font-bold text-neutral-900">배송 정보</h2>
+              {orderUser && orderUser.addresses.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs font-semibold text-neutral-700">저장된 배송지</p>
+                  {orderUser.addresses.map((address) => (
+                    <div
+                      key={address.id}
+                      className="rounded-md border border-neutral-200 p-3 text-sm text-neutral-700"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold text-neutral-900">
+                              {address.label || address.receiver}
+                            </span>
+                            {address.isDefault && (
+                              <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[11px] text-white">
+                                기본
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1">{address.receiver} / {address.phone}</p>
+                          <p className="mt-1 text-neutral-500">
+                            [{address.zipCode}] {address.address1} {address.address2 ?? ''}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => selectAddress(address)}
+                          className="min-h-11 shrink-0 rounded-md border border-neutral-300 px-3 text-xs font-bold text-neutral-800"
+                        >
+                          선택
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                <label className="block">
+                  <span className={labelClass}>받는 분</span>
+                  <input
+                    name="receiver"
+                    required
+                    value={receiver}
+                    onChange={(event) => setReceiver(event.target.value.slice(0, 50))}
+                    className={fieldClass}
+                  />
+                </label>
+                <label className="block">
+                  <span className={labelClass}>연락처</span>
+                  <input
+                    name="phone"
+                    type="tel"
+                    required
+                    value={phone}
+                    onChange={(event) => setPhone(event.target.value.slice(0, 20))}
+                    className={fieldClass}
+                  />
+                </label>
+                <div className="block">
+                  <span className={labelClass}>우편번호</span>
+                  <div className="flex gap-2">
+                    <input
+                      name="zipCode"
+                      required
+                      value={zipCode}
+                      onChange={(event) =>
+                        setZipCode(event.target.value.replace(/[^0-9]/g, '').slice(0, 5))
+                      }
+                      inputMode="numeric"
+                      autoComplete="postal-code"
+                      className={fieldClass}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPostcodeError('');
+                        setPostcodeLayerHeight(480);
+                        setPostcodeOpen(true);
+                      }}
+                      className="flex min-h-11 shrink-0 items-center justify-center gap-1 rounded-md border border-neutral-900 bg-white px-3 text-sm font-semibold text-neutral-900"
+                      aria-label="주소 검색"
+                    >
+                      <Search aria-hidden="true" size={16} />
+                      검색
+                    </button>
+                  </div>
+                  {postcodeError && (
+                    <p className="mt-1 text-xs text-red-600" role="alert">
+                      {postcodeError}
+                    </p>
+                  )}
+                </div>
+                <label className="block md:col-span-2">
+                  <span className={labelClass}>주소</span>
+                  <input
+                    name="address1"
+                    required
+                    value={address1}
+                    onChange={(event) => setAddress1(event.target.value.slice(0, 200))}
+                    autoComplete="street-address"
+                    className={fieldClass}
+                  />
+                </label>
+                <label className="block md:col-span-2">
+                  <span className={labelClass}>상세주소</span>
+                  <input
+                    ref={detailAddressRef}
+                    name="address2"
+                    value={address2}
+                    onChange={(event) => setAddress2(event.target.value.slice(0, 200))}
+                    autoComplete="address-line2"
+                    className={fieldClass}
+                  />
+                </label>
+              </div>
+              {orderUser && (
+                <label className="mt-3 flex min-h-11 items-center gap-2 text-sm text-neutral-700">
+                  <input name="saveShippingAddress" type="checkbox" className="h-4 w-4" />
+                  <span>이 배송지를 최근 배송지에 저장합니다.</span>
+                </label>
+              )}
+            </section>
+
+            {orderUser && (
+              <section className="rounded-lg border border-neutral-200 bg-white p-3">
+                <h2 className="text-sm font-bold text-neutral-900">할인 적용</h2>
+                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  <label className="block">
+                    <span className={labelClass}>쿠폰</span>
+                    <select
+                      name="couponIssueId"
+                      value={couponIssueId}
+                      onChange={(event) => setCouponIssueId(event.target.value)}
+                      className={fieldClass}
+                    >
+                      <option value="">사용 안 함</option>
+                      {orderUser.coupons.map((coupon) => (
+                        <option key={coupon.id} value={coupon.id}>
+                          {coupon.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="block">
+                    <span className={labelClass}>
+                      포인트 {formatNumber(orderUser.pointBalance)} P 보유
+                    </span>
+                    <div className="flex gap-2">
+                      <FormattedNumberInput
+                        name="pointsToUse"
+                        min={0}
+                        max={maxUsablePoints}
+                        value={pointsToUse}
+                        onValueChange={updatePoint}
+                        className={fieldClass}
+                        aria-label="사용할 포인트"
+                      />
+                      <button
+                        type="button"
+                        disabled={maxUsablePoints <= 0}
+                        onClick={() => setPointsToUse(String(maxUsablePoints))}
+                        className="min-h-11 shrink-0 rounded-md border border-neutral-900 px-3 text-xs font-bold text-neutral-900 disabled:border-neutral-200 disabled:text-neutral-300"
+                      >
+                        전액사용
+                      </button>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-2 text-xs text-neutral-500">
+                      <span>결제금액 한도 내에서 사용됩니다.</span>
+                      {appliedPoints > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setPointsToUse('')}
+                          className="min-h-11 px-1 font-semibold text-neutral-700"
+                        >
+                          사용 취소
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            <section className="rounded-lg border border-neutral-200 bg-white p-3">
+              <h2 className="text-sm font-bold text-neutral-900">결제수단</h2>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {[
+                  ['bank', '무통장입금'],
+                  ['card', '신용카드'],
+                  ['vbank', '가상계좌'],
+                  ['mobile', '휴대폰 결제'],
+                  ['transfer', '계좌이체'],
+                ].map(([value, label]) => (
+                  <label
+                    key={value}
+                    className="flex min-h-11 items-center gap-2 rounded-md border border-neutral-300 px-3 text-sm"
+                  >
+                    <input
+                      name="paymentMethod"
+                      type="radio"
+                      value={value}
+                      defaultChecked={value === 'bank'}
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-neutral-500">
+                PG 연동 전까지 결제수단은 주문 접수 상태로 저장됩니다. 무통장 주문은 관리자 확인 후
+                처리합니다.
+              </p>
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                <label className="block">
+                  <span className={labelClass}>입금자명</span>
+                  <input
+                    name="depositorName"
+                    defaultValue={orderUser?.name ?? sessionName ?? ''}
+                    className={fieldClass}
+                  />
+                </label>
+                <label className="block">
+                  <span className={labelClass}>입금 예정일</span>
+                  <input name="depositDueDate" type="date" className={fieldClass} />
+                </label>
+              </div>
+            </section>
+
+            <section className="rounded-lg border border-neutral-200 bg-white p-3">
+              <h2 className="text-sm font-bold text-neutral-900">증빙 신청</h2>
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                <label className="block">
+                  <span className={labelClass}>현금영수증</span>
+                  <select name="cashReceiptType" className={fieldClass}>
+                    <option value="none">신청 안 함</option>
+                    <option value="personal">개인 소득공제</option>
+                    <option value="business">사업자 지출증빙</option>
+                  </select>
+                </label>
+                <label className="block">
+                  <span className={labelClass}>휴대폰/사업자번호</span>
+                  <input name="cashReceiptIdentity" className={fieldClass} />
+                </label>
+                <label className="flex min-h-11 items-center gap-2 text-sm text-neutral-700 md:col-span-2">
+                  <input name="taxInvoiceRequested" type="checkbox" className="h-4 w-4" />
+                  <span>세금계산서를 신청합니다.</span>
+                </label>
+                <label className="block">
+                  <span className={labelClass}>상호명</span>
+                  <input name="taxInvoiceCompanyName" className={fieldClass} />
+                </label>
+                <label className="block">
+                  <span className={labelClass}>사업자등록번호</span>
+                  <input name="taxInvoiceBusinessNumber" className={fieldClass} />
+                </label>
+              </div>
+            </section>
+
+            <section className="rounded-lg border border-neutral-200 bg-white p-3">
+              <label className="block">
+                <span className={labelClass}>배송 메모</span>
+                <textarea
+                  name="memo"
+                  rows={2}
+                  className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-300"
+                />
+              </label>
+              <label className="mt-3 flex min-h-11 items-center gap-2 text-sm text-neutral-700">
+                <input name="agree" type="checkbox" required className="h-4 w-4" />
+                <span>상품, 결제 금액, 배송 정보를 확인했으며 구매 진행에 동의합니다.</span>
+              </label>
+            </section>
+
+            <PaymentSubmitButton finalTotal={finalTotal} disabled={hasUnavailableItem} />
+          </form>
+        </section>
+
+        <aside className="h-fit rounded-lg border border-neutral-200 bg-white p-3 lg:sticky lg:top-20">
+          <h2 className="mb-3 text-sm font-bold text-neutral-900">결제 요약</h2>
+          <ul className="mb-3 space-y-2">
+            {cartItems.map((item) => (
+              <li key={item.skuId} className="flex gap-2 text-sm">
+                <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-neutral-100">
+                  {item.thumbnail && (
+                    <Image
+                      src={item.thumbnail}
+                      alt={item.name}
+                      fill
+                      sizes="48px"
+                      className="object-cover"
+                    />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="line-clamp-2 text-xs font-medium text-neutral-900">{item.name}</p>
+                  {item.optionSummary && (
+                    <p className="mt-0.5 line-clamp-1 text-[11px] text-neutral-500">
+                      {item.optionSummary}
+                    </p>
+                  )}
+                  <p className="mt-0.5 text-[11px] text-neutral-500">수량 {item.quantity}개</p>
+                </div>
+                <span className="shrink-0 text-xs font-bold text-neutral-900">
+                  {formatKRW(Number(item.unitPrice) * item.quantity)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="space-y-2 border-t border-neutral-100 pt-3 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-neutral-500">상품 합계</span>
+              <span className="font-bold text-neutral-900">{formatKRW(subtotal)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-neutral-500">배송비</span>
+              <span className="font-bold text-neutral-900">{formatKRW(shippingFee)}</span>
+            </div>
+            {couponDiscount > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-neutral-500">쿠폰 할인</span>
+                <span className="font-bold text-blue-700">-{formatKRW(couponDiscount)}</span>
+              </div>
+            )}
+            {appliedPoints > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-neutral-500">포인트 사용</span>
+                <span className="font-bold text-blue-700">-{formatNumber(appliedPoints)} P</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between border-t border-neutral-100 pt-3 text-base">
+              <span className="font-bold text-neutral-900">최종 결제금액</span>
+              <span className="font-extrabold text-neutral-950">{formatKRW(finalTotal)}</span>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      {postcodeOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end bg-black/45 sm:items-center sm:px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="주소 검색"
+        >
+          <div className="w-full overflow-hidden rounded-t-lg bg-white shadow-xl sm:mx-auto sm:max-w-md sm:rounded-lg">
+            <div className="flex h-12 items-center justify-between border-b border-neutral-200 px-4">
+              <h2 className="text-base font-semibold text-neutral-900">주소 검색</h2>
+              <button
+                type="button"
+                onClick={() => setPostcodeOpen(false)}
+                className="flex h-11 w-11 items-center justify-center rounded-md text-neutral-700"
+                aria-label="주소 검색 닫기"
+              >
+                <X aria-hidden="true" size={20} />
+              </button>
+            </div>
+            <div
+              ref={postcodeLayerRef}
+              className="w-full"
+              style={{ height: Math.min(postcodeLayerHeight, 560) }}
+            />
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
