@@ -5,6 +5,7 @@ import type { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '@/server/db';
 import { createPointLedgerEntry } from '@/server/services/point-ledger.service';
+import { releaseOrderBenefits, releaseReservedStock } from '@/server/services/order.service';
 import { ConflictError, NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import type { PaymentCallbackInput } from '@/schemas/payment';
@@ -14,66 +15,6 @@ export type PaymentCallbackResult = {
   status: string;
   duplicate: boolean;
 };
-
-async function releaseReservedStock(
-  tx: Prisma.TransactionClient,
-  orderId: bigint,
-): Promise<void> {
-  const items = await tx.orderItem.findMany({
-    where: { orderId },
-    select: { skuId: true, quantity: true },
-  });
-
-  for (const item of items) {
-    if (!item.skuId) continue;
-    await tx.$executeRaw`
-      UPDATE "ProductSku"
-      SET "reserved" = GREATEST("reserved" - ${item.quantity}, 0)
-      WHERE "id" = ${item.skuId}
-    `;
-  }
-}
-
-async function releaseOrderBenefits(
-  tx: Prisma.TransactionClient,
-  order: { id: bigint; orderNo: string; userId: bigint | null; pointsUsed: number },
-): Promise<void> {
-  if (order.userId && order.pointsUsed > 0) {
-    const restored = await tx.userPointHistory.findFirst({
-      where: {
-        userId: order.userId,
-        orderId: order.id,
-        delta: order.pointsUsed,
-        reason: `주문 ${order.orderNo} 포인트 사용 취소`,
-      },
-      select: { id: true },
-    });
-    if (!restored) {
-      await createPointLedgerEntry(tx, {
-        userId: order.userId,
-        delta: order.pointsUsed,
-        reason: `주문 ${order.orderNo} 포인트 사용 취소`,
-        orderId: order.id,
-      });
-    }
-  }
-
-  const couponIssues = await tx.couponIssue.findMany({
-    where: { orderId: order.id },
-    select: { id: true, couponId: true },
-  });
-
-  for (const issue of couponIssues) {
-    await tx.couponIssue.update({
-      where: { id: issue.id },
-      data: { usedAt: null, orderId: null },
-    });
-    await tx.coupon.update({
-      where: { id: issue.couponId },
-      data: { usedCount: { decrement: 1 } },
-    });
-  }
-}
 
 type ExpiredHoldCleanupResult = {
   cancelledCount: number;

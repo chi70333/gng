@@ -43,10 +43,10 @@
 | PHP ?? | ?? | Next ?? | ?? |
 |---|---|---|---|
 | `login*.php`, OAuth PHP | ??? | `/login`, NextAuth | ? done |
-| `member_join*.php`, `social_join*.php` | ???? | `/join` | ?? in-progress |
+| `member_join*.php`, `social_join*.php` | 회원가입 | `/join`, `/join/social-connect` | route done; field parity added for address/consent/business; remaining auth gaps tracked in `docs/12-parity-gap-register.md` |
 | `cart*.php`, `m/cart_count.php` | ???? | `/cart`, `/api/cart` | ? done |
-| `order_sheet.php`, `order_table*.php` | ???/?? ?? | `/order`, `/api/order` | ?? in-progress: ??/??? ?? ?? |
-| `payaction*.php`, `PG/*` | ?? ?? | `/api/payment/callback` | ?? in-progress |
+| `order_sheet.php`, `order_table*.php` | ???/?? ?? | `/order`, `/api/order` | ✅ done: 주문자/배송지/결제수단 입력 및 주문 접수 |
+| `payaction*.php`, `PG/*` | ?? ?? | `/api/payment/callback`, `/api/payment/start` | ✅ done: callback idempotency and payment-start payload |
 
 ## P2 ?????/??/???/???
 
@@ -54,7 +54,7 @@
 |---|---|---|---|
 | `coupon_list.php`, `coupon_ajax.php`, `mypage_coupon.php` | ?? ??/??/??/?????? | `/mypage/coupons`, `/api/coupon/issue` | ? done |
 | `mypage_point.php`, `goods_point*.php`, `api/point_sync.php` | ??? ledger/?? ??/?? ??/API sync | `/mypage/points`, `UserPointHistory` | ? done |
-| `mypage_order*.php`, `mypage_addrs*.php` | ????/??? | `/mypage/orders`, `/mypage/addresses` | ? todo |
+| `mypage_order*.php`, `mypage_addrs*.php` | ????/??? | `/mypage/orders`, `/mypage/addresses` | ✅ done: order detail/cancel and address book |
 | `mypage_interest*.php`, `interest*_ok.php` | ? | - | removed: wishlist feature intentionally disabled |
 | `board_*.php`, `notice_*.php`, `faq_list.php`, `ask_*.php` | ???/??/FAQ/?? | `/notice`, `/faq`, `/help/inquiries` | ?? in-progress |
 
@@ -77,3 +77,4 @@
 | ???/??/?? PHP | ?? ?? ?? ?? ?? |
 
 ?? ??? ??? `docs/legacy-parity-audit.md`? ?PHP ?? ????? ??? ???? ??.
+

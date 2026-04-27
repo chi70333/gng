@@ -1,22 +1,23 @@
-// Legacy source: order_ok.php
-// Cache: no-cache. Completion is per-order/user state.
+// Legacy sources: mypage_order_detail.php, order_cancel.php
+// Cache: no-store. Order detail is private member state.
 
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { formatKRW } from '@/lib/format';
+import { cancelOrderAction } from './actions';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '주문 완료',
+  title: '주문상세',
+  description: '주문 상품, 결제금액, 배송지와 진행상태를 확인합니다.',
 };
 
-type CompletePageProps = {
-  searchParams: {
-    orderNo?: string;
-  };
+type DetailPageProps = {
+  params: { orderNo: string };
+  searchParams: { phone?: string };
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -31,6 +32,19 @@ function asString(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
+function statusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    pending: '결제 대기',
+    paid: '결제 완료',
+    preparing: '상품 준비중',
+    shipping: '배송중',
+    delivered: '배송 완료',
+    cancelled: '취소',
+    refunded: '환불',
+  };
+  return labels[status] ?? status;
+}
+
 function paymentLabel(method: string): string {
   const labels: Record<string, string> = {
     bank: '무통장입금',
@@ -42,9 +56,49 @@ function paymentLabel(method: string): string {
   return labels[method] ?? method;
 }
 
-async function getCompleteOrder(orderNo: string) {
-  return prisma.order.findUnique({
-    where: { orderNo },
+function normalizePhone(value: string | null): string {
+  return (value ?? '').replace(/\D/g, '');
+}
+
+function GuestOrderLookup({ orderNo }: { orderNo: string }) {
+  return (
+    <div className="mx-auto max-w-md px-4 py-16">
+      <h1 className="text-xl font-bold text-neutral-900">비회원 주문조회</h1>
+      <p className="mt-2 text-sm text-neutral-500">
+        주문자 연락처를 입력하면 주문상세를 확인할 수 있습니다.
+      </p>
+      <form action={`/mypage/orders/${orderNo}`} className="mt-5 rounded-lg bg-white p-4">
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium text-neutral-700">주문자 연락처</span>
+          <input
+            name="phone"
+            type="tel"
+            required
+            className="min-h-11 w-full rounded-lg border border-neutral-300 px-3 text-sm"
+          />
+        </label>
+        <button
+          type="submit"
+          className="mt-3 flex min-h-11 w-full items-center justify-center rounded-lg bg-neutral-900 px-5 text-sm font-semibold text-white"
+        >
+          주문조회
+        </button>
+      </form>
+    </div>
+  );
+}
+
+export default async function MyOrderDetailPage({ params, searchParams }: DetailPageProps) {
+  const session = await auth();
+  const user = session?.user?.email
+    ? await prisma.user.findUnique({
+        where: { email: session.user.email },
+        select: { id: true },
+      })
+    : null;
+
+  const order = await prisma.order.findFirst({
+    where: { orderNo: params.orderNo, userId: user?.id ?? null },
     select: {
       orderNo: true,
       status: true,
@@ -53,6 +107,8 @@ async function getCompleteOrder(orderNo: string) {
       shippingFee: true,
       pointsUsed: true,
       total: true,
+      memo: true,
+      buyerInfo: true,
       shippingAddress: true,
       createdAt: true,
       items: {
@@ -76,28 +132,41 @@ async function getCompleteOrder(orderNo: string) {
       },
     },
   });
-}
-
-export default async function OrderCompletePage({ searchParams }: CompletePageProps) {
-  if (!searchParams.orderNo) notFound();
-
-  const order = await getCompleteOrder(searchParams.orderNo);
   if (!order) notFound();
 
   const shipping = asRecord(order.shippingAddress);
+  const buyer = asRecord(order.buyerInfo);
+  if (!user) {
+    if (!searchParams.phone) return <GuestOrderLookup orderNo={params.orderNo} />;
+
+    const requestedPhone = normalizePhone(searchParams.phone);
+    const buyerPhone = normalizePhone(asString(buyer.buyerPhone) ?? asString(buyer.phone));
+    const receiverPhone = normalizePhone(asString(shipping.phone));
+    if (!requestedPhone || (requestedPhone !== buyerPhone && requestedPhone !== receiverPhone)) {
+      notFound();
+    }
+  }
+
   const payment = order.payments[0];
   const rawPayment = asRecord(payment?.rawResponse);
   const bankDeposit = asRecord(rawPayment.bankDeposit);
-  const bankAccount = asString(bankDeposit.account);
-  const depositorName = asString(bankDeposit.depositorName);
-  const depositDueDate = asString(bankDeposit.depositDueDate);
+  const canCancel = order.status === 'pending' || order.status === 'paid';
+  const cancelAction = cancelOrderAction.bind(null, order.orderNo);
 
   return (
-    <div className="mx-auto max-w-screen-md px-4 py-8">
+    <div className="mx-auto max-w-screen-md px-4 py-6">
       <div className="rounded-lg bg-white p-5">
-        <h1 className="text-xl font-bold text-neutral-900">주문이 접수되었습니다.</h1>
-        <p className="mt-2 text-sm text-neutral-500">
-          주문번호 <span className="font-semibold text-neutral-900">{order.orderNo}</span>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-bold text-neutral-900">주문상세</h1>
+            <p className="mt-1 text-sm text-neutral-500">{order.orderNo}</p>
+          </div>
+          <span className="shrink-0 rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700">
+            {statusLabel(order.status)}
+          </span>
+        </div>
+        <p className="mt-3 text-xs text-neutral-400">
+          주문일 {order.createdAt.toLocaleString('ko-KR')}
         </p>
       </div>
 
@@ -153,13 +222,12 @@ export default async function OrderCompletePage({ searchParams }: CompletePagePr
               결제수단: {paymentLabel(payment.method)} / 상태: {payment.status}
             </p>
           )}
-          {bankAccount && (
+          {asString(bankDeposit.account) && (
             <div className="rounded-lg bg-neutral-50 p-3 text-sm text-neutral-700">
-              <p className="font-semibold text-neutral-900">입금 계좌</p>
-              <p className="mt-1">{bankAccount}</p>
-              {depositorName && <p className="mt-1">입금자명: {depositorName}</p>}
-              {depositDueDate && (
-                <p className="mt-1">입금 예정일: {new Date(depositDueDate).toLocaleDateString('ko-KR')}</p>
+              <p className="font-semibold text-neutral-900">입금 정보</p>
+              <p className="mt-1">{asString(bankDeposit.account)}</p>
+              {asString(bankDeposit.depositorName) && (
+                <p className="mt-1">입금자명: {asString(bankDeposit.depositorName)}</p>
               )}
             </div>
           )}
@@ -173,23 +241,33 @@ export default async function OrderCompletePage({ searchParams }: CompletePagePr
           <p className="mt-1">
             [{asString(shipping.zipCode) ?? '-'}] {asString(shipping.address1) ?? ''} {asString(shipping.address2) ?? ''}
           </p>
+          {order.memo && <p className="mt-2 text-neutral-500">배송 메모: {order.memo}</p>}
         </div>
       </section>
 
-      <div className="mt-6 grid gap-2 sm:grid-cols-2">
-        <Link
-          href="/"
-          className="inline-flex h-11 items-center justify-center rounded-lg bg-neutral-900 px-5 text-sm font-semibold text-white"
-        >
-          쇼핑 계속하기
-        </Link>
-        <Link
-          href="/mypage/orders"
-          className="inline-flex h-11 items-center justify-center rounded-lg border border-neutral-300 px-5 text-sm font-semibold text-neutral-900"
-        >
-          주문내역 보기
-        </Link>
-      </div>
+      {canCancel ? (
+        <form action={cancelAction} className="mt-4 rounded-lg bg-white p-5">
+          <h2 className="text-base font-bold text-neutral-900">주문취소</h2>
+          <label className="mt-3 block">
+            <span className="mb-1 block text-sm font-medium text-neutral-700">취소 사유</span>
+            <textarea
+              name="reason"
+              rows={3}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            />
+          </label>
+          <button
+            type="submit"
+            className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-lg border border-red-200 bg-red-50 px-5 text-sm font-semibold text-red-600"
+          >
+            주문취소
+          </button>
+        </form>
+      ) : (
+        <div className="mt-4 rounded-lg bg-white p-5 text-sm text-neutral-600">
+          배송 준비 이후에는 고객센터로 취소를 요청해 주세요.
+        </div>
+      )}
     </div>
   );
 }

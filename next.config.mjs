@@ -35,6 +35,7 @@ const nextConfig = {
       // R2/S3 도메인 등록 예정
       { protocol: 'https', hostname: '**.r2.dev' },
       { protocol: 'https', hostname: '**.cloudfront.net' },
+      { protocol: 'https', hostname: 'images.unsplash.com' },
       ...r2RemotePattern,
       // 레거시 이미지 호스트. 운영 중에는 R2/S3 이전 후 제거한다.
       ...legacyImageRemotePattern,
@@ -46,6 +47,8 @@ const nextConfig = {
       { source: '/api/gnp-api.php', destination: '/api/legacy/gnp-api' },
       { source: '/api/point_sync.php', destination: '/api/legacy/point-sync' },
       { source: '/api/version.php', destination: '/api/legacy/version' },
+      { source: '/payaction.php', destination: '/api/payment/callback' },
+      { source: '/payaction_adm.php', destination: '/api/payment/callback' },
     ];
   },
   async redirects() {

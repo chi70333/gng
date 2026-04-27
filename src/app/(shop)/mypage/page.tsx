@@ -102,6 +102,21 @@ export default async function MyPage() {
         </div>
       </section>
 
+      <section className="mt-4 grid gap-3 sm:grid-cols-2">
+        <Link
+          href="/mypage/orders"
+          className="rounded-lg bg-white p-4 text-sm font-semibold text-neutral-900"
+        >
+          주문내역 전체 보기
+        </Link>
+        <Link
+          href="/mypage/addresses"
+          className="rounded-lg bg-white p-4 text-sm font-semibold text-neutral-900"
+        >
+          배송지 관리
+        </Link>
+      </section>
+
       <section className="mt-8" aria-labelledby="recent-orders">
         <div className="mb-3 flex items-center justify-between">
           <h2 id="recent-orders" className="text-lg font-bold text-neutral-900">
@@ -126,24 +141,26 @@ export default async function MyPage() {
               const firstItem = order.items[0];
               return (
                 <li key={order.orderNo} className="rounded-lg bg-white p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-xs text-neutral-400">
-                        {order.createdAt.toLocaleDateString('ko-KR')} / {order.orderNo}
-                      </p>
-                      <p className="mt-2 line-clamp-1 text-sm font-semibold text-neutral-900">
-                        {firstItem
-                          ? `${firstItem.productName} ${firstItem.quantity}개`
-                          : '주문 상품'}
-                      </p>
+                  <Link href={`/mypage/orders/${order.orderNo}`} className="block">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs text-neutral-400">
+                          {order.createdAt.toLocaleDateString('ko-KR')} / {order.orderNo}
+                        </p>
+                        <p className="mt-2 line-clamp-1 text-sm font-semibold text-neutral-900">
+                          {firstItem
+                            ? `${firstItem.productName} ${firstItem.quantity}개`
+                            : '주문 상품'}
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700">
+                        {statusLabel(order.status)}
+                      </span>
                     </div>
-                    <span className="shrink-0 rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700">
-                      {statusLabel(order.status)}
-                    </span>
-                  </div>
-                  <p className="mt-3 text-sm font-bold text-neutral-900">
-                    {formatKRW(order.total.toString())}
-                  </p>
+                    <p className="mt-3 text-sm font-bold text-neutral-900">
+                      {formatKRW(order.total.toString())}
+                    </p>
+                  </Link>
                 </li>
               );
             })}

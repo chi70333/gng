@@ -7,6 +7,7 @@ import { loginSchema } from '@/schemas/auth';
 import { adminLoginSchema } from '@/schemas/admin-auth';
 import { logger } from '@/lib/logger';
 import { verifyAdminCredentials } from '@/server/admin/credentials';
+import { prisma } from '@/server/db';
 import {
   SocialAccountNotRegisteredError,
   type SocialProvider,
@@ -14,9 +15,12 @@ import {
   verifyCredentials,
 } from '@/server/services/auth.service';
 import {
+  SOCIAL_CALLBACK_COOKIE,
   SOCIAL_PENDING_COOKIE,
   SOCIAL_PENDING_MAX_AGE,
+  decodeSocialRegistrationToken,
   encodePendingSocialProfile,
+  sanitizeCallbackUrl,
 } from '@/server/services/social-pending.service';
 
 function isSocialProvider(provider: string): provider is SocialProvider {
@@ -73,6 +77,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return verifyAdminCredentials(parsed.data);
       },
     }),
+    Credentials({
+      id: 'social-registration',
+      credentials: {
+        token: { label: 'Token', type: 'text' },
+      },
+      async authorize(credentials) {
+        const token =
+          typeof credentials?.token === 'string'
+            ? decodeSocialRegistrationToken(credentials.token)
+            : null;
+        if (!token) return null;
+
+        const user = await prisma.user.findUnique({
+          where: { id: BigInt(token.userId) },
+          select: { id: true, email: true, name: true, status: true },
+        });
+
+        if (!user || user.status !== 'active' || user.email !== token.email) return null;
+
+        return {
+          id: user.id.toString(),
+          email: user.email,
+          name: user.name,
+          userKind: 'member',
+        };
+      },
+    }),
     ...(process.env.KAKAO_CLIENT_ID
       ? [
           Kakao({
@@ -118,6 +149,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return true;
       } catch (err) {
         if (err instanceof SocialAccountNotRegisteredError) {
+          const callbackUrl = sanitizeCallbackUrl(
+            cookies().get(SOCIAL_CALLBACK_COOKIE)?.value,
+          );
           cookies().set(
             SOCIAL_PENDING_COOKIE,
             encodePendingSocialProfile({
@@ -125,6 +159,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               providerUid: account.providerAccountId,
               email: user.email,
               name: user.name ?? null,
+              callbackUrl,
             }),
             {
               httpOnly: true,

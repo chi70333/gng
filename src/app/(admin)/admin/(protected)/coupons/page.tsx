@@ -6,6 +6,7 @@ import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
 import { formatKRW, formatNumber } from '@/lib/format';
 import { AdminStatusBadge } from '@/components/admin/AdminStatusBadge';
+import { FormattedNumberInput } from '@/components/ui/FormattedNumberInput';
 import { saveAdminCoupon } from '../../actions';
 
 export const dynamic = 'force-dynamic';
@@ -51,11 +52,11 @@ export default async function AdminCouponsPage() {
             <option value="amount">금액 할인</option>
             <option value="percent">정률 할인</option>
           </select>
-          <input name="discountValue" placeholder="할인값" defaultValue="0" className="min-h-11 rounded-md border border-neutral-200 px-3 text-sm" required />
+          <FormattedNumberInput name="discountValue" placeholder="할인값" defaultValue="0" allowDecimal className="min-h-11 rounded-md border border-neutral-200 px-3 text-sm" required />
           <input name="startAt" type="date" defaultValue={today} className="min-h-11 rounded-md border border-neutral-200 px-3 text-sm" required />
           <input name="endAt" type="date" defaultValue={dateInputValue(nextMonth)} className="min-h-11 rounded-md border border-neutral-200 px-3 text-sm" required />
-          <input name="minOrderAmount" placeholder="최소주문금액" className="min-h-11 rounded-md border border-neutral-200 px-3 text-sm" />
-          <input name="maxDiscount" placeholder="최대할인금액" className="min-h-11 rounded-md border border-neutral-200 px-3 text-sm" />
+          <FormattedNumberInput name="minOrderAmount" placeholder="최소주문금액" allowDecimal className="min-h-11 rounded-md border border-neutral-200 px-3 text-sm" />
+          <FormattedNumberInput name="maxDiscount" placeholder="최대할인금액" allowDecimal className="min-h-11 rounded-md border border-neutral-200 px-3 text-sm" />
           <input name="totalQuota" type="number" min={1} placeholder="발급수량" className="min-h-11 rounded-md border border-neutral-200 px-3 text-sm" />
           <label className="flex min-h-11 items-center gap-2 text-sm font-bold">
             <input type="checkbox" name="isActive" defaultChecked />
@@ -98,16 +99,16 @@ export default async function AdminCouponsPage() {
                     <option value="amount">금액</option>
                     <option value="percent">정률</option>
                   </select>
-                  <input form={`coupon-${coupon.id.toString()}`} name="discountValue" defaultValue={coupon.discountValue.toString()} className="min-h-10 w-full rounded-md border border-neutral-200 px-3 text-sm" />
+                  <FormattedNumberInput form={`coupon-${coupon.id.toString()}`} name="discountValue" defaultValue={coupon.discountValue.toString()} allowDecimal className="min-h-10 w-full rounded-md border border-neutral-200 px-3 text-sm" />
                   <p className="mt-1 text-xs text-neutral-500">
                     현재 <DiscountValue type={coupon.discountType} value={coupon.discountValue.toString()} />
                   </p>
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <input form={`coupon-${coupon.id.toString()}`} name="minOrderAmount" defaultValue={coupon.minOrderAmount?.toString() ?? ''} className="min-h-10 w-full rounded-md border border-neutral-200 px-3 text-right text-sm" />
+                  <FormattedNumberInput form={`coupon-${coupon.id.toString()}`} name="minOrderAmount" defaultValue={coupon.minOrderAmount?.toString() ?? ''} allowDecimal className="min-h-10 w-full rounded-md border border-neutral-200 px-3 text-right text-sm" />
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <input form={`coupon-${coupon.id.toString()}`} name="maxDiscount" defaultValue={coupon.maxDiscount?.toString() ?? ''} className="min-h-10 w-full rounded-md border border-neutral-200 px-3 text-right text-sm" />
+                  <FormattedNumberInput form={`coupon-${coupon.id.toString()}`} name="maxDiscount" defaultValue={coupon.maxDiscount?.toString() ?? ''} allowDecimal className="min-h-10 w-full rounded-md border border-neutral-200 px-3 text-right text-sm" />
                 </td>
                 <td className="px-4 py-3">
                   <input form={`coupon-${coupon.id.toString()}`} name="startAt" type="date" defaultValue={dateInputValue(coupon.startAt)} className="mb-2 min-h-10 w-full rounded-md border border-neutral-200 px-3 text-sm" />

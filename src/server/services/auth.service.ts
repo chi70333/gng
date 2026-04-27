@@ -40,6 +40,27 @@ function normalizePhone(phone: string | undefined): string | undefined {
   return normalized ? normalized : undefined;
 }
 
+function consentedAt(value: 'y' | 'n'): Date | undefined {
+  return value === 'y' ? new Date() : undefined;
+}
+
+function businessProfileData(input: RegisterInput | SocialRegisterInput) {
+  if (input.memberType !== 'D') return undefined;
+
+  return {
+    create: {
+      companyName: input.companyName || null,
+      ceoName: input.ceoName || null,
+      businessNumber: input.businessNumber || null,
+      businessType: input.businessType || null,
+      businessItem: input.businessItem || null,
+      zipCode: input.businessZipCode || null,
+      address1: input.businessAddress1 || null,
+      address2: input.businessAddress2 || null,
+    },
+  };
+}
+
 function digest(algo: 'md5' | 'sha1', password: string): string {
   return createHash(algo).update(password).digest('hex');
 }
@@ -83,6 +104,21 @@ export async function registerUser(input: RegisterInput): Promise<AuthUser> {
         name: input.name,
         phone,
         passwordHash,
+        memberType: input.memberType,
+        marketingAgreedAt: consentedAt(input.marketingAccepted),
+        smsAgreedAt: consentedAt(input.smsAccepted),
+        addresses: {
+          create: {
+            label: '기본 배송지',
+            receiver: input.name,
+            phone: phone ?? input.phone,
+            zipCode: input.zipCode,
+            address1: input.address1,
+            address2: input.address2,
+            isDefault: true,
+          },
+        },
+        businessProfile: businessProfileData(input),
       },
       select: { id: true, email: true, name: true },
     });
@@ -105,6 +141,9 @@ export async function registerSocialUser(
   input: SocialRegisterInput & { provider: SocialProvider; providerUid: string },
 ): Promise<AuthUser> {
   const phone = normalizePhone(input.phone);
+  if (!phone) {
+    throw new ConflictError('Phone is required.');
+  }
 
   try {
     const user = await prisma.$transaction(async (tx) => {
@@ -113,6 +152,21 @@ export async function registerSocialUser(
           email: input.email,
           name: input.name,
           phone,
+          memberType: input.memberType,
+          marketingAgreedAt: consentedAt(input.marketingAccepted),
+          smsAgreedAt: consentedAt(input.smsAccepted),
+          addresses: {
+            create: {
+              label: '기본 배송지',
+              receiver: input.name,
+              phone: phone ?? input.phone,
+              zipCode: input.zipCode,
+              address1: input.address1,
+              address2: input.address2,
+              isDefault: true,
+            },
+          },
+          businessProfile: businessProfileData(input),
           socialAccounts: {
             create: {
               provider: input.provider,

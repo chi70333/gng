@@ -51,6 +51,7 @@ function normalizeMethod(value: string | undefined): PaymentCallbackInput['metho
   if (source === 'BANK' || source === '2000000000') return 'bank';
   if (source === 'VACCOUNT' || source === 'VACCOUNTISSUE' || source === '6000000000') return 'vbank';
   if (source === 'MOBILE' || source === 'M000000000') return 'mobile';
+  if (source === 'TRANSFER' || source === 'ACCOUNT_TRANSFER' || source === '4000000000') return 'transfer';
   return 'unknown';
 }
 

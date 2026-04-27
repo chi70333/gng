@@ -1,9 +1,11 @@
 'use server';
 
 import { AuthError } from 'next-auth';
+import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { loginSchema, socialLoginSchema } from '@/schemas/auth';
 import { signIn } from '@/server/auth';
+import { SOCIAL_CALLBACK_COOKIE, SOCIAL_PENDING_MAX_AGE } from '@/server/services/social-pending.service';
 
 function isRedirectError(err: unknown): boolean {
   return (
@@ -65,6 +67,14 @@ export async function socialLoginAction(formData: FormData): Promise<void> {
   if (!isSocialProviderConfigured(parsed.data.provider)) {
     redirect('/login?error=oauth_config');
   }
+
+  cookies().set(SOCIAL_CALLBACK_COOKIE, parsed.data.callbackUrl, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: SOCIAL_PENDING_MAX_AGE,
+    path: '/',
+  });
 
   await signIn(parsed.data.provider, {
     redirectTo: parsed.data.callbackUrl,

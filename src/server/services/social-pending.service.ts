@@ -3,13 +3,16 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 
 export const SOCIAL_PENDING_COOKIE = 'gng_social_pending';
+export const SOCIAL_CALLBACK_COOKIE = 'gng_social_callback';
 export const SOCIAL_PENDING_MAX_AGE = 60 * 30;
+export const SOCIAL_REGISTRATION_TOKEN_MAX_AGE = 60;
 
 export type PendingSocialProfile = {
   provider: 'kakao' | 'naver';
   providerUid: string;
   email: string;
   name: string | null;
+  callbackUrl: string;
 };
 
 function secret(): string {
@@ -24,12 +27,12 @@ function sign(payload: string): string {
   return createHmac('sha256', secret()).update(payload).digest('base64url');
 }
 
-export function encodePendingSocialProfile(profile: PendingSocialProfile): string {
-  const payload = base64url(JSON.stringify(profile));
+function encodeSignedPayload(value: unknown): string {
+  const payload = base64url(JSON.stringify(value));
   return `${payload}.${sign(payload)}`;
 }
 
-export function decodePendingSocialProfile(value: string | undefined): PendingSocialProfile | null {
+function decodeSignedPayload(value: string | undefined): unknown {
   if (!value) return null;
 
   const [payload, signature] = value.split('.');
@@ -46,25 +49,82 @@ export function decodePendingSocialProfile(value: string | undefined): PendingSo
   }
 
   try {
-    const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as unknown;
-    if (typeof parsed !== 'object' || parsed === null) return null;
-
-    const profile = parsed as Record<string, unknown>;
-    if (
-      (profile.provider === 'kakao' || profile.provider === 'naver') &&
-      typeof profile.providerUid === 'string' &&
-      typeof profile.email === 'string' &&
-      (typeof profile.name === 'string' || profile.name === null)
-    ) {
-      return {
-        provider: profile.provider,
-        providerUid: profile.providerUid,
-        email: profile.email,
-        name: profile.name,
-      };
-    }
+    return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as unknown;
   } catch {
     return null;
+  }
+}
+
+export function sanitizeCallbackUrl(value: unknown): string {
+  if (typeof value !== 'string') return '/';
+  const trimmed = value.trim();
+  if (!trimmed || !trimmed.startsWith('/') || trimmed.startsWith('//')) return '/';
+  return trimmed;
+}
+
+export function encodePendingSocialProfile(profile: PendingSocialProfile): string {
+  return encodeSignedPayload(profile);
+}
+
+export function decodePendingSocialProfile(value: string | undefined): PendingSocialProfile | null {
+  const parsed = decodeSignedPayload(value);
+  if (typeof parsed !== 'object' || parsed === null) return null;
+
+  const profile = parsed as Record<string, unknown>;
+  if (
+    (profile.provider === 'kakao' || profile.provider === 'naver') &&
+    typeof profile.providerUid === 'string' &&
+    typeof profile.email === 'string' &&
+    (typeof profile.name === 'string' || profile.name === null)
+  ) {
+    return {
+      provider: profile.provider,
+      providerUid: profile.providerUid,
+      email: profile.email,
+      name: profile.name,
+      callbackUrl: sanitizeCallbackUrl(profile.callbackUrl),
+    };
+  }
+
+  return null;
+}
+
+export type SocialRegistrationToken = {
+  userId: string;
+  email: string;
+  name: string;
+  exp: number;
+};
+
+export function encodeSocialRegistrationToken(
+  input: Omit<SocialRegistrationToken, 'exp'>,
+): string {
+  return encodeSignedPayload({
+    ...input,
+    exp: Math.floor(Date.now() / 1000) + SOCIAL_REGISTRATION_TOKEN_MAX_AGE,
+  });
+}
+
+export function decodeSocialRegistrationToken(
+  value: string | undefined,
+): SocialRegistrationToken | null {
+  const parsed = decodeSignedPayload(value);
+  if (typeof parsed !== 'object' || parsed === null) return null;
+
+  const token = parsed as Record<string, unknown>;
+  if (
+    typeof token.userId === 'string' &&
+    typeof token.email === 'string' &&
+    typeof token.name === 'string' &&
+    typeof token.exp === 'number' &&
+    token.exp >= Math.floor(Date.now() / 1000)
+  ) {
+    return {
+      userId: token.userId,
+      email: token.email,
+      name: token.name,
+      exp: token.exp,
+    };
   }
 
   return null;

@@ -23,6 +23,19 @@ function shouldStartForAnchor(anchor: HTMLAnchorElement): boolean {
   return current !== next;
 }
 
+function shouldStartForForm(form: HTMLFormElement): boolean {
+  const method = (form.getAttribute('method') ?? 'get').toLowerCase();
+  if (method !== 'get') return false;
+
+  const action = form.getAttribute('action');
+  if (action?.startsWith('javascript:')) return false;
+
+  const url = new URL(form.action || window.location.href, window.location.href);
+  if (url.origin !== window.location.origin) return false;
+
+  return `${url.pathname}${url.search}` !== `${window.location.pathname}${window.location.search}`;
+}
+
 export default function RouteProgressBar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -124,7 +137,9 @@ export default function RouteProgressBar() {
       if (event.defaultPrevented) return;
       const form = event.target;
       if (!(form instanceof HTMLFormElement)) return;
-      startRoute();
+      if (shouldStartForForm(form)) {
+        startRoute();
+      }
     }
 
     function handlePopState(): void {

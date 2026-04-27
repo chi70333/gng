@@ -22,6 +22,45 @@ type SocialConnectPageProps = {
   searchParams: { error?: string };
 };
 
+function Field({
+  label,
+  name,
+  autoComplete,
+  defaultValue,
+  inputMode,
+  maxLength,
+  placeholder,
+  required = true,
+  type = 'text',
+}: {
+  label: string;
+  name: string;
+  autoComplete: string;
+  defaultValue?: string;
+  inputMode?: 'email' | 'numeric' | 'tel' | 'text';
+  maxLength?: number;
+  placeholder?: string;
+  required?: boolean;
+  type?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-sm font-medium text-neutral-700">{label}</span>
+      <input
+        name={name}
+        type={type}
+        required={required}
+        defaultValue={defaultValue}
+        autoComplete={autoComplete}
+        inputMode={inputMode}
+        maxLength={maxLength}
+        placeholder={placeholder}
+        className="h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 text-base outline-none focus:ring-2 focus:ring-neutral-300"
+      />
+    </label>
+  );
+}
+
 export default function SocialConnectPage({ searchParams }: SocialConnectPageProps) {
   if (cookies().get('gng_join_terms')?.value !== 'y') {
     redirect('/join/terms');
@@ -41,7 +80,7 @@ export default function SocialConnectPage({ searchParams }: SocialConnectPagePro
         : null;
 
   return (
-    <div className="mx-auto flex min-h-[calc(100dvh-8rem)] w-full max-w-md flex-col justify-center px-4 py-8">
+    <div className="mx-auto w-full max-w-md px-4 py-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-neutral-900">간편 회원가입</h1>
         <p className="mt-1 text-sm text-neutral-500">
@@ -59,38 +98,109 @@ export default function SocialConnectPage({ searchParams }: SocialConnectPagePro
         <input type="hidden" name="termsAccepted" value="y" />
         <input type="hidden" name="privacyAccepted" value="y" />
 
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-neutral-700">이름</span>
-          <input
-            name="name"
-            required
-            defaultValue={pendingSocial.name ?? ''}
-            autoComplete="name"
-            className="h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-neutral-300"
-          />
-        </label>
+        <Field
+          label="이름"
+          name="name"
+          autoComplete="name"
+          defaultValue={pendingSocial.name ?? ''}
+        />
+        <Field
+          label="이메일"
+          name="email"
+          type="email"
+          autoComplete="email"
+          inputMode="email"
+          defaultValue={pendingSocial.email}
+        />
+        <Field
+          label="휴대전화번호"
+          name="phone"
+          type="tel"
+          autoComplete="tel"
+          inputMode="tel"
+          maxLength={13}
+          placeholder="010-1234-5678"
+        />
+        <Field
+          label="우편번호"
+          name="zipCode"
+          autoComplete="postal-code"
+          inputMode="numeric"
+          maxLength={10}
+        />
+        <Field
+          label="주소"
+          name="address1"
+          autoComplete="street-address"
+          maxLength={200}
+        />
+        <Field
+          label="상세주소"
+          name="address2"
+          autoComplete="address-line2"
+          maxLength={200}
+        />
 
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-neutral-700">이메일</span>
-          <input
-            name="email"
-            type="email"
-            required
-            defaultValue={pendingSocial.email}
-            autoComplete="email"
-            className="h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-neutral-300"
+        <fieldset className="space-y-2 rounded-lg border border-neutral-200 p-3">
+          <legend className="px-1 text-sm font-medium text-neutral-700">회원 유형</legend>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex min-h-11 items-center gap-2 rounded-lg border border-neutral-300 px-3 text-sm">
+              <input type="radio" name="memberType" value="M" defaultChecked />
+              개인회원
+            </label>
+            <label className="flex min-h-11 items-center gap-2 rounded-lg border border-neutral-300 px-3 text-sm">
+              <input type="radio" name="memberType" value="D" />
+              사업자회원
+            </label>
+          </div>
+          <p className="text-xs text-neutral-500">
+            사업자회원은 아래 사업장 정보를 함께 입력해 주세요.
+          </p>
+          <Field label="회사명 또는 법인명" name="companyName" autoComplete="organization" required={false} />
+          <Field label="대표자명" name="ceoName" autoComplete="name" required={false} />
+          <Field
+            label="사업자등록번호"
+            name="businessNumber"
+            autoComplete="off"
+            inputMode="numeric"
+            required={false}
           />
-        </label>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="업태" name="businessType" autoComplete="off" required={false} />
+            <Field label="종목" name="businessItem" autoComplete="off" required={false} />
+          </div>
+          <Field
+            label="사업장 우편번호"
+            name="businessZipCode"
+            autoComplete="postal-code"
+            inputMode="numeric"
+            required={false}
+          />
+          <Field
+            label="사업장 주소"
+            name="businessAddress1"
+            autoComplete="street-address"
+            required={false}
+          />
+          <Field
+            label="사업장 상세주소"
+            name="businessAddress2"
+            autoComplete="address-line2"
+            required={false}
+          />
+        </fieldset>
 
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-neutral-700">휴대전화번호</span>
-          <input
-            name="phone"
-            type="tel"
-            autoComplete="tel"
-            className="h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-neutral-300"
-          />
-        </label>
+        <fieldset className="space-y-2 rounded-lg border border-neutral-200 p-3">
+          <legend className="px-1 text-sm font-medium text-neutral-700">선택 안내 수신</legend>
+          <label className="flex min-h-11 items-center justify-between gap-3 text-sm text-neutral-700">
+            <span>이메일로 이벤트와 혜택 정보를 받겠습니다.</span>
+            <input type="checkbox" name="marketingAccepted" value="y" className="h-5 w-5" />
+          </label>
+          <label className="flex min-h-11 items-center justify-between gap-3 text-sm text-neutral-700">
+            <span>문자로 이벤트와 혜택 정보를 받겠습니다.</span>
+            <input type="checkbox" name="smsAccepted" value="y" className="h-5 w-5" />
+          </label>
+        </fieldset>
 
         <button
           type="submit"

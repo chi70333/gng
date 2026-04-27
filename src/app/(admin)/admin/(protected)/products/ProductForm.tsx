@@ -7,6 +7,7 @@ import type {
 } from '@prisma/client';
 import type { ReactNode } from 'react';
 import { saveAdminProduct } from '../../actions';
+import { FormattedNumberInput } from '@/components/ui/FormattedNumberInput';
 import { ProductImageFields } from './ProductImageFields';
 
 type ProductForForm =
@@ -399,29 +400,29 @@ export function ProductForm({
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
               <label className="block">
                 <FieldLabel required>판매가</FieldLabel>
-                <input
+                <FormattedNumberInput
                   name="price"
-                  inputMode="decimal"
                   defaultValue={product?.price.toString() ?? '0'}
+                  allowDecimal
                   required
                   className={inputClass}
                 />
               </label>
               <label className="block">
                 <FieldLabel>할인 판매가</FieldLabel>
-                <input
+                <FormattedNumberInput
                   name="salePrice"
-                  inputMode="decimal"
                   defaultValue={product?.salePrice?.toString() ?? ''}
+                  allowDecimal
                   className={inputClass}
                 />
               </label>
               <label className="block">
                 <FieldLabel>원가</FieldLabel>
-                <input
+                <FormattedNumberInput
                   name="costPrice"
-                  inputMode="decimal"
                   defaultValue={product?.costPrice?.toString() ?? ''}
+                  allowDecimal
                   className={inputClass}
                 />
               </label>

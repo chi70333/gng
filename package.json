@@ -9,6 +9,8 @@
     "lint": "next lint && pnpm check:korean-ui",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:legacy:integration": "vitest run src/server/services/legacy-api.service.integration.test.ts",
+    "test:legacy:external": "vitest run src/app/api/legacy-api.external.test.ts",
     "test:watch": "vitest",
     "e2e": "playwright test",
     "smoke:e2e": "playwright test tests/e2e/core-routes-smoke.spec.ts --workers=1",

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const paymentProviderSchema = z.enum(['legacy-payaction', 'ksnet', 'kiwoompay']);
-export const paymentMethodSchema = z.enum(['card', 'bank', 'vbank', 'mobile', 'unknown']);
+export const paymentMethodSchema = z.enum(['card', 'bank', 'vbank', 'mobile', 'transfer', 'unknown']);
 export const paymentStatusSchema = z.enum(['approved', 'failed', 'cancelled']);
 
 export const paymentCallbackSchema = z.object({
@@ -19,3 +19,12 @@ export const paymentCallbackSchema = z.object({
 });
 
 export type PaymentCallbackInput = z.infer<typeof paymentCallbackSchema>;
+
+export const paymentStartSchema = z.object({
+  orderNo: z.string().trim().min(1).max(40),
+  provider: paymentProviderSchema.default('legacy-payaction'),
+  method: paymentMethodSchema.exclude(['unknown']).default('card'),
+  returnUrl: z.string().trim().url().optional(),
+});
+
+export type PaymentStartInput = z.infer<typeof paymentStartSchema>;

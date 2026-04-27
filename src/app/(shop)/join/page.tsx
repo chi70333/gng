@@ -2,9 +2,9 @@
 // Cache: no-cache. User registration writes directly to PostgreSQL with zod validation.
 
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { JoinForm } from '@/components/shop/JoinForm';
 import { registerAction } from './actions';
 
 export const dynamic = 'force-dynamic';
@@ -47,80 +47,7 @@ export default function JoinPage({ searchParams }: JoinPageProps) {
         </p>
       )}
 
-      <form action={registerAction} className="space-y-3">
-        <input type="hidden" name="termsAccepted" value="y" />
-        <input type="hidden" name="privacyAccepted" value="y" />
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-neutral-700">아이디</span>
-          <input
-            name="loginId"
-            required
-            minLength={3}
-            maxLength={20}
-            pattern="[A-Za-z0-9]+"
-            autoComplete="username"
-            className="h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-neutral-300"
-          />
-          <span className="mt-1 block text-xs text-neutral-500">
-            3~20자의 영문과 숫자만 입력해 주세요.
-          </span>
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-neutral-700">비밀번호</span>
-          <input
-            name="password"
-            type="password"
-            required
-            minLength={8}
-            autoComplete="new-password"
-            className="h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-neutral-300"
-          />
-          <span className="mt-1 block text-xs text-neutral-500">
-            8자 이상 입력해 주세요.
-          </span>
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-neutral-700">이름</span>
-          <input
-            name="name"
-            required
-            autoComplete="name"
-            className="h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-neutral-300"
-          />
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-neutral-700">이메일</span>
-          <input
-            name="email"
-            type="email"
-            required
-            autoComplete="email"
-            className="h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-neutral-300"
-          />
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-neutral-700">휴대전화번호</span>
-          <input
-            name="phone"
-            type="tel"
-            autoComplete="tel"
-            className="h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-neutral-300"
-          />
-        </label>
-        <button
-          type="submit"
-          className="flex h-12 w-full items-center justify-center rounded-lg bg-neutral-900 text-sm font-semibold text-white transition-colors hover:bg-neutral-700"
-        >
-          가입하기
-        </button>
-      </form>
-
-      <p className="mt-5 text-center text-sm text-neutral-500">
-        이미 계정이 있으신가요?{' '}
-        <Link href="/login" className="font-medium text-neutral-900 underline">
-          로그인
-        </Link>
-      </p>
+      <JoinForm action={registerAction} />
     </div>
   );
 }

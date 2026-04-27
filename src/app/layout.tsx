@@ -1,8 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Suspense } from 'react';
 import './globals.css';
-import Header, { HeaderShell } from '@/components/layout/Header';
-import Footer from '@/components/layout/Footer';
 import RouteProgressBar from '@/components/layout/RouteProgressBar';
 
 export const metadata: Metadata = {
@@ -31,15 +29,11 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ko">
-      <body className="min-h-dvh bg-neutral-50 text-neutral-900 antialiased flex flex-col">
+      <body className="flex min-h-dvh flex-col bg-neutral-50 text-neutral-900 antialiased">
         <Suspense fallback={null}>
           <RouteProgressBar />
         </Suspense>
-        <Suspense fallback={<HeaderShell categories={[]} isAuthenticated={false} />}>
-          <Header />
-        </Suspense>
-        <main className="flex-1">{children}</main>
-        <Footer />
+        {children}
       </body>
     </html>
   );

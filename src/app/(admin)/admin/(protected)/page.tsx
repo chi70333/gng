@@ -151,6 +151,14 @@ function paymentLabel(method: string | undefined): string {
   return method ? labels[method] ?? method : '미결제';
 }
 
+function formatDateTime(value: Date | string): string {
+  return new Date(value).toLocaleString('ko-KR');
+}
+
+function formatDate(value: Date | string): string {
+  return new Date(value).toLocaleDateString('ko-KR');
+}
+
 export default async function AdminDashboardPage() {
   await requireAdmin();
   const stats = await getAdminStats();
@@ -243,7 +251,7 @@ export default async function AdminDashboardPage() {
                         <AdminStatusBadge status={order.status} />
                       </td>
                       <td className="px-4 py-3 text-right text-neutral-500">
-                        {order.createdAt.toLocaleString('ko-KR')}
+                        {formatDateTime(order.createdAt)}
                       </td>
                     </tr>
                   );
@@ -284,7 +292,7 @@ export default async function AdminDashboardPage() {
                   <p className="text-sm text-neutral-600">{user.grade?.name ?? '-'}</p>
                   <p className="text-sm text-neutral-600">{formatNumber(user.pointHistories[0]?.balance ?? 0)}</p>
                   <p className="text-sm text-neutral-500 sm:text-right">
-                    {user.createdAt.toLocaleDateString('ko-KR')}
+                    {formatDate(user.createdAt)}
                   </p>
                 </li>
               ))
@@ -314,7 +322,7 @@ export default async function AdminDashboardPage() {
                   </div>
                   <p className="mt-2 line-clamp-1 text-sm font-bold">{inquiry.title}</p>
                   <p className="mt-1 text-xs text-neutral-500">
-                    {inquiry.email} / {inquiry.createdAt.toLocaleDateString('ko-KR')}
+                    {inquiry.email} / {formatDate(inquiry.createdAt)}
                   </p>
                 </li>
               ))

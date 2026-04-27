@@ -20,6 +20,7 @@ async function resolveCartIdentity(): Promise<CartIdentity | null> {
 export async function createOrderAction(formData: FormData): Promise<void> {
   const identity = await resolveCartIdentity();
   if (!identity) redirect('/cart');
+  if (formData.get('agree') !== 'on') redirect('/order?error=validation');
 
   const parsed = createOrderSchema.safeParse({
     buyerName: formData.get('buyerName'),
@@ -36,6 +37,14 @@ export async function createOrderAction(formData: FormData): Promise<void> {
     channel: formData.get('channel'),
     deliveryType: formData.get('deliveryType'),
     paymentMethod: formData.get('paymentMethod'),
+    depositorName: formData.get('depositorName'),
+    depositDueDate: formData.get('depositDueDate'),
+    cashReceiptType: formData.get('cashReceiptType'),
+    cashReceiptIdentity: formData.get('cashReceiptIdentity'),
+    taxInvoiceRequested: formData.get('taxInvoiceRequested') === 'on',
+    taxInvoiceCompanyName: formData.get('taxInvoiceCompanyName'),
+    taxInvoiceBusinessNumber: formData.get('taxInvoiceBusinessNumber'),
+    saveShippingAddress: formData.get('saveShippingAddress') === 'on',
     couponIssueId: formData.get('couponIssueId'),
     pointsToUse: formData.get('pointsToUse'),
   });

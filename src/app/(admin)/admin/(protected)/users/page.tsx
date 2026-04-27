@@ -12,6 +12,7 @@ import { AdminStatusBadge } from '@/components/admin/AdminStatusBadge';
 import { AdminPagination } from '@/components/admin/AdminPagination';
 import { adminUserListQuerySchema } from '@/schemas/admin-user';
 import { bulkDeleteAdminUsers } from '../../actions';
+import { AdminUserMileageAdjustButton } from './AdminUserMileageAdjustButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -163,7 +164,7 @@ export default async function AdminUsersPage({
               <th className="px-4 py-3">회원 정보</th>
               <th className="w-28 px-4 py-3">상태</th>
               <th className="w-32 px-4 py-3">등급</th>
-              <th className="w-32 px-4 py-3 text-right">포인트</th>
+              <th className="w-40 px-4 py-3 text-right">마일리지</th>
               <th className="w-24 px-4 py-3 text-right">주문수</th>
               <th className="w-28 px-4 py-3 text-right">로그인</th>
               <th className="w-32 px-4 py-3 text-right">가입일</th>
@@ -207,7 +208,11 @@ export default async function AdminUsersPage({
                   </td>
                   <td className="px-4 py-3 text-neutral-600">{user.grade?.name ?? '-'}</td>
                   <td className="px-4 py-3 text-right font-bold">
-                    {formatNumber(user.pointHistories[0]?.balance ?? 0)}
+                    <AdminUserMileageAdjustButton
+                      userId={user.id.toString()}
+                      userName={user.name}
+                      initialBalance={user.pointHistories[0]?.balance ?? 0}
+                    />
                   </td>
                   <td className="px-4 py-3 text-right text-neutral-600">
                     {formatNumber(user._count.orders)}

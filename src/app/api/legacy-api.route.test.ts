@@ -115,6 +115,135 @@ describe('legacy API route compatibility', () => {
     });
   });
 
+  it('normalizes list_members pagination and search parameters for both endpoints', async () => {
+    vi.mocked(listLegacyMembers).mockResolvedValue({
+      success: true,
+      total: 0,
+      page: 1,
+      limit: 200,
+      members: [],
+    });
+
+    const gnp = await gnpRoute.GET(
+      request('/api/legacy/gnp-api?action=list_members&page=0&limit=999&search=%20hong%20', {
+        headers: { 'x-api-key': token },
+      }),
+    );
+    expect(gnp.status).toBe(200);
+    expect(listLegacyMembers).toHaveBeenLastCalledWith({
+      page: 1,
+      limit: 200,
+      search: 'hong',
+    });
+
+    const pointSync = await pointSyncRoute.GET(
+      request('/api/legacy/point-sync?action=list_members&page=abc&limit=-3', {
+        headers: { 'x-api-key': token },
+      }),
+    );
+    expect(pointSync.status).toBe(200);
+    expect(listLegacyMembers).toHaveBeenLastCalledWith({
+      page: 1,
+      limit: 1,
+      search: '',
+    });
+  });
+
+  it('preserves endpoint-specific no-action and missing-field messages', async () => {
+    const gnpGet = await gnpRoute.GET(
+      request('/api/legacy/gnp-api?action=unknown', {
+        headers: { 'x-api-key': token },
+      }),
+    );
+    expect(await json(gnpGet)).toEqual({ success: false, message: 'No Action' });
+
+    const pointSyncGet = await pointSyncRoute.GET(
+      request('/api/legacy/point-sync?action=unknown', {
+        headers: { 'x-api-key': token },
+      }),
+    );
+    expect(await json(pointSyncGet)).toEqual({
+      success: false,
+      message: 'No valid action or data provided.',
+    });
+
+    const gnpMissing = await gnpRoute.POST(
+      request('/api/legacy/gnp-api?action=register_member', {
+        method: 'POST',
+        headers: { 'x-api-key': token },
+        body: { userid: 'missing-password' },
+      }),
+    );
+    expect(await json(gnpMissing)).toEqual({ success: false, message: 'Missing fields' });
+
+    const pointMissing = await pointSyncRoute.POST(
+      request('/api/legacy/point-sync?action=register_member', {
+        method: 'POST',
+        headers: { 'x-api-key': token },
+        body: { userid: 'missing-password' },
+      }),
+    );
+    expect(await json(pointMissing)).toEqual({
+      success: false,
+      message: 'Missing required fields (userid, password)',
+    });
+  });
+
+  it('uses JSON body action for gnp-api but keeps point_sync query-action behavior', async () => {
+    vi.mocked(registerLegacyMember).mockResolvedValue({
+      success: true,
+      message: 'Member registered successfully',
+    });
+
+    const payload = {
+      action: 'register_member',
+      userid: 'body-action-user',
+      password: 'Password123!',
+      name: 'Body Action',
+    };
+
+    const gnp = await gnpRoute.POST(
+      request('/api/legacy/gnp-api', {
+        method: 'POST',
+        headers: { 'x-api-key': token },
+        body: payload,
+      }),
+    );
+    expect(await json(gnp)).toEqual({ success: true });
+    expect(registerLegacyMember).toHaveBeenLastCalledWith(
+      expect.objectContaining({ userid: 'body-action-user' }),
+    );
+
+    vi.mocked(registerLegacyMember).mockClear();
+    const pointSync = await pointSyncRoute.POST(
+      request('/api/legacy/point-sync', {
+        method: 'POST',
+        headers: { 'x-api-key': token },
+        body: payload,
+      }),
+    );
+    expect(await json(pointSync)).toEqual({
+      success: false,
+      message: 'No valid action or data provided.',
+    });
+    expect(registerLegacyMember).not.toHaveBeenCalled();
+  });
+
+  it('handles malformed JSON like an empty legacy request', async () => {
+    const req = new NextRequest('http://localhost/api/legacy/gnp-api?action=register_member', {
+      method: 'POST',
+      headers: {
+        'x-api-key': token,
+        'content-type': 'application/json',
+      },
+      body: '{',
+    });
+
+    const res = await gnpRoute.POST(req);
+    expect(res.status).toBe(200);
+    expect(await json(res)).toEqual({ success: false, message: 'Missing fields' });
+  });
+
   it('keeps register_member messages for gnp-api and point_sync', async () => {
     vi.mocked(registerLegacyMember).mockResolvedValueOnce({ success: true });
     vi.mocked(registerLegacyMember).mockResolvedValueOnce({
