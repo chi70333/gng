@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { Search } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { Search, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 
 type RegisterAction = (formData: FormData) => void | Promise<void>;
@@ -32,10 +32,14 @@ type DaumPostcodeData = {
 
 type DaumPostcode = {
   open: () => void;
+  embed: (element: HTMLElement) => void;
 };
 
 type DaumPostcodeConstructor = new (options: {
   oncomplete: (data: DaumPostcodeData) => void;
+  onresize?: (size: { height: number }) => void;
+  width?: string;
+  height?: string;
 }) => DaumPostcode;
 
 declare global {
@@ -104,6 +108,17 @@ function SubmitButton() {
   );
 }
 
+function RequiredLabel({ children }: { children: string }) {
+  return (
+    <span className="mb-1 flex items-center gap-2 text-sm font-medium text-neutral-700">
+      <span>{children}</span>
+      <span className="rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-[11px] font-semibold text-red-600">
+        필수입력
+      </span>
+    </span>
+  );
+}
+
 export function JoinForm({ action }: JoinFormProps) {
   const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
@@ -116,8 +131,11 @@ export function JoinForm({ action }: JoinFormProps) {
   const [businessAddress1, setBusinessAddress1] = useState('');
   const [businessAddress2, setBusinessAddress2] = useState('');
   const [postcodeError, setPostcodeError] = useState('');
+  const [postcodeTarget, setPostcodeTarget] = useState<AddressTarget | null>(null);
+  const [postcodeLayerHeight, setPostcodeLayerHeight] = useState(480);
   const detailAddressRef = useRef<HTMLInputElement>(null);
   const businessDetailAddressRef = useRef<HTMLInputElement>(null);
+  const postcodeLayerRef = useRef<HTMLDivElement>(null);
   const [touched, setTouched] = useState<Record<FieldName, boolean>>({
     loginId: false,
     password: false,
@@ -139,31 +157,60 @@ export function JoinForm({ action }: JoinFormProps) {
   const setFieldTouched = (name: FieldName) =>
     setTouched((current) => ({ ...current, [name]: true }));
 
-  const openPostcode = async (target: AddressTarget) => {
+  useEffect(() => {
+    if (!postcodeTarget) return;
+
+    let ignore = false;
+
+    const embedPostcode = async () => {
+      setPostcodeError('');
+
+      try {
+        await loadPostcodeScript();
+        if (ignore) return;
+
+        const Postcode = window.kakao?.Postcode ?? window.daum?.Postcode;
+        const layer = postcodeLayerRef.current;
+        if (!Postcode || !layer) throw new Error('POSTCODE_API_UNAVAILABLE');
+
+        layer.replaceChildren();
+
+        new Postcode({
+          width: '100%',
+          height: '100%',
+          onresize: (size) => setPostcodeLayerHeight(Math.max(size.height, 420)),
+          oncomplete: (data) => {
+            if (postcodeTarget === 'business') {
+              setBusinessZipCode(data.zonecode);
+              setBusinessAddress1(buildRoadAddress(data));
+              setPostcodeTarget(null);
+              window.setTimeout(() => businessDetailAddressRef.current?.focus(), 0);
+              return;
+            }
+
+            setZipCode(data.zonecode);
+            setAddress1(buildRoadAddress(data));
+            setPostcodeTarget(null);
+            window.setTimeout(() => detailAddressRef.current?.focus(), 0);
+          },
+        }).embed(layer);
+      } catch {
+        setPostcodeTarget(null);
+        setPostcodeError('주소 검색을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+    };
+
+    void embedPostcode();
+
+    return () => {
+      ignore = true;
+    };
+  }, [postcodeTarget]);
+
+  const openPostcode = (target: AddressTarget) => {
     setPostcodeError('');
-
-    try {
-      await loadPostcodeScript();
-      const Postcode = window.kakao?.Postcode ?? window.daum?.Postcode;
-      if (!Postcode) throw new Error('POSTCODE_API_UNAVAILABLE');
-
-      new Postcode({
-        oncomplete: (data) => {
-          if (target === 'business') {
-            setBusinessZipCode(data.zonecode);
-            setBusinessAddress1(buildRoadAddress(data));
-            businessDetailAddressRef.current?.focus();
-            return;
-          }
-
-          setZipCode(data.zonecode);
-          setAddress1(buildRoadAddress(data));
-          detailAddressRef.current?.focus();
-        },
-      }).open();
-    } catch {
-      setPostcodeError('주소 검색을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
-    }
+    setPostcodeLayerHeight(480);
+    setPostcodeTarget(target);
   };
 
   return (
@@ -173,7 +220,7 @@ export function JoinForm({ action }: JoinFormProps) {
         <input type="hidden" name="privacyAccepted" value="y" />
 
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-neutral-700">아이디</span>
+          <RequiredLabel>아이디</RequiredLabel>
           <input
             name="loginId"
             required
@@ -211,7 +258,7 @@ export function JoinForm({ action }: JoinFormProps) {
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-neutral-700">비밀번호</span>
+          <RequiredLabel>비밀번호</RequiredLabel>
           <input
             name="password"
             type="password"
@@ -247,7 +294,7 @@ export function JoinForm({ action }: JoinFormProps) {
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-neutral-700">이름</span>
+          <RequiredLabel>이름</RequiredLabel>
           <input
             name="name"
             required
@@ -257,7 +304,7 @@ export function JoinForm({ action }: JoinFormProps) {
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-neutral-700">이메일</span>
+          <RequiredLabel>이메일</RequiredLabel>
           <input
             name="email"
             type="email"
@@ -268,7 +315,7 @@ export function JoinForm({ action }: JoinFormProps) {
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-neutral-700">휴대전화번호</span>
+          <RequiredLabel>휴대전화번호</RequiredLabel>
           <input
             name="phone"
             type="tel"
@@ -311,7 +358,6 @@ export function JoinForm({ action }: JoinFormProps) {
           <div className="flex gap-2">
             <input
               name="zipCode"
-              required
               value={zipCode}
               onChange={(event) => setZipCode(event.target.value.replace(/[^0-9]/g, '').slice(0, 5))}
               placeholder="우편번호"
@@ -332,7 +378,6 @@ export function JoinForm({ action }: JoinFormProps) {
 
           <input
             name="address1"
-            required
             value={address1}
             onChange={(event) => setAddress1(event.target.value.slice(0, 200))}
             placeholder="기본주소"
@@ -343,7 +388,6 @@ export function JoinForm({ action }: JoinFormProps) {
           <input
             ref={detailAddressRef}
             name="address2"
-            required
             value={address2}
             onChange={(event) => setAddress2(event.target.value.slice(0, 200))}
             placeholder="상세주소"
@@ -484,6 +528,34 @@ export function JoinForm({ action }: JoinFormProps) {
           로그인
         </Link>
       </p>
+
+      {postcodeTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-end bg-black/45 px-0 sm:items-center sm:px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={postcodeTarget === 'business' ? '사업장 주소 검색' : '주소 검색'}
+        >
+          <div className="w-full overflow-hidden rounded-t-lg bg-white shadow-xl sm:mx-auto sm:max-w-md sm:rounded-lg">
+            <div className="flex h-12 items-center justify-between border-b border-neutral-200 px-4">
+              <h2 className="text-base font-semibold text-neutral-900">주소 검색</h2>
+              <button
+                type="button"
+                onClick={() => setPostcodeTarget(null)}
+                className="flex h-11 w-11 items-center justify-center rounded-lg text-neutral-700 transition-colors hover:bg-neutral-100"
+                aria-label="주소 검색 닫기"
+              >
+                <X aria-hidden="true" size={20} />
+              </button>
+            </div>
+            <div
+              ref={postcodeLayerRef}
+              className="w-full"
+              style={{ height: Math.min(postcodeLayerHeight, 560) }}
+            />
+          </div>
+        </div>
+      )}
     </>
   );
 }

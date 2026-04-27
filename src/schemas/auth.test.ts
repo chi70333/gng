@@ -54,15 +54,17 @@ describe('registerSchema', () => {
     expect(parsed.success).toBe(false);
   });
 
-  it('requires default shipping address fields at join time', () => {
-    const parsed = registerSchema.safeParse({
+  it('accepts registration without default shipping address fields at join time', () => {
+    const parsed = registerSchema.parse({
       ...validRegisterInput,
       zipCode: '',
       address1: '',
       address2: '',
     });
 
-    expect(parsed.success).toBe(false);
+    expect(parsed.zipCode).toBe('');
+    expect(parsed.address1).toBe('');
+    expect(parsed.address2).toBe('');
   });
 
   it('accepts registration input after required agreements', () => {
@@ -104,8 +106,8 @@ describe('registerSchema', () => {
 });
 
 describe('socialRegisterSchema', () => {
-  it('requires a default shipping address for social registration', () => {
-    const parsed = socialRegisterSchema.safeParse({
+  it('accepts social registration without a default shipping address', () => {
+    const parsed = socialRegisterSchema.parse({
       email: 'social@example.com',
       name: '홍길동',
       phone: '010-1234-5678',
@@ -113,7 +115,8 @@ describe('socialRegisterSchema', () => {
       privacyAccepted: 'y',
     });
 
-    expect(parsed.success).toBe(false);
+    expect(parsed.phone).toBe('01012345678');
+    expect(parsed.zipCode).toBeUndefined();
   });
 
   it('accepts social registration input and normalizes mobile phone digits', () => {

@@ -88,6 +88,29 @@ describe('auth registration service', () => {
     );
   });
 
+  it('creates a member without a default address when address fields are empty', async () => {
+    mocks.userCreate.mockResolvedValueOnce({
+      id: 10n,
+      email: registerInput.email,
+      name: registerInput.name,
+    });
+
+    await registerUser({
+      ...registerInput,
+      zipCode: '',
+      address1: '',
+      address2: '',
+    });
+
+    expect(mocks.userCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({
+          addresses: expect.anything(),
+        }),
+      }),
+    );
+  });
+
   it('creates business profile and consent timestamps for business registration', async () => {
     mocks.userCreate.mockResolvedValueOnce({
       id: 2n,

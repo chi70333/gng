@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { Decimal } from '@prisma/client/runtime/library';
 import { auth } from '@/server/auth';
-import { getCart, type CartIdentity } from '@/server/services/cart.service';
+import { getCart, mergeCart, type CartIdentity } from '@/server/services/cart.service';
 import { prisma } from '@/server/db';
 import { formatKRW, formatNumber } from '@/lib/format';
 import { FormattedNumberInput } from '@/components/ui/FormattedNumberInput';
@@ -24,7 +24,14 @@ const CART_COOKIE = 'gng_cart_id';
 
 async function resolveCartIdentity(): Promise<CartIdentity | null> {
   const session = await auth();
-  if (session?.user?.email) return { type: 'user', id: session.user.email };
+  if (session?.user?.email) {
+    const identity: CartIdentity = { type: 'user', id: session.user.email };
+    const guestId = cookies().get(CART_COOKIE)?.value;
+    if (guestId) {
+      await mergeCart({ type: 'guest', id: guestId }, identity);
+    }
+    return identity;
+  }
 
   const guestId = cookies().get(CART_COOKIE)?.value;
   return guestId ? { type: 'guest', id: guestId } : null;

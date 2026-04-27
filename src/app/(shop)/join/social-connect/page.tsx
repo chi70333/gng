@@ -45,7 +45,14 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-medium text-neutral-700">{label}</span>
+      <span className="mb-1 flex items-center gap-2 text-sm font-medium text-neutral-700">
+        <span>{label}</span>
+        {required ? (
+          <span className="rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-[11px] font-semibold text-red-600">
+            필수입력
+          </span>
+        ) : null}
+      </span>
       <input
         name={name}
         type={type}
@@ -127,18 +134,21 @@ export default function SocialConnectPage({ searchParams }: SocialConnectPagePro
           autoComplete="postal-code"
           inputMode="numeric"
           maxLength={10}
+          required={false}
         />
         <Field
           label="주소"
           name="address1"
           autoComplete="street-address"
           maxLength={200}
+          required={false}
         />
         <Field
           label="상세주소"
           name="address2"
           autoComplete="address-line2"
           maxLength={200}
+          required={false}
         />
 
         <fieldset className="space-y-2 rounded-lg border border-neutral-200 p-3">

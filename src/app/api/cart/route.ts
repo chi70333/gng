@@ -26,19 +26,25 @@ async function resolveIdentity(req: NextRequest): Promise<{
 }> {
   const session = await auth();
   const userId = session?.user?.email;
+  const existingGuestId = req.cookies.get(CART_COOKIE)?.value;
+
   if (userId) {
+    const identity: CartIdentity = { type: 'user', id: userId };
+    if (existingGuestId) {
+      await mergeCart({ type: 'guest', id: existingGuestId }, identity);
+    }
+
     return {
-      identity: { type: 'user', id: userId },
+      identity,
       guestIdToSet: null,
-      guestIdToClear: Boolean(req.cookies.get(CART_COOKIE)?.value),
+      guestIdToClear: Boolean(existingGuestId),
     };
   }
 
-  const existing = req.cookies.get(CART_COOKIE)?.value;
-  const guestId = existing ?? randomUUID();
+  const guestId = existingGuestId ?? randomUUID();
   return {
     identity: { type: 'guest', id: guestId },
-    guestIdToSet: existing ? null : guestId,
+    guestIdToSet: existingGuestId ? null : guestId,
     guestIdToClear: false,
   };
 }
@@ -71,12 +77,8 @@ function jsonWithGuestCookie(
 }
 
 export async function GET(req: NextRequest) {
-  const existingGuestId = req.cookies.get(CART_COOKIE)?.value;
   const { identity, guestIdToSet, guestIdToClear } = await resolveIdentity(req);
-  const data =
-    identity.type === 'user' && existingGuestId
-      ? await mergeCart({ type: 'guest', id: existingGuestId }, identity)
-      : await getCart(identity);
+  const data = await getCart(identity);
   return jsonWithGuestCookie({ ok: true, data }, 200, guestIdToSet, guestIdToClear);
 }
 

@@ -61,6 +61,26 @@ function businessProfileData(input: RegisterInput | SocialRegisterInput) {
   };
 }
 
+function defaultAddressData(input: RegisterInput | SocialRegisterInput, phone: string | undefined) {
+  const zipCode = input.zipCode?.trim();
+  const address1 = input.address1?.trim();
+  const address2 = input.address2?.trim();
+
+  if (!zipCode || !address1) return undefined;
+
+  return {
+    create: {
+      label: '기본 배송지',
+      receiver: input.name,
+      phone: phone ?? input.phone,
+      zipCode,
+      address1,
+      address2: address2 || null,
+      isDefault: true,
+    },
+  };
+}
+
 function digest(algo: 'md5' | 'sha1', password: string): string {
   return createHash(algo).update(password).digest('hex');
 }
@@ -107,17 +127,7 @@ export async function registerUser(input: RegisterInput): Promise<AuthUser> {
         memberType: input.memberType,
         marketingAgreedAt: consentedAt(input.marketingAccepted),
         smsAgreedAt: consentedAt(input.smsAccepted),
-        addresses: {
-          create: {
-            label: '기본 배송지',
-            receiver: input.name,
-            phone: phone ?? input.phone,
-            zipCode: input.zipCode,
-            address1: input.address1,
-            address2: input.address2,
-            isDefault: true,
-          },
-        },
+        addresses: defaultAddressData(input, phone),
         businessProfile: businessProfileData(input),
       },
       select: { id: true, email: true, name: true },
@@ -155,17 +165,7 @@ export async function registerSocialUser(
           memberType: input.memberType,
           marketingAgreedAt: consentedAt(input.marketingAccepted),
           smsAgreedAt: consentedAt(input.smsAccepted),
-          addresses: {
-            create: {
-              label: '기본 배송지',
-              receiver: input.name,
-              phone: phone ?? input.phone,
-              zipCode: input.zipCode,
-              address1: input.address1,
-              address2: input.address2,
-              isDefault: true,
-            },
-          },
+          addresses: defaultAddressData(input, phone),
           businessProfile: businessProfileData(input),
           socialAccounts: {
             create: {
