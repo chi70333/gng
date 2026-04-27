@@ -1,0 +1,17 @@
+{
+  "provider": "kiwoompay",
+  "orderNo": "GNG-SEED-ORDER-FAILED",
+  "providerTxId": "KIWOOM-TX-SEED-FAILED-CB",
+  "method": "card",
+  "amount": 28000,
+  "status": "failed",
+  "responseCode": "E001",
+  "responseMessage": "잔액부족",
+  "rawResponse": {
+    "PAYMETHOD": "CARD",
+    "ORDERNO": "GNG-SEED-ORDER-FAILED",
+    "DAOUTRX": "KIWOOM-TX-SEED-FAILED-CB",
+    "AMOUNT": "28000",
+    "RESULTCD": "E001"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["icn1"],
+  "framework": "nextjs",
+  "functions": {
+    "src/app/api/payment/**/route.ts": { "maxDuration": 30 },
+    "src/app/api/legacy/**/route.ts": { "maxDuration": 15 },
+    "src/app/api/**/route.ts": { "maxDuration": 10 }
+  },
+  "crons": []
+}

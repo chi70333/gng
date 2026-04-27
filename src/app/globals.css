@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    /* iOS Safari 자동 zoom 방지를 위해 입력 최소 폰트를 컴포넌트에서 16px로 강제 */
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    font-family:
+      -apple-system, BlinkMacSystemFont, 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic',
+      sans-serif;
+  }
+  /* 터치 하이라이트 최소화 */
+  a,
+  button {
+    -webkit-tap-highlight-color: transparent;
+  }
+}

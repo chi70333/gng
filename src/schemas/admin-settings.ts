@@ -1,0 +1,25 @@
+import { z } from 'zod';
+
+export const adminSettingsFormSchema = z.object({
+  companyName: z.string().trim().min(1).max(120),
+  companyCeo: z.string().trim().max(80).optional().default(''),
+  companyAddress: z.string().trim().max(255).optional().default(''),
+  businessNumber: z.string().trim().max(40).optional().default(''),
+  mailOrderNumber: z.string().trim().max(80).optional().default(''),
+  companyTel: z.string().trim().min(1).max(40),
+  companyFax: z.string().trim().max(40).optional().default(''),
+  companyEmail: z.string().trim().email().max(255),
+  privacyOfficer: z.string().trim().min(1).max(80),
+  customerCenterTel: z.string().trim().max(40).optional().default(''),
+  weekdayHours: z.string().trim().max(80).optional().default(''),
+  saturdayHours: z.string().trim().max(80).optional().default(''),
+  lunchHours: z.string().trim().max(80).optional().default(''),
+  bankName: z.string().trim().max(80).optional().default(''),
+  bankLogoText: z.string().trim().max(80).optional().default(''),
+  bankAccount: z.string().trim().max(120).optional().default(''),
+  terms: z.string().trim().min(1).max(50000),
+  privacy: z.string().trim().min(1).max(50000),
+  collectionConsent: z.string().trim().min(1).max(50000),
+  companyInfo: z.string().trim().min(1).max(50000),
+  htmlEnabled: z.coerce.boolean().default(false),
+});

@@ -1,0 +1,686 @@
+// Prisma schema — GNG Shopping Mall
+// 세부 설계 근거: docs/02-db-schema.md
+// 레거시 매핑: docs/03-legacy-map.md
+// 원칙:
+//   - BigInt PK, soft delete(deletedAt), audit columns
+//   - Decimal(12,2) for money
+//   - JSONB for variable attributes
+//   - 비밀번호: argon2id(passwordHash), 레거시 호환은 legacyPasswordHash/Algo
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================================
+// 회원
+// ============================================================
+
+model User {
+  id                 BigInt     @id @default(autoincrement())
+  legacyMemberId     Int?       @unique
+  loginId            String?    @unique
+  email              String     @unique
+  phone              String?    @unique
+  name               String
+  nickname           String?
+  birth              DateTime?  @db.Date
+  gender             String? // 'M' | 'F' | 'X'
+  passwordHash       String? // argon2id
+  legacyPasswordHash String?
+  legacyPasswordAlgo String? // 'md5' | 'sha1' | 'bcrypt' ...
+  status             String     @default("active") // active|dormant|withdrawn|blocked
+  memberType         String     @default("M") // legacy member.part: M|A|D|B|E|W
+  gradeId            BigInt?
+  grade              UserGrade? @relation(fields: [gradeId], references: [id])
+  marketingAgreedAt  DateTime?
+  smsAgreedAt        DateTime?
+  legacyPointBalance Int?
+  lastLoginAt        DateTime?
+  lastLoginIp        String?
+  loginCount         Int        @default(0)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  addresses       UserAddress[]
+  socialAccounts  UserSocialAccount[]
+  pointHistories  UserPointHistory[]
+  loginLogs       UserLoginLog[]
+  orders          Order[]
+  reviews         ProductReview[]
+  qnas            ProductQna[]
+  wishlist        Wishlist[]
+  couponIssues    CouponIssue[]
+  posts           Post[]
+  comments        Comment[]
+  inquiries       Inquiry[]
+  businessProfile UserBusinessProfile?
+  refundAccount   UserRefundAccount?
+
+  @@index([memberType, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([deletedAt, createdAt(sort: Desc)])
+  @@index([deletedAt, status, createdAt(sort: Desc)])
+}
+
+model UserBusinessProfile {
+  id             BigInt   @id @default(autoincrement())
+  userId         BigInt   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyName    String?
+  ceoName        String?
+  businessType   String?
+  businessItem   String?
+  businessNumber String?
+  zipCode        String?
+  address1       String?
+  address2       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model UserRefundAccount {
+  id            BigInt   @id @default(autoincrement())
+  userId        BigInt   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bankName      String
+  accountHolder String
+  accountNumber String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model UserGrade {
+  id          BigInt  @id @default(autoincrement())
+  code        String  @unique
+  name        String
+  discountPct Decimal @default(0) @db.Decimal(5, 2)
+  pointPct    Decimal @default(0) @db.Decimal(5, 2)
+  sortOrder   Int     @default(0)
+
+  users User[]
+}
+
+model UserAddress {
+  id             BigInt   @id @default(autoincrement())
+  legacySeq      Int?     @unique
+  legacyMemberId String?
+  userId         BigInt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label          String?
+  receiver       String
+  phone          String
+  zipCode        String
+  address1       String
+  address2       String?
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId, isDefault])
+  @@index([legacyMemberId])
+}
+
+model UserSocialAccount {
+  id          BigInt   @id @default(autoincrement())
+  legacyUid   Int?     @unique
+  userId      BigInt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider    String // 'kakao' | 'naver' | 'google' | 'apple'
+  providerUid String
+  createdAt   DateTime @default(now())
+
+  @@unique([provider, providerUid])
+  @@index([userId])
+}
+
+model UserPointHistory {
+  id        BigInt    @id @default(autoincrement())
+  userId    BigInt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  delta     Int // + 적립, - 사용/소멸
+  balance   Int // 잔액 스냅샷
+  reason    String
+  orderId   BigInt?
+  expireAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model UserLoginLog {
+  id        BigInt   @id @default(autoincrement())
+  userId    BigInt?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  email     String?
+  ip        String
+  userAgent String?
+  success   Boolean
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([createdAt])
+}
+
+// ============================================================
+// 상품
+// ============================================================
+
+model Brand {
+  id        BigInt   @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+}
+
+model Category {
+  id        BigInt     @id @default(autoincrement())
+  parentId  BigInt?
+  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryTree")
+  code      String     @unique
+  name      String
+  slug      String     @unique
+  depth     Int        @default(0)
+  sortOrder Int        @default(0)
+  isActive  Boolean    @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products   CategoryOnProduct[]
+  legacyMaps CategoryLegacyMap[]
+
+  @@index([parentId, sortOrder])
+}
+
+model CategoryLegacyMap {
+  id          BigInt   @id @default(autoincrement())
+  legacyIndex Int      @unique
+  legacyCode  String?
+  categoryId  BigInt
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  source      String   @default("legacy.category.idx")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([categoryId])
+}
+
+model Product {
+  id          BigInt   @id @default(autoincrement())
+  legacyId    Int?     @unique
+  sku         String   @unique
+  slug        String   @unique
+  name        String
+  summary     String?
+  description String?
+  brandId     BigInt?
+  brand       Brand?   @relation(fields: [brandId], references: [id])
+  price       Decimal  @db.Decimal(12, 2)
+  salePrice   Decimal? @db.Decimal(12, 2)
+  costPrice   Decimal? @db.Decimal(12, 2)
+  status      String   @default("draft") // draft|active|sold_out|hidden
+  attributes  Json?    @db.JsonB
+  thumbnail   String?
+  viewCount   Int      @default(0)
+  soldCount   Int      @default(0)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  options    ProductOption[]
+  skus       ProductSku[]
+  images     ProductImage[]
+  categories CategoryOnProduct[]
+  reviews    ProductReview[]
+  qnas       ProductQna[]
+  wishlist   Wishlist[]
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([status, deletedAt, createdAt(sort: Desc)])
+  @@index([status, deletedAt, soldCount(sort: Desc)])
+  @@index([status, deletedAt, price])
+  @@index([brandId])
+}
+
+model CategoryOnProduct {
+  categoryId BigInt
+  productId  BigInt
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sortOrder  Int      @default(0)
+
+  @@id([categoryId, productId])
+  @@index([productId])
+}
+
+model ProductOption {
+  id        BigInt  @id @default(autoincrement())
+  productId BigInt
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name      String // 예: "사이즈", "색상"
+  sortOrder Int     @default(0)
+  values    Json    @db.JsonB // ["S","M","L"]
+
+  @@index([productId])
+}
+
+model ProductSku {
+  id           BigInt  @id @default(autoincrement())
+  productId    BigInt
+  product      Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  code         String  @unique
+  optionValues Json    @db.JsonB // { size:"M", color:"red" }
+  priceDelta   Decimal @default(0) @db.Decimal(12, 2)
+  stock        Int     @default(0)
+  reserved     Int     @default(0) // 주문 중 예약 수량
+  isActive     Boolean @default(true)
+
+  orderItems OrderItem[]
+
+  @@index([productId, isActive])
+}
+
+model ProductImage {
+  id        BigInt  @id @default(autoincrement())
+  productId BigInt
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  alt       String?
+  sortOrder Int     @default(0)
+  isMain    Boolean @default(false)
+
+  @@index([productId, sortOrder])
+}
+
+// ============================================================
+// 리뷰 / 문의
+// ============================================================
+
+model ProductReview {
+  id        BigInt   @id @default(autoincrement())
+  productId BigInt
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    BigInt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating    Int
+  title     String?
+  content   String
+  images    Json?    @db.JsonB // 업로드 이미지 URL 배열
+  isHidden  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId, createdAt(sort: Desc)])
+  @@index([productId, isHidden])
+  @@index([userId])
+}
+
+model ProductQna {
+  id         BigInt    @id @default(autoincrement())
+  productId  BigInt
+  product    Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId     BigInt?
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  isPrivate  Boolean   @default(false)
+  title      String
+  content    String
+  answer     String?
+  answeredAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([productId, createdAt(sort: Desc)])
+}
+
+model Wishlist {
+  id        BigInt   @id @default(autoincrement())
+  userId    BigInt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId BigInt
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+// ============================================================
+// 쿠폰 / 프로모션
+// ============================================================
+
+model Coupon {
+  id             BigInt   @id @default(autoincrement())
+  legacyId       Int?     @unique
+  code           String   @unique
+  name           String
+  discountType   String // 'amount' | 'percent'
+  discountValue  Decimal  @db.Decimal(12, 2)
+  minOrderAmount Decimal? @db.Decimal(12, 2)
+  maxDiscount    Decimal? @db.Decimal(12, 2)
+  startAt        DateTime
+  endAt          DateTime
+  totalQuota     Int?
+  usedCount      Int      @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  issues CouponIssue[]
+}
+
+model CouponIssue {
+  id        BigInt    @id @default(autoincrement())
+  legacyId  Int?      @unique
+  couponId  BigInt
+  coupon    Coupon    @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  userId    BigInt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usedAt    DateTime?
+  orderId   BigInt?
+  expireAt  DateTime
+  createdAt DateTime  @default(now())
+
+  @@index([userId, usedAt])
+}
+
+// ============================================================
+// 주문 / 결제 / 배송
+// ============================================================
+
+model Order {
+  id              BigInt  @id @default(autoincrement())
+  legacyId        Int?    @unique
+  legacyTradeCode String? @unique
+  orderNo         String  @unique
+  userId          BigInt?
+  user            User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  status          String  @default("pending") // pending|paid|preparing|shipping|delivered|cancelled|refunded
+  subtotal        Decimal @db.Decimal(12, 2)
+  discount        Decimal @default(0) @db.Decimal(12, 2)
+  shippingFee     Decimal @default(0) @db.Decimal(12, 2)
+  pointsUsed      Int     @default(0)
+  total           Decimal @db.Decimal(12, 2)
+  currency        String  @default("KRW")
+  shippingAddress Json    @db.JsonB // 주문 시점 스냅샷
+  buyerInfo       Json    @db.JsonB // 비회원 포함
+  memo            String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  items     OrderItem[]
+  payments  Payment[]
+  shipments Shipment[]
+  refunds   Refund[]
+  history   OrderStatusHistory[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([deletedAt, createdAt(sort: Desc)])
+  @@index([deletedAt, status, createdAt(sort: Desc)])
+}
+
+model OrderItem {
+  id              BigInt      @id @default(autoincrement())
+  legacyId        Int?        @unique
+  legacyTradeCode String?
+  orderId         BigInt
+  order           Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId       BigInt
+  skuId           BigInt?
+  sku             ProductSku? @relation(fields: [skuId], references: [id])
+  productName     String // 스냅샷
+  skuCode         String?
+  optionSummary   String?
+  unitPrice       Decimal     @db.Decimal(12, 2)
+  quantity        Int
+  totalPrice      Decimal     @db.Decimal(12, 2)
+
+  @@index([orderId])
+  @@index([legacyTradeCode])
+}
+
+model OrderStatusHistory {
+  id         BigInt   @id @default(autoincrement())
+  orderId    BigInt
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fromStatus String?
+  toStatus   String
+  reason     String?
+  actor      String? // 'system' | 'user' | 'admin:<id>'
+  createdAt  DateTime @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+model Payment {
+  id           BigInt    @id @default(autoincrement())
+  orderId      BigInt
+  order        Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  method       String // 'card' | 'vbank' | 'npay' | 'kakao' | 'point'
+  provider     String? // PG사
+  providerTxId String?
+  amount       Decimal   @db.Decimal(12, 2)
+  status       String // pending|approved|cancelled|failed
+  rawResponse  Json?     @db.JsonB
+  approvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([orderId])
+  @@index([providerTxId])
+}
+
+model Shipment {
+  id          BigInt    @id @default(autoincrement())
+  orderId     BigInt
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  carrier     String?
+  trackingNo  String?
+  status      String    @default("ready") // ready|shipping|delivered
+  shippedAt   DateTime?
+  deliveredAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([orderId])
+}
+
+model Refund {
+  id        BigInt   @id @default(autoincrement())
+  orderId   BigInt
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount    Decimal  @db.Decimal(12, 2)
+  reason    String
+  status    String   @default("requested") // requested|approved|rejected|completed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+}
+
+// ============================================================
+// 게시판 / 공지 / 문의
+// ============================================================
+
+model Board {
+  id          BigInt   @id @default(autoincrement())
+  code        String   @unique
+  legacyIndex Int?     @unique
+  name        String
+  type        String   @default("free") // free|notice|event|faq
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  posts Post[]
+}
+
+model Post {
+  id          BigInt  @id @default(autoincrement())
+  boardId     BigInt
+  board       Board   @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  userId      BigInt?
+  user        User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  authorName  String  @default("고객")
+  authorEmail String?
+  title       String
+  content     String
+  isNotice    Boolean @default(false)
+  isSecret    Boolean @default(false)
+  password    String?
+  viewCount   Int     @default(0)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  comments Comment[]
+
+  @@index([boardId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model Comment {
+  id         BigInt    @id @default(autoincrement())
+  postId     BigInt
+  post       Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  parentId   BigInt?
+  userId     BigInt?
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  authorName String    @default("고객")
+  password   String?
+  content    String
+  createdAt  DateTime  @default(now())
+  deletedAt  DateTime?
+
+  @@index([postId, createdAt])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model Inquiry {
+  id         BigInt    @id @default(autoincrement())
+  userId     BigInt?
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name       String    @default("고객")
+  email      String
+  phone      String?
+  password   String?
+  title      String
+  content    String
+  status     String    @default("open") // open|answered|closed
+  answer     String?
+  answeredAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([email, createdAt(sort: Desc)])
+  @@index([status])
+}
+
+// ============================================================
+// 시스템
+// ============================================================
+
+model Code {
+  id        BigInt  @id @default(autoincrement())
+  groupCode String
+  code      String
+  name      String
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  @@unique([groupCode, code])
+}
+
+model AdminUser {
+  id                 BigInt    @id @default(autoincrement())
+  legacyId           Int?      @unique
+  loginId            String    @unique
+  email              String    @unique
+  name               String
+  passwordHash       String?
+  legacyPasswordHash String?
+  legacyPasswordAlgo String?
+  role               String    @default("operator") // super_admin|manager|operator|viewer
+  permissions        Json      @default("[]") @db.JsonB
+  status             String    @default("active") // active|inactive|blocked
+  sessionVersion     Int       @default(1)
+  lastLoginAt        DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([status, createdAt(sort: Desc)])
+}
+
+model SitePolicy {
+  id                BigInt   @id @default(autoincrement())
+  key               String   @unique @default("default")
+  companyName       String
+  companyCeo        String   @default("")
+  companyAddress    String   @default("")
+  companyTel        String
+  companyFax        String?  @default("")
+  companyEmail      String
+  privacyOfficer    String
+  businessNumber    String   @default("")
+  mailOrderNumber   String   @default("")
+  customerCenterTel String   @default("")
+  weekdayHours      String   @default("")
+  saturdayHours     String   @default("")
+  lunchHours        String   @default("")
+  bankName          String   @default("")
+  bankLogoText      String   @default("")
+  bankAccount       String   @default("")
+  terms             String   @db.Text
+  privacy           String   @db.Text
+  collectionConsent String   @db.Text
+  companyInfo       String   @db.Text
+  htmlEnabled       Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  actorId   String? // user:<id> | admin:<id> | system
+  action    String
+  entity    String
+  entityId  String?
+  payload   Json?    @db.JsonB
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+model FileObject {
+  id        BigInt   @id @default(autoincrement())
+  key       String   @unique
+  bucket    String
+  mime      String?
+  size      Int?
+  ownerType String?
+  ownerId   BigInt?
+  createdAt DateTime @default(now())
+
+  @@index([ownerType, ownerId])
+}

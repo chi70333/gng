@@ -1,0 +1,1 @@
+ALTER TABLE "Inquiry" ADD COLUMN IF NOT EXISTS "password" TEXT;

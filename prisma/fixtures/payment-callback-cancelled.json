@@ -1,0 +1,14 @@
+{
+  "provider": "legacy-payaction",
+  "orderNo": "GNG-SEED-ORDER-CANCELLED",
+  "providerTxId": "PAYACTION-TX-SEED-CANCEL-CB",
+  "method": "card",
+  "amount": 28000,
+  "status": "cancelled",
+  "responseCode": "CANCEL",
+  "responseMessage": "사용자 취소",
+  "rawResponse": {
+    "order_number": "GNG-SEED-ORDER-CANCELLED",
+    "status": "cancelled"
+  }
+}

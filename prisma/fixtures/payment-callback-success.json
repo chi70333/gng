@@ -1,0 +1,17 @@
+{
+  "provider": "ksnet",
+  "orderNo": "GNG-SEED-ORDER-SUCCESS",
+  "providerTxId": "KSNET-TX-SEED-SUCCESS-CB",
+  "method": "card",
+  "amount": 28000,
+  "status": "approved",
+  "responseCode": "0000",
+  "responseMessage": "승인완료",
+  "rawResponse": {
+    "authyn": "O",
+    "ordno": "GNG-SEED-ORDER-SUCCESS",
+    "trno": "KSNET-TX-SEED-SUCCESS-CB",
+    "resultcd": "0000",
+    "amt": "28000"
+  }
+}
