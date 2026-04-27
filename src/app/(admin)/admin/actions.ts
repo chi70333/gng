@@ -9,6 +9,7 @@ import { writeAdminAuditLog } from '@/server/admin/audit';
 import { TAGS } from '@/lib/cache';
 import { hashPassword } from '@/server/services/auth.service';
 import { createPointLedgerEntry } from '@/server/services/point-ledger.service';
+import { transitionOrderStatus } from '@/server/services/order.service';
 import { adminProductFormSchema } from '@/schemas/admin-product';
 import {
   adminOrderStatusFormSchema,
@@ -483,26 +484,26 @@ export async function updateAdminOrderStatus(formData: FormData) {
   const order = await prisma.$transaction(async (tx) => {
     const current = await tx.order.findUniqueOrThrow({
       where: { orderNo: parsed.orderNo },
-      select: { id: true, orderNo: true, status: true },
+      select: { id: true, orderNo: true, status: true, userId: true, pointsUsed: true },
     });
 
-    const updated = await tx.order.update({
-      where: { id: current.id },
-      data: { status: parsed.status },
-      select: { id: true, orderNo: true, status: true },
-    });
-
-    await tx.orderStatusHistory.create({
-      data: {
-        orderId: current.id,
-        fromStatus: current.status,
-        toStatus: parsed.status,
-        reason: optionalString(parsed.reason),
-        actor: `admin:${admin.id.toString()}`,
+    await transitionOrderStatus(tx, {
+      order: {
+        id: current.id,
+        orderNo: current.orderNo,
+        userId: current.userId,
+        pointsUsed: current.pointsUsed,
+        status: current.status,
       },
+      nextStatus: parsed.status,
+      actor: `admin:${admin.id.toString()}`,
+      reason: optionalString(parsed.reason),
     });
 
-    return updated;
+    return tx.order.findUniqueOrThrow({
+      where: { id: current.id },
+      select: { id: true, orderNo: true, status: true },
+    });
   });
 
   await writeAdminAuditLog({
