@@ -1,6 +1,6 @@
 # 10. Migration TODO
 
-Last checked: 2026-04-26
+Last checked: 2026-04-27
 
 ## Current Status
 
@@ -12,6 +12,7 @@ Last checked: 2026-04-26
 - Done: P1 auth foundation: Auth.js credentials route, `/join`, `/login`, argon2id password hashing, legacy md5/sha1 rehash path.
 - Done: P1 legacy join agreement flow: `/join/terms`, required terms/privacy consent cookie, server-side zod validation.
 - Done: P1 social auth provider wiring: Kakao/Naver enabled when env vars are present.
+- Done: [GNG] Production Kakao OAuth env verified on Vercel: `KAKAO_CLIENT_ID`, `AUTH_URL`, `NEXT_PUBLIC_SITE_URL`, and `AUTH_SECRET` are set, and `/api/auth/providers` exposes `kakao`.
 - Done: P1 account recovery request page: `/account/recover` with neutral response.
 - Done: P1 cart foundation: `/cart`, `/api/cart`, Redis per-user/per-guest cart with 30d TTL.
 - Done: P1 order foundation: `/order`, `/order/complete`, `/api/order`, pending order creation from cart, atomic stock reservation guard.
@@ -40,7 +41,7 @@ Last checked: 2026-04-26
 
 ## P1 TODO
 
-- Verify Kakao/Naver callback URLs and provider scopes in production.
+- Verify Naver callback URLs and provider scopes in production.
 - Connect account recovery to email/SMS provider through QStash.
 - Replace stock hold/release with provider-specific payment rules and expiry cleanup.
 - Verify PG-specific callback payloads and signature validation.
