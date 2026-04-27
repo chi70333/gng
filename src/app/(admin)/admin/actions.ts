@@ -546,21 +546,14 @@ export async function bulkUpdateAdminOrders(formData: FormData) {
   await prisma.$transaction(async (tx) => {
     const orders = await tx.order.findMany({
       where: { orderNo: { in: orderNos }, deletedAt: null },
-      select: { id: true, orderNo: true, status: true },
+      select: { id: true, orderNo: true, status: true, userId: true, pointsUsed: true },
     });
     for (const order of orders) {
-      await tx.order.update({
-        where: { id: order.id },
-        data: { status: nextStatus },
-      });
-      await tx.orderStatusHistory.create({
-        data: {
-          orderId: order.id,
-          fromStatus: order.status,
-          toStatus: nextStatus,
-          reason: '관리자 목록 일괄 변경',
-          actor: `admin:${admin.id.toString()}`,
-        },
+      await transitionOrderStatus(tx, {
+        order,
+        nextStatus,
+        reason: '관리자 목록 일괄 변경',
+        actor: `admin:${admin.id.toString()}`,
       });
     }
   });
