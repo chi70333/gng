@@ -5,7 +5,7 @@ import type { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '@/server/db';
 import { createPointLedgerEntry } from '@/server/services/point-ledger.service';
-import { releaseOrderBenefits, releaseReservedStock } from '@/server/services/order.service';
+import { transitionOrderStatus } from '@/server/services/order.service';
 import { ConflictError, NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import type { PaymentCallbackInput } from '@/schemas/payment';
@@ -90,20 +90,11 @@ export async function cleanupExpiredOrderHolds(
       });
       if (approved) return false;
 
-      await releaseReservedStock(tx, order.id);
-      await releaseOrderBenefits(tx, order);
-      await tx.order.update({
-        where: { id: order.id },
-        data: { status: 'cancelled' },
-      });
-      await tx.orderStatusHistory.create({
-        data: {
-          orderId: order.id,
-          fromStatus: order.status,
-          toStatus: 'cancelled',
-          actor: 'system',
-          reason: 'payment:hold-expired',
-        },
+      await transitionOrderStatus(tx, {
+        order,
+        nextStatus: 'cancelled',
+        actor: 'system',
+        reason: 'payment:hold-expired',
       });
       return true;
     });
@@ -210,19 +201,11 @@ export async function handlePaymentCallback(
     });
 
     if (nextOrderStatus !== order.status) {
-      await tx.order.update({
-        where: { id: order.id },
-        data: { status: nextOrderStatus },
-      });
-
-      await tx.orderStatusHistory.create({
-        data: {
-          orderId: order.id,
-          fromStatus: order.status,
-          toStatus: nextOrderStatus,
-          actor: 'system',
-          reason: `payment:${input.status}`,
-        },
+      await transitionOrderStatus(tx, {
+        order,
+        nextStatus: nextOrderStatus,
+        actor: 'system',
+        reason: `payment:${input.status}`,
       });
     }
 
@@ -239,11 +222,6 @@ export async function handlePaymentCallback(
           expireAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365),
         });
       }
-    }
-
-    if (input.status !== 'approved' && order.status !== 'cancelled') {
-      await releaseReservedStock(tx, order.id);
-      await releaseOrderBenefits(tx, order);
     }
 
     return { orderNo: input.orderNo, status: nextOrderStatus, duplicate: false };
