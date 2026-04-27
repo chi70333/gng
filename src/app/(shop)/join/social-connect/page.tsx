@@ -45,11 +45,12 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 flex items-center gap-2 text-sm font-medium text-neutral-700">
+      <span className="mb-1 flex items-center justify-between gap-3 text-sm font-medium text-neutral-700">
         <span>{label}</span>
         {required ? (
-          <span className="rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-[11px] font-semibold text-red-600">
-            필수입력
+          <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-red-500">
+            <span className="h-1.5 w-1.5 rounded-full bg-red-500" aria-hidden="true" />
+            필수
           </span>
         ) : null}
       </span>
