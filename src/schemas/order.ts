@@ -21,8 +21,11 @@ export const createOrderSchema = z.object({
   address2: z.string().trim().max(200).optional().or(z.literal('')),
   memo: z.string().trim().max(500).optional().or(z.literal('')),
   channel: z.preprocess(blankToUndefined, z.string().trim().max(40).optional()),
-  deliveryType: z.enum(['default', 'new', 'same_as_buyer']).optional(),
-  paymentMethod: paymentMethodSchema.optional(),
+  deliveryType: z.preprocess(
+    blankToUndefined,
+    z.enum(['default', 'new', 'same_as_buyer']).optional(),
+  ),
+  paymentMethod: z.preprocess(blankToUndefined, paymentMethodSchema.optional()),
   depositorName: z.string().trim().max(50).optional().or(z.literal('')),
   depositDueDate: z.preprocess(blankToUndefined, z.coerce.date().optional()),
   cashReceiptType: z.enum(['none', 'personal', 'business']).default('none'),

@@ -51,6 +51,34 @@ describe('createOrderSchema', () => {
     expect(parsed.couponIssueId).toBe(10n);
     expect(parsed.pointsToUse).toBe(3000);
   });
+
+  it('accepts optional select values omitted by FormData.get', () => {
+    const parsed = createOrderSchema.parse({
+      buyerName: 'Park',
+      buyerPhone: '01041055908',
+      buyerEmail: 'hn02205@gmail.com',
+      receiver: 'Park',
+      phone: '010-4105-5908',
+      zipCode: '42422',
+      address1: 'Daegu Namgu Myeongdeok-ro 200',
+      address2: 'TEST',
+      couponIssueId: '',
+      pointsToUse: '',
+      paymentMethod: 'bank',
+      deliveryType: null,
+      depositorName: 'Park',
+      depositDueDate: '2026-04-28',
+      cashReceiptType: 'personal',
+      cashReceiptIdentity: '',
+      taxInvoiceCompanyName: '',
+      taxInvoiceBusinessNumber: '',
+      memo: '12312',
+    });
+
+    expect(parsed.deliveryType).toBeUndefined();
+    expect(parsed.pointsToUse).toBe(0);
+    expect(parsed.paymentMethod).toBe('bank');
+  });
 });
 
 describe('paymentCallbackSchema', () => {
