@@ -17,6 +17,28 @@ export const adminUserBulkDeleteFormSchema = z.object({
   userIds: z.array(z.bigint()).min(1, '삭제할 회원을 선택해주세요.').max(100),
 });
 
+const optionalPositiveIntSchema = z.preprocess(
+  (value) => (value === '' || value == null ? undefined : value),
+  z.coerce.number().int().min(1).max(10000000).optional(),
+);
+
+export const adminUserBulkPointFormSchema = z
+  .object({
+    intent: z.enum(['mileage-grant', 'mileage-reset']),
+    userIds: z.array(z.bigint()).min(1, '마일리지를 변경할 회원을 선택해주세요.').max(500),
+    delta: optionalPositiveIntSchema,
+    reason: z.string().trim().max(200).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.intent === 'mileage-grant' && value.delta == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '부여할 마일리지를 입력해주세요.',
+        path: ['delta'],
+      });
+    }
+  });
+
 export const adminUserPointFormSchema = z.object({
   userId: z.coerce.bigint(),
   delta: z.coerce.number().int().min(-10000000).max(10000000),

@@ -1,6 +1,8 @@
 # GNP/point_sync 응답 비교표
 
-실제 파트너 API 키 값은 코드, 문서, 테스트 fixture에 기록하지 않는다. 신규 구현은 `LEGACY_API_TOKEN` 환경변수만 읽으며, 테스트는 더미 토큰을 런타임에 주입한다. 레거시 PHP 원본에 남아 있는 과거 리터럴은 이관 대상이 아니며 새 코드로 복사하지 않는다.
+현재 운영 전환 정책(2026-04-28 KST): URL만 변경하는 레거시 호출 호환을 우선하여 `/api/gnp-api.php`, `/api/point_sync.php`의 API Token 검사를 임시 비활성화했다. 따라서 현재 `/api/legacy/gnp-api`, `/api/legacy/point-sync`는 `X-API-Key`/`Authorization`/query token 없이도 처리한다.
+
+실제 파트너 API 키 값은 코드, 문서, 테스트 fixture에 기록하지 않는다. 신규 구현은 인증 재활성화 시 `LEGACY_API_TOKEN` 환경변수만 읽도록 되돌린다. 레거시 PHP 원본에 남아 있는 과거 리터럴은 이관 대상이 아니며 새 코드로 복사하지 않는다.
 
 | 요청 | 레거시 `gnp-api.php` | 현재 `/api/legacy/gnp-api` | 레거시 `point_sync.php` | 현재 `/api/legacy/point-sync` | 차이/결정 |
 |---|---|---|---|---|---|

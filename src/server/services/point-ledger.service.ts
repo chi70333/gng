@@ -47,3 +47,31 @@ export async function createPointLedgerEntry(
     },
   });
 }
+
+export async function createPointLedgerBalanceEntry(
+  tx: PointLedgerTx,
+  input: {
+    userId: bigint;
+    targetBalance: number;
+    reason: string;
+    orderId?: bigint | null;
+    expireAt?: Date | null;
+  },
+) {
+  const previousBalance = await getPointBalance(tx, input.userId);
+
+  if (input.targetBalance < 0) {
+    throw new Error('POINT_BALANCE_NEGATIVE');
+  }
+
+  return tx.userPointHistory.create({
+    data: {
+      userId: input.userId,
+      delta: input.targetBalance - previousBalance,
+      balance: input.targetBalance,
+      reason: input.reason,
+      orderId: input.orderId ?? null,
+      expireAt: input.expireAt ?? null,
+    },
+  });
+}

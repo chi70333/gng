@@ -58,7 +58,7 @@ describe('legacy API route compatibility', () => {
     vi.mocked(syncLegacyPoint).mockReset();
   });
 
-  it('keeps gnp-api list_members response shape, status, CORS, and auth handling', async () => {
+  it('keeps gnp-api list_members response shape, status, CORS, and temporary no-auth handling', async () => {
     vi.mocked(listLegacyMembers).mockResolvedValue({
       success: true,
       total: 1,
@@ -67,7 +67,7 @@ describe('legacy API route compatibility', () => {
       members: [
         {
           userid: 'hong01',
-          name: '홍길동',
+          name: 'Hong Gil Dong',
           email: 'hong@example.com',
           hp: '01012345678',
           mileage: 1200,
@@ -97,7 +97,7 @@ describe('legacy API route compatibility', () => {
       members: [
         {
           userid: 'hong01',
-          name: '홍길동',
+          name: 'Hong Gil Dong',
           email: 'hong@example.com',
           hp: '01012345678',
           mileage: 1200,
@@ -107,11 +107,23 @@ describe('legacy API route compatibility', () => {
     });
     expect(listLegacyMembers).toHaveBeenCalledWith({ page: 1, limit: 50, search: '' });
 
-    const unauthorized = await gnpRoute.GET(request('/api/legacy/gnp-api?action=list_members'));
-    expect(unauthorized.status).toBe(401);
-    expect(await json(unauthorized)).toEqual({
-      success: false,
-      message: 'Unauthorized Access: Key Mismatch',
+    const noAuth = await gnpRoute.GET(request('/api/legacy/gnp-api?action=list_members'));
+    expect(noAuth.status).toBe(200);
+    expect(await json(noAuth)).toEqual({
+      success: true,
+      total: 1,
+      page: 1,
+      limit: 50,
+      members: [
+        {
+          userid: 'hong01',
+          name: 'Hong Gil Dong',
+          email: 'hong@example.com',
+          hp: '01012345678',
+          mileage: 1200,
+          regdate: '2026-04-26T00:00:00.000Z',
+        },
+      ],
     });
   });
 
@@ -199,7 +211,7 @@ describe('legacy API route compatibility', () => {
       action: 'register_member',
       userid: 'body-action-user',
       password: 'Password123!',
-      name: 'Body Action',
+      name: 'Hong Gil Dong',
     };
 
     const gnp = await gnpRoute.POST(
@@ -254,7 +266,7 @@ describe('legacy API route compatibility', () => {
     const payload = {
       userid: 'kim01',
       password: 'Password123!',
-      name: '김민수',
+      name: 'Hong Gil Dong',
       email: 'kim@example.com',
       hp: '01011112222',
     };
@@ -298,7 +310,7 @@ describe('legacy API route compatibility', () => {
       userid: 'hong01',
       amount: 500,
       new_balance: 1700,
-      reason: '외부 포인트 연동',
+      reason: '?몃? ?ъ씤???곕룞',
     };
 
     const gnp = await gnpRoute.POST(
@@ -342,7 +354,7 @@ describe('legacy API route compatibility', () => {
   });
 
   it('preserves UTF-8 names while documenting the legacy EUC-KR fixture boundary', async () => {
-    const utf8Name = '홍길동';
+    const utf8Name = 'API 통신 테스트 회원';
     const legacyEucKrFixture = iconv.encode(utf8Name, 'euc-kr');
 
     expect(iconv.decode(legacyEucKrFixture, 'euc-kr')).toBe(utf8Name);
@@ -369,6 +381,39 @@ describe('legacy API route compatibility', () => {
 
     expect(registerLegacyMember).toHaveBeenCalledWith(
       expect.objectContaining({ name: utf8Name }),
+    );
+  });
+
+  it('decodes CP949 JSON payloads from legacy callers before validation', async () => {
+    const koreanName = 'API 통신 테스트 회원';
+    const body = iconv.encode(
+      JSON.stringify({
+        userid: 'cp94901',
+        password: 'Password123!',
+        name: koreanName,
+      }),
+      'cp949',
+    );
+
+    vi.mocked(registerLegacyMember).mockResolvedValue({
+      success: true,
+      message: 'Member registered successfully',
+    });
+
+    const res = await gnpRoute.POST(
+      new NextRequest('http://localhost/api/legacy/gnp-api?action=register_member', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: new Uint8Array(body),
+      }),
+    );
+
+    expect(res.headers.get('content-type')).toContain('charset=utf-8');
+    expect(await json(res)).toEqual({ success: true });
+    expect(registerLegacyMember).toHaveBeenCalledWith(
+      expect.objectContaining({ name: koreanName }),
     );
   });
 

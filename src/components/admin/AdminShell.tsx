@@ -35,7 +35,13 @@ export function AdminShell({
     <div className="min-h-screen bg-neutral-100 text-neutral-900">
       <aside className="fixed inset-y-0 left-0 hidden w-60 border-r border-neutral-200 bg-white lg:block">
         <div className="border-b border-neutral-100 px-5 py-5">
-          <p className="text-lg font-extrabold">GNG Admin</p>
+          <Link
+            href="/admin"
+            className="block text-lg font-extrabold hover:text-neutral-700"
+            aria-label="관리자 대시보드로 이동"
+          >
+            GNG Admin
+          </Link>
           <p className="mt-1 text-xs text-neutral-500">{admin.name}</p>
         </div>
         <nav className="space-y-1 px-3 py-4">
@@ -60,9 +66,6 @@ export function AdminShell({
             <Link href="/admin" className="text-base font-extrabold lg:hidden">
               GNG Admin
             </Link>
-            <p className="hidden text-sm text-neutral-500 lg:block">
-              운영 변경은 감사 로그에 기록됩니다.
-            </p>
             <div className="flex items-center gap-3">
               <div className="text-right text-xs text-neutral-500">
                 <p className="font-semibold text-neutral-800">{admin.name}</p>

@@ -8,7 +8,14 @@ import { requireAdmin } from '@/server/admin/auth';
 import { writeAdminAuditLog } from '@/server/admin/audit';
 import { TAGS } from '@/lib/cache';
 import { hashPassword } from '@/server/services/auth.service';
-import { createPointLedgerEntry } from '@/server/services/point-ledger.service';
+import {
+  createPointLedgerBalanceEntry,
+  createPointLedgerEntry,
+} from '@/server/services/point-ledger.service';
+import {
+  parseMileageSpreadsheet,
+  type MileageUploadRecord,
+} from '@/server/services/mileage-spreadsheet.service';
 import { transitionOrderStatus } from '@/server/services/order.service';
 import { adminProductFormSchema } from '@/schemas/admin-product';
 import {
@@ -17,6 +24,7 @@ import {
   adminShipmentFormSchema,
 } from '@/schemas/admin-order';
 import {
+  adminUserBulkPointFormSchema,
   adminUserBulkDeleteFormSchema,
   adminUserMessageFormSchema,
   adminUserPointFormSchema,
@@ -52,6 +60,23 @@ function selectedBigInts(formData: FormData, key: string): bigint[] {
 function optionalBigIntString(formData: FormData, key: string): string | undefined {
   const value = formString(formData, key);
   return value && value !== '0' ? value : undefined;
+}
+
+function safeAdminUsersRedirect(value: string | undefined): string {
+  if (!value || !value.startsWith('/admin/users')) return '/admin/users';
+  return value;
+}
+
+function redirectWithAdminUsersResult(
+  redirectTo: string | undefined,
+  params: Record<string, string | number>,
+): never {
+  const target = safeAdminUsersRedirect(redirectTo);
+  const separator = target.includes('?') ? '&' : '?';
+  const resultParams = new URLSearchParams(
+    Object.entries(params).map(([key, value]) => [key, String(value)]),
+  );
+  redirect(`${target}${separator}${resultParams.toString()}`);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -634,53 +659,52 @@ export async function updateAdminUserStatus(formData: FormData) {
   redirect(`/admin/users/${user.id.toString()}`);
 }
 
-export async function bulkDeleteAdminUsers(formData: FormData) {
-  const admin = await requireAdmin('user.write');
-  const parsed = adminUserBulkDeleteFormSchema.parse({
-    userIds: selectedBigInts(formData, 'userId'),
-  });
+async function deleteAdminUsers(
+  admin: Awaited<ReturnType<typeof requireAdmin>>,
+  userIds: bigint[],
+): Promise<number> {
   const deletedAt = new Date();
 
   const users = await prisma.user.findMany({
-    where: { id: { in: parsed.userIds }, deletedAt: null },
+    where: { id: { in: userIds }, deletedAt: null },
     select: { id: true },
   });
-  const userIds = users.map((user) => user.id);
+  const activeUserIds = users.map((user) => user.id);
 
-  if (userIds.length === 0) {
-    redirect('/admin/users');
+  if (activeUserIds.length === 0) {
+    return 0;
   }
 
   await prisma.$transaction(async (tx) => {
-    await tx.userAddress.deleteMany({ where: { userId: { in: userIds } } });
-    await tx.userSocialAccount.deleteMany({ where: { userId: { in: userIds } } });
-    await tx.userBusinessProfile.deleteMany({ where: { userId: { in: userIds } } });
-    await tx.userRefundAccount.deleteMany({ where: { userId: { in: userIds } } });
-    await tx.wishlist.deleteMany({ where: { userId: { in: userIds } } });
-    await tx.couponIssue.deleteMany({ where: { userId: { in: userIds } } });
+    await tx.userAddress.deleteMany({ where: { userId: { in: activeUserIds } } });
+    await tx.userSocialAccount.deleteMany({ where: { userId: { in: activeUserIds } } });
+    await tx.userBusinessProfile.deleteMany({ where: { userId: { in: activeUserIds } } });
+    await tx.userRefundAccount.deleteMany({ where: { userId: { in: activeUserIds } } });
+    await tx.wishlist.deleteMany({ where: { userId: { in: activeUserIds } } });
+    await tx.couponIssue.deleteMany({ where: { userId: { in: activeUserIds } } });
 
     await tx.userLoginLog.updateMany({
-      where: { userId: { in: userIds } },
+      where: { userId: { in: activeUserIds } },
       data: { email: null, ip: '0.0.0.0', userAgent: null, reason: '관리자 회원 삭제로 익명화' },
     });
     await tx.productQna.updateMany({
-      where: { userId: { in: userIds } },
+      where: { userId: { in: activeUserIds } },
       data: { userId: null },
     });
     await tx.post.updateMany({
-      where: { userId: { in: userIds } },
+      where: { userId: { in: activeUserIds } },
       data: { userId: null, authorName: '탈퇴 회원', authorEmail: null },
     });
     await tx.comment.updateMany({
-      where: { userId: { in: userIds } },
+      where: { userId: { in: activeUserIds } },
       data: { userId: null, authorName: '탈퇴 회원' },
     });
     await tx.inquiry.updateMany({
-      where: { userId: { in: userIds } },
+      where: { userId: { in: activeUserIds } },
       data: { userId: null, name: '탈퇴 회원', email: 'deleted@deleted.local', phone: null },
     });
 
-    for (const userId of userIds) {
+    for (const userId of activeUserIds) {
       await tx.user.update({
         where: { id: userId },
         data: {
@@ -709,13 +733,203 @@ export async function bulkDeleteAdminUsers(formData: FormData) {
     action: 'user.bulk.delete',
     entity: 'User',
     payload: {
-      userIds: userIds.map((userId) => userId.toString()),
+      userIds: activeUserIds.map((userId) => userId.toString()),
       deletedAt: deletedAt.toISOString(),
       strategy: 'soft-delete-anonymize',
     },
   });
+
+  return activeUserIds.length;
+}
+
+export async function bulkDeleteAdminUsers(formData: FormData) {
+  const admin = await requireAdmin('user.write');
+  const parsed = adminUserBulkDeleteFormSchema.parse({
+    userIds: selectedBigInts(formData, 'userId'),
+  });
+
+  await deleteAdminUsers(admin, parsed.userIds);
   revalidatePath('/admin/users');
   redirect('/admin/users');
+}
+
+export async function bulkUpdateAdminUsers(formData: FormData) {
+  const admin = await requireAdmin('user.write');
+  const intent = formString(formData, 'intent');
+  const redirectTo = formString(formData, 'redirectTo');
+
+  if (intent === 'delete') {
+    const parsed = adminUserBulkDeleteFormSchema.parse({
+      userIds: selectedBigInts(formData, 'userId'),
+    });
+    const deleted = await deleteAdminUsers(admin, parsed.userIds);
+    revalidatePath('/admin/users');
+    redirectWithAdminUsersResult(redirectTo, { deleted });
+  }
+
+  const parsed = adminUserBulkPointFormSchema.parse({
+    intent,
+    userIds: selectedBigInts(formData, 'userId'),
+    delta: formString(formData, 'bulkMileageAmount'),
+    reason: formString(formData, 'bulkMileageReason'),
+  });
+  const reason =
+    optionalString(parsed.reason) ??
+    (parsed.intent === 'mileage-reset'
+      ? '관리자 마일리지 일괄 초기화'
+      : '관리자 마일리지 일괄 부여');
+
+  await prisma.$transaction(async (tx) => {
+    for (const userId of parsed.userIds) {
+      if (parsed.intent === 'mileage-reset') {
+        await createPointLedgerBalanceEntry(tx, {
+          userId,
+          targetBalance: 0,
+          reason,
+        });
+      } else {
+        await createPointLedgerEntry(tx, {
+          userId,
+          delta: parsed.delta ?? 0,
+          reason,
+        });
+      }
+    }
+  });
+
+  await writeAdminAuditLog({
+    admin,
+    action:
+      parsed.intent === 'mileage-reset' ? 'user.points.bulk.reset' : 'user.points.bulk.grant',
+    entity: 'User',
+    payload: {
+      userIds: parsed.userIds.map((userId) => userId.toString()),
+      delta: parsed.intent === 'mileage-grant' ? parsed.delta : undefined,
+      reason,
+    },
+  });
+  revalidatePath('/admin/users');
+  redirectWithAdminUsersResult(redirectTo, {
+    mileageUpdated: parsed.userIds.length,
+    mileageSkipped: 0,
+  });
+}
+
+function uniqueStrings(values: (string | undefined)[]): string[] {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))];
+}
+
+function uniqueBigInts(values: (bigint | undefined)[]): bigint[] {
+  const unique = new Map<string, bigint>();
+  values.forEach((value) => {
+    if (value) unique.set(value.toString(), value);
+  });
+  return [...unique.values()];
+}
+
+function userLookupKey(record: MileageUploadRecord): string {
+  return [record.userId?.toString() ?? '', record.loginId ?? '', record.email ?? ''].join('|');
+}
+
+export async function importAdminUserMileageExcel(formData: FormData) {
+  const admin = await requireAdmin('user.write');
+  const file = formData.get('mileageFile');
+  const redirectTo = formString(formData, 'redirectTo');
+
+  if (!(file instanceof File) || file.size === 0) {
+    throw new Error('업로드할 엑셀 파일을 선택해주세요.');
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    throw new Error('마일리지 업로드 파일은 2MB 이하로 올려주세요.');
+  }
+
+  const lowerName = file.name.toLowerCase();
+  if (!lowerName.endsWith('.xlsx') && !lowerName.endsWith('.xls') && !lowerName.endsWith('.csv')) {
+    throw new Error('엑셀(.xlsx, .xls) 또는 CSV 파일만 업로드할 수 있습니다.');
+  }
+
+  const parsed = parseMileageSpreadsheet(file.name, await file.arrayBuffer());
+  if (parsed.records.length === 0) {
+    throw new Error(parsed.errors[0] ?? '반영할 마일리지 데이터가 없습니다.');
+  }
+
+  const lookupOr: Prisma.UserWhereInput[] = [];
+  const userIds = uniqueBigInts(parsed.records.map((record) => record.userId));
+  const loginIds = uniqueStrings(parsed.records.map((record) => record.loginId));
+  const emails = uniqueStrings(parsed.records.map((record) => record.email?.toLowerCase()));
+
+  if (userIds.length > 0) lookupOr.push({ id: { in: userIds } });
+  if (loginIds.length > 0) lookupOr.push({ loginId: { in: loginIds } });
+  if (emails.length > 0) lookupOr.push({ email: { in: emails } });
+
+  const users = await prisma.user.findMany({
+    where: { deletedAt: null, OR: lookupOr },
+    select: { id: true, loginId: true, email: true },
+  });
+  const byId = new Map(users.map((user) => [user.id.toString(), user]));
+  const byLoginId = new Map(
+    users
+      .filter((user): user is typeof user & { loginId: string } => user.loginId !== null)
+      .map((user) => [user.loginId, user]),
+  );
+  const byEmail = new Map(users.map((user) => [user.email.toLowerCase(), user]));
+  const appliedRows = new Set<string>();
+
+  let skipped = parsed.skipped;
+  let updated = 0;
+
+  await prisma.$transaction(async (tx) => {
+    for (const record of parsed.records) {
+      const lookupKey = userLookupKey(record);
+      if (appliedRows.has(lookupKey)) {
+        skipped += 1;
+        continue;
+      }
+      appliedRows.add(lookupKey);
+
+      const user =
+        (record.userId ? byId.get(record.userId.toString()) : undefined) ??
+        (record.loginId ? byLoginId.get(record.loginId) : undefined) ??
+        (record.email ? byEmail.get(record.email.toLowerCase()) : undefined);
+
+      if (!user) {
+        skipped += 1;
+        continue;
+      }
+
+      if (record.mode === 'grant') {
+        await createPointLedgerEntry(tx, {
+          userId: user.id,
+          delta: record.amount ?? 0,
+          reason: record.reason,
+        });
+      } else {
+        await createPointLedgerBalanceEntry(tx, {
+          userId: user.id,
+          targetBalance: record.mode === 'reset' ? 0 : (record.amount ?? 0),
+          reason: record.reason,
+        });
+      }
+      updated += 1;
+    }
+  });
+
+  await writeAdminAuditLog({
+    admin,
+    action: 'user.points.excel.import',
+    entity: 'User',
+    payload: {
+      fileName: file.name,
+      updated,
+      skipped,
+      parseErrors: parsed.errors.slice(0, 20),
+    },
+  });
+  revalidatePath('/admin/users');
+  redirectWithAdminUsersResult(redirectTo, {
+    mileageImported: updated,
+    mileageSkipped: skipped,
+  });
 }
 
 export async function adjustAdminUserPoints(formData: FormData) {

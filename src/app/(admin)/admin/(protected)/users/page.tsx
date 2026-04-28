@@ -4,14 +4,14 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Prisma } from '@prisma/client';
-import { Download, Trash2 } from 'lucide-react';
+import { Coins, Download, RotateCcw, Trash2, Upload } from 'lucide-react';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
-import { formatNumber } from '@/lib/format';
+import { formatNumber, formatPhone } from '@/lib/format';
 import { AdminStatusBadge } from '@/components/admin/AdminStatusBadge';
 import { AdminPagination } from '@/components/admin/AdminPagination';
 import { adminUserListQuerySchema } from '@/schemas/admin-user';
-import { bulkDeleteAdminUsers } from '../../actions';
+import { bulkUpdateAdminUsers, importAdminUserMileageExcel } from '../../actions';
 import { AdminUserMileageAdjustButton } from './AdminUserMileageAdjustButton';
 
 export const dynamic = 'force-dynamic';
@@ -22,10 +22,15 @@ export const metadata: Metadata = {
 
 const PAGE_SIZE = 30;
 
-function maskPhone(phone: string | null): string {
-  if (!phone) return '-';
-  return phone.replace(/(\d{3})\d+(\d{4})/, '$1****$2');
-}
+type AdminUsersSearchParams = {
+  q?: string;
+  status?: string;
+  page?: string;
+  deleted?: string;
+  mileageUpdated?: string;
+  mileageImported?: string;
+  mileageSkipped?: string;
+};
 
 function statusLabel(status: string): string {
   const labels: Record<string, string> = {
@@ -40,7 +45,7 @@ function statusLabel(status: string): string {
 export default async function AdminUsersPage({
   searchParams,
 }: {
-  searchParams: { q?: string; status?: string; page?: string };
+  searchParams: AdminUsersSearchParams;
 }) {
   await requireAdmin('user.read');
   const query = adminUserListQuerySchema.parse(searchParams);
@@ -92,10 +97,16 @@ export default async function AdminUsersPage({
   if (query.q) params.set('q', query.q);
   if (query.status) params.set('status', query.status);
   const baseHref = `/admin/users${params.toString() ? `?${params.toString()}` : ''}`;
+  const currentParams = new URLSearchParams(params);
+  if (query.page > 1) currentParams.set('page', String(query.page));
+  const currentHref = `/admin/users${currentParams.toString() ? `?${currentParams.toString()}` : ''}`;
   const exportHref = `/api/admin/users/export${params.toString() ? `?${params.toString()}` : ''}`;
+  const mileageChanged = Number(searchParams.mileageUpdated ?? searchParams.mileageImported ?? 0) || 0;
+  const mileageSkipped = Number(searchParams.mileageSkipped ?? 0) || 0;
+  const deleted = Number(searchParams.deleted ?? 0) || 0;
 
   return (
-    <div>
+    <div className="w-full">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-extrabold text-neutral-950">회원 관리</h1>
@@ -135,54 +146,141 @@ export default async function AdminUsersPage({
         </button>
       </form>
 
+      {mileageChanged > 0 || mileageSkipped > 0 || deleted > 0 ? (
+        <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+          {mileageChanged > 0 ? `마일리지 반영 ${formatNumber(mileageChanged)}건` : null}
+          {mileageChanged > 0 && mileageSkipped > 0 ? ', ' : null}
+          {mileageSkipped > 0 ? `건너뜀 ${formatNumber(mileageSkipped)}건` : null}
+          {deleted > 0 ? `선택 삭제 ${formatNumber(deleted)}건` : null}
+        </div>
+      ) : null}
+
       <form
-        id="bulkUserDeleteForm"
-        action={bulkDeleteAdminUsers}
-        className="mt-5 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-white p-3 text-xs"
+        id="bulkUserActionForm"
+        action={bulkUpdateAdminUsers}
+        className="mt-5 grid gap-3 rounded-lg border border-neutral-200 bg-white p-3 text-xs shadow-sm"
       >
-        <div>
-          <span className="font-bold text-neutral-700">선택 회원</span>
+        <input type="hidden" name="redirectTo" value={currentHref} />
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <span className="font-bold text-neutral-700">선택 회원 마일리지</span>
+            <span className="mt-1 block text-neutral-500">
+              선택한 회원의 마일리지를 0으로 초기화하거나 같은 금액을 일괄 부여합니다.
+            </span>
+          </div>
           <span className="mt-1 block text-neutral-500">
             주문 이력은 보존하고 회원 개인정보와 개인 상태 데이터는 익명화/삭제합니다.
           </span>
         </div>
-        <button
-          name="intent"
-          value="delete"
-          className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 font-bold text-red-700 hover:bg-red-100"
-        >
-          <Trash2 size={16} />
-          삭제
-        </button>
+        <div className="grid gap-2 md:grid-cols-[160px_minmax(220px,1fr)_auto_auto_auto]">
+          <input
+            name="bulkMileageAmount"
+            type="number"
+            min="1"
+            max="10000000"
+            placeholder="부여 마일리지"
+            className="min-h-11 rounded-md border border-neutral-300 px-3 text-sm font-medium text-neutral-950"
+          />
+          <input
+            name="bulkMileageReason"
+            defaultValue="관리자 마일리지 일괄 처리"
+            placeholder="처리 사유"
+            className="min-h-11 rounded-md border border-neutral-300 px-3 text-sm font-medium text-neutral-950"
+          />
+          <button
+            name="intent"
+            value="mileage-grant"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-neutral-900 px-4 text-sm font-bold text-white hover:bg-neutral-800"
+          >
+            <Coins size={17} />
+            일괄 부여
+          </button>
+          <button
+            name="intent"
+            value="mileage-reset"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-neutral-200 bg-white px-4 text-sm font-bold text-neutral-800 hover:bg-neutral-50"
+          >
+            <RotateCcw size={17} />
+            일괄 초기화
+          </button>
+          <button
+            name="intent"
+            value="delete"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 text-sm font-bold text-red-700 hover:bg-red-100"
+          >
+            <Trash2 size={17} />
+            선택 삭제
+          </button>
+        </div>
       </form>
 
-      <div className="mt-3 overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-        <table className="min-w-[1060px] border-collapse text-sm">
+      <details className="mt-3 rounded-lg border border-neutral-200 bg-white shadow-sm">
+        <summary className="flex min-h-12 cursor-pointer items-center justify-between gap-3 px-4 text-sm font-extrabold text-neutral-950">
+          마일리지 엑셀 업로드
+          <span className="text-xs font-semibold text-neutral-500">.xlsx, .xls, .csv 지원</span>
+        </summary>
+        <form
+          action={importAdminUserMileageExcel}
+          className="grid gap-3 border-t border-neutral-100 p-4 lg:grid-cols-[minmax(260px,1fr)_auto]"
+        >
+          <input type="hidden" name="redirectTo" value={currentHref} />
+          <p className="text-sm text-neutral-500">
+            회원ID, 아이디, 이메일 중 하나와 마일리지, 처리방식을 입력한 파일을 업로드합니다.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/api/admin/users/mileage-template"
+              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-neutral-200 bg-white px-4 text-sm font-bold text-neutral-800 hover:bg-neutral-50"
+            >
+              <Download size={18} />
+              양식 다운로드
+            </Link>
+            <input
+              type="file"
+              name="mileageFile"
+              accept=".xlsx,.xls,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+              required
+              className="min-h-11 flex-1 rounded-md border border-neutral-300 px-3 py-2 text-sm sm:w-80"
+            />
+            <button className="inline-flex min-h-11 items-center gap-2 rounded-md bg-neutral-900 px-4 text-sm font-bold text-white hover:bg-neutral-800">
+              <Upload size={18} />
+              업로드
+            </button>
+          </div>
+        </form>
+      </details>
+
+      <div className="mt-3 w-full overflow-x-auto rounded-md border border-neutral-300 bg-white">
+        <table className="w-full min-w-[1520px] table-fixed border-collapse text-[13px]">
           <thead>
-            <tr className="border-b border-neutral-200 bg-neutral-50 text-left text-xs text-neutral-500">
-              <th className="w-12 px-4 py-3 text-center">선택</th>
-              <th className="px-4 py-3">회원 정보</th>
-              <th className="w-28 px-4 py-3">상태</th>
-              <th className="w-32 px-4 py-3">등급</th>
-              <th className="w-40 px-4 py-3 text-right">마일리지</th>
-              <th className="w-24 px-4 py-3 text-right">주문수</th>
-              <th className="w-28 px-4 py-3 text-right">로그인</th>
-              <th className="w-32 px-4 py-3 text-right">가입일</th>
+            <tr className="bg-neutral-100 text-left text-xs font-bold text-neutral-700">
+              <th className="w-12 border border-neutral-300 px-3 py-2 text-center">선택</th>
+              <th className="w-32 border border-neutral-300 px-3 py-2">이름</th>
+              <th className="w-36 border border-neutral-300 px-3 py-2">아이디</th>
+              <th className="w-64 border border-neutral-300 px-3 py-2">이메일</th>
+              <th className="w-36 border border-neutral-300 px-3 py-2">휴대전화</th>
+              <th className="w-24 border border-neutral-300 px-3 py-2">상태</th>
+              <th className="w-32 border border-neutral-300 px-3 py-2">등급</th>
+              <th className="w-44 border border-neutral-300 px-3 py-2 text-right">마일리지</th>
+              <th className="w-20 border border-neutral-300 px-3 py-2 text-right">주문수</th>
+              <th className="w-24 border border-neutral-300 px-3 py-2 text-right">로그인수</th>
+              <th className="w-32 border border-neutral-300 px-3 py-2 text-right">최근 로그인</th>
+              <th className="w-32 border border-neutral-300 px-3 py-2 text-right">가입일</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-neutral-100">
+          <tbody>
             {users.length === 0 ? (
               <tr>
-                <td colSpan={8} className="h-24 px-4 text-center text-neutral-500">
+                <td colSpan={12} className="h-24 border border-neutral-200 px-4 text-center text-neutral-500">
                   조회된 회원이 없습니다.
                 </td>
               </tr>
             ) : (
               users.map((user) => (
                 <tr key={user.id.toString()} className="hover:bg-neutral-50">
-                  <td className="px-4 py-3 text-center">
+                  <td className="border border-neutral-200 px-3 py-2 text-center align-middle">
                     <input
-                      form="bulkUserDeleteForm"
+                      form="bulkUserActionForm"
                       type="checkbox"
                       name="userId"
                       value={user.id.toString()}
@@ -190,40 +288,47 @@ export default async function AdminUsersPage({
                       className="h-4 w-4 rounded border-neutral-300"
                     />
                   </td>
-                  <td className="min-w-0 px-4 py-3">
+                  <td className="truncate border border-neutral-200 px-3 py-2 align-middle">
                     <Link
                       href={`/admin/users/${user.id.toString()}`}
                       className="font-extrabold text-neutral-950 hover:underline"
                     >
                       {user.name}
                     </Link>
-                    <p className="mt-1 break-all text-xs text-neutral-500">
-                      {user.loginId ?? '-'} / {user.email}
-                    </p>
-                    <p className="mt-1 text-xs text-neutral-400">{maskPhone(user.phone)}</p>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="break-all border border-neutral-200 px-3 py-2 align-middle font-mono text-xs text-neutral-700">
+                    {user.loginId ?? '-'}
+                  </td>
+                  <td className="break-all border border-neutral-200 px-3 py-2 align-middle text-xs text-neutral-700">
+                    {user.email}
+                  </td>
+                  <td className="whitespace-nowrap border border-neutral-200 px-3 py-2 align-middle font-mono text-xs text-neutral-700">
+                    {formatPhone(user.phone)}
+                  </td>
+                  <td className="border border-neutral-200 px-3 py-2 align-middle">
                     <AdminStatusBadge status={user.status} />
                     <span className="sr-only">{statusLabel(user.status)}</span>
                   </td>
-                  <td className="px-4 py-3 text-neutral-600">{user.grade?.name ?? '-'}</td>
-                  <td className="px-4 py-3 text-right font-bold">
+                  <td className="border border-neutral-200 px-3 py-2 align-middle text-neutral-600">
+                    {user.grade?.name ?? '-'}
+                  </td>
+                  <td className="border border-neutral-200 px-3 py-2 text-right align-middle font-bold">
                     <AdminUserMileageAdjustButton
                       userId={user.id.toString()}
                       userName={user.name}
                       initialBalance={user.pointHistories[0]?.balance ?? 0}
                     />
                   </td>
-                  <td className="px-4 py-3 text-right text-neutral-600">
+                  <td className="border border-neutral-200 px-3 py-2 text-right align-middle text-neutral-600">
                     {formatNumber(user._count.orders)}
                   </td>
-                  <td className="px-4 py-3 text-right text-neutral-500">
+                  <td className="border border-neutral-200 px-3 py-2 text-right align-middle text-neutral-600">
                     {formatNumber(user.loginCount)}
-                    <span className="mt-1 block text-xs">
-                      {user.lastLoginAt?.toLocaleDateString('ko-KR') ?? '이력 없음'}
-                    </span>
                   </td>
-                  <td className="px-4 py-3 text-right text-neutral-500">
+                  <td className="border border-neutral-200 px-3 py-2 text-right align-middle text-neutral-500">
+                    {user.lastLoginAt?.toLocaleDateString('ko-KR') ?? '이력 없음'}
+                  </td>
+                  <td className="border border-neutral-200 px-3 py-2 text-right align-middle text-neutral-500">
                     {user.createdAt.toLocaleDateString('ko-KR')}
                   </td>
                 </tr>

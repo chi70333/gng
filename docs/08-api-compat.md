@@ -1,5 +1,7 @@
 # 08. Legacy API Compatibility
 
+> 현재 운영 전환 정책(2026-04-28 KST): `/api/gnp-api.php`, `/api/point_sync.php`는 외부 연동사가 URL만 신규 도메인으로 바꿔도 호출 가능해야 하므로 API Token 검사를 임시 비활성화했다. 인증 재활성화 전까지는 Vercel Firewall 경로 허용과 서버 로그 모니터링을 전제로 운영한다.
+
 > 외부에서 호출 중인 기존 PHP API는 URL/메서드/응답이 동일해야 한다.
 > 클라이언트(파트너사, 모바일 앱, 외부 시스템)가 코드 수정 없이 동작해야 함이 원칙.
 

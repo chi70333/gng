@@ -257,9 +257,6 @@ export default async function AdminOrdersPage({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-extrabold text-neutral-950">주문 관리</h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            레거시 trade_order.php 기준 조회 조건과 그리드 형식입니다.
-          </p>
         </div>
         <p className="text-sm font-bold text-blue-700">
           오늘 주문: <span className="text-base">{formatNumber(todayCount)}</span>건
@@ -417,11 +414,10 @@ export default async function AdminOrdersPage({
         >
           선택 엑셀
         </button>
-        <span className="text-neutral-500">레거시 선택 처리 위치와 동일하게 목록 상단에서 실행합니다.</span>
       </form>
 
-      <div className="mt-4 overflow-x-auto border border-neutral-300 bg-white">
-        <table className="min-w-[1180px] border-collapse text-xs">
+      <div className="mt-4 w-full overflow-x-auto border border-neutral-300 bg-white">
+        <table className="w-full min-w-[1180px] border-collapse text-xs">
           <thead>
             <tr className="h-8 bg-[#d7f0fa] text-center font-bold">
               <th className="w-10 border border-neutral-300">선택</th>

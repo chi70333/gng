@@ -1,26 +1,21 @@
 # [GNG] 레거시 연동 API 간단 명세
 
+> 현재 운영 전환 정책(2026-04-28 KST): `/api/gnp-api.php`, `/api/point_sync.php`는 레거시 호출자가 URL만 새 도메인으로 바꿔도 동작해야 하므로 API Token 검사를 임시 비활성화했다. `X-API-Key`, `Authorization`, `token` query가 없어도 처리한다.
+
 ## 공통
 
+- 운영 도메인: `https://gng-gngshop.vercel.app`
 - 응답 형식: JSON
 - 캐시: `Cache-Control: no-store`
-- 인증: `LEGACY_API_TOKEN` 값과 일치해야 함
-- 인증 전달 방식:
-  - Header: `X-API-Key: <token>`
-  - Header: `Authorization: Bearer <token>`
-  - Query: `?token=<token>` 또는 `?api_key=<token>` 또는 `?key=<token>`
-- 인증 실패:
-
-```json
-{ "success": false, "message": "Unauthorized Access: Key Mismatch" }
-```
+- 인증: 현재 임시 비활성화
+- CORS: `Access-Control-Allow-Origin: *`
 
 ## 1. GNP API
 
 ### 기본 URL
 
 ```txt
-/api/gnp-api.php
+https://gng-gngshop.vercel.app/api/gnp-api.php
 ```
 
 ### 회원 목록 조회
@@ -135,7 +130,7 @@ Body:
 ### 기본 URL
 
 ```txt
-/api/point_sync.php
+https://gng-gngshop.vercel.app/api/point_sync.php
 ```
 
 ### 회원 목록 조회
@@ -219,7 +214,7 @@ Body:
 
 ## 레거시와 다른 점
 
-- `gnp-api.php` 레거시는 API Key가 틀려도 실제 차단하지 않았지만, 신규는 보안상 `401`로 차단한다.
-- `point_sync.php` 신규는 `OPTIONS` preflight를 추가 지원한다.
+- 현재 운영 전환 기간에는 API Token 검사를 하지 않는다.
+- `point_sync.php` 신규 구현은 `OPTIONS` preflight를 추가 지원한다.
 - 신규 응답은 UTF-8 JSON 기준이다.
 - 없는 회원의 포인트 동기화는 신규에서 `User not found`로 실패 처리한다.
