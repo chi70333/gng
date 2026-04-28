@@ -149,7 +149,9 @@ export function ProductImageFields({
                 className="sr-only"
               />
             </label>
-            {row.url ? <p className="truncate text-xs text-neutral-500">{row.url}</p> : null}
+            {row.url ? (
+              <p className="text-xs font-semibold text-emerald-700">이미지가 업로드되었습니다.</p>
+            ) : null}
             {row.error ? <p className="text-xs font-semibold text-red-600">{row.error}</p> : null}
             <label className="block">
               <span className="text-xs font-bold text-neutral-700">이미지 설명</span>

@@ -81,6 +81,7 @@
 - @radix-ui/* (shadcn 의존)
 - lucide-react
 - sonner (토스트)
+- @tiptap/react, @tiptap/pm, @tiptap/starter-kit, @tiptap/extension-image, @tiptap/extension-link, @tiptap/extension-underline (관리자 상품 상세 설명 에디터)
 
 ### Dev
 - vitest, @vitest/ui
