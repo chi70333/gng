@@ -129,9 +129,6 @@ export default async function AdminSettingsPage() {
             회사정보, 고객센터, 입금계좌, 약관 정보를 관리합니다.
           </p>
         </div>
-        <span className="rounded border border-neutral-300 bg-white px-2.5 py-1 text-xs font-bold text-neutral-600">
-          no-store
-        </span>
       </div>
 
       <form action={saveAdminSettings} className="grid gap-4 xl:grid-cols-2">
