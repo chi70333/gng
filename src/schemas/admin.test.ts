@@ -68,7 +68,7 @@ describe('admin schemas', () => {
       page: '',
     });
 
-    expect(parsed).toEqual({ q: '', page: 1 });
+    expect(parsed).toEqual({ q: '', page: 1, pageSize: 30 });
   });
 
   it('rejects product form without categories', () => {

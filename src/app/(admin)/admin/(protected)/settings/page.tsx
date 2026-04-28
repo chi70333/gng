@@ -2,9 +2,29 @@
 // Cache: no-store. Settings affect public policies and operational behavior.
 
 import type { Metadata } from 'next';
-import { Save, ShieldCheck, UserPlus } from 'lucide-react';
+import { Building2, Clock3, FileText, Save, ShieldCheck, UserPlus, UsersRound } from 'lucide-react';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
+import {
+  AdminDataGrid,
+  AdminMobileCard,
+  AdminMobileField,
+  adminGridButtonClass,
+  adminGridCellClass,
+  adminGridStickyCellClass,
+} from '@/components/admin/AdminDataGrid';
+import {
+  compareAdminValues,
+  createAdminSortHref,
+  parseAdminSort,
+} from '@/components/admin/admin-grid-sort';
+import {
+  AdminPageHeader,
+  AdminSection,
+  adminFieldClass,
+  adminPrimaryButtonClass,
+  adminTextareaClass,
+} from '@/components/admin/AdminUI';
 import { saveAdminAccount, saveAdminSettings } from '../../actions';
 
 export const dynamic = 'force-dynamic';
@@ -41,14 +61,20 @@ function permissionValues(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === 'string');
 }
 
-const fieldControlClass =
-  'h-9 w-full rounded border border-neutral-300 bg-white px-2.5 text-[13px] font-medium text-neutral-950 outline-none transition focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900';
+const ADMIN_ACCOUNT_SORT_KEYS = [
+  'no',
+  'loginId',
+  'email',
+  'name',
+  'role',
+  'status',
+  'lastLoginAt',
+] as const;
 
-const textareaClass =
-  'mt-1.5 w-full rounded border border-neutral-300 bg-white px-2.5 py-2 text-[13px] leading-5 text-neutral-950 outline-none transition focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900';
-
-const compactButtonClass =
-  'inline-flex h-9 items-center justify-center gap-1.5 rounded border border-neutral-800 bg-neutral-900 px-3 text-[13px] font-bold text-white hover:bg-neutral-800';
+type SettingsSearchParams = {
+  sort?: string;
+  dir?: string;
+};
 
 function TextInput({
   name,
@@ -67,40 +93,16 @@ function TextInput({
         {label}
         {required ? <span className="ml-0.5 text-red-500">*</span> : null}
       </span>
-      <input name={name} defaultValue={value} required={required} className={fieldControlClass} />
+      <input name={name} defaultValue={value} required={required} className={adminFieldClass} />
     </label>
   );
 }
 
-function Section({
-  title,
-  description,
-  children,
-  className = '',
+export default async function AdminSettingsPage({
+  searchParams,
 }: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-  className?: string;
+  searchParams: SettingsSearchParams;
 }) {
-  return (
-    <section
-      className={`overflow-hidden rounded-md border border-neutral-300 bg-white shadow-sm ${className}`}
-    >
-      <div className="flex items-center justify-between gap-3 border-b border-neutral-200 bg-neutral-50 px-3 py-2">
-        <div>
-          <h2 className="text-sm font-extrabold text-neutral-950">{title}</h2>
-          {description ? (
-            <p className="mt-0.5 text-xs font-medium text-neutral-500">{description}</p>
-          ) : null}
-        </div>
-      </div>
-      <div className="p-3">{children}</div>
-    </section>
-  );
-}
-
-export default async function AdminSettingsPage() {
   await requireAdmin('settings.read');
   const [policy, adminUsers] = await Promise.all([
     prisma.sitePolicy.findUnique({ where: { key: 'default' } }),
@@ -119,20 +121,31 @@ export default async function AdminSettingsPage() {
       },
     }),
   ]);
+  const sortState = parseAdminSort(searchParams, ADMIN_ACCOUNT_SORT_KEYS);
+  const effectiveSort = sortState.sort ?? 'no';
+  const sortedAdminUsers = [...adminUsers].sort((a, b) => {
+    if (effectiveSort === 'no') return compareAdminValues(a.id, b.id, sortState.dir);
+    return compareAdminValues(a[effectiveSort], b[effectiveSort], sortState.dir);
+  });
+  const params = new URLSearchParams();
+  if (sortState.sort) {
+    params.set('sort', sortState.sort);
+    params.set('dir', sortState.dir);
+  }
 
   return (
     <div className="min-w-0 space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-extrabold text-neutral-950">사이트 설정</h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            회사정보, 고객센터, 입금계좌, 약관 정보를 관리합니다.
-          </p>
-        </div>
-      </div>
+      <AdminPageHeader
+        title="사이트 설정"
+        description="회사정보, 고객센터, 입금계좌, 약관 정보를 관리합니다."
+      />
 
       <form action={saveAdminSettings} className="grid gap-4 xl:grid-cols-2">
-        <Section title="회사 정보" description="사업자 표시와 개인정보 책임자 정보를 입력합니다.">
+        <AdminSection
+          title="회사 정보"
+          description="사업자 표시와 개인정보 책임자 정보를 입력합니다."
+          icon={Building2}
+        >
           <div className="grid gap-2.5">
             <TextInput
               name="companyName"
@@ -176,9 +189,13 @@ export default async function AdminSettingsPage() {
               required
             />
           </div>
-        </Section>
+        </AdminSection>
 
-        <Section title="운영 정보" description="고객센터 운영시간과 무통장 입금 정보를 관리합니다.">
+        <AdminSection
+          title="운영 정보"
+          description="고객센터 운영시간과 무통장 입금 정보를 관리합니다."
+          icon={Clock3}
+        >
           <div className="grid gap-2.5">
             <TextInput
               name="customerCenterTel"
@@ -205,7 +222,7 @@ export default async function AdminSettingsPage() {
             <TextInput name="bankAccount" label="입금 계좌" value={policy?.bankAccount ?? ''} />
             <label className="grid gap-1.5 sm:grid-cols-[132px_minmax(0,1fr)] sm:items-center">
               <span className="text-xs font-bold text-neutral-600">약관 HTML</span>
-              <span className="inline-flex h-9 items-center gap-2 rounded border border-neutral-300 bg-neutral-50 px-2.5 text-[13px] font-bold text-neutral-800">
+              <span className="inline-flex h-9 items-center gap-2 rounded border border-neutral-300 bg-neutral-50/80 px-2.5 text-[13px] font-bold text-neutral-800 shadow-inner shadow-neutral-950/[0.025]">
                 <input
                   type="checkbox"
                   name="htmlEnabled"
@@ -216,11 +233,12 @@ export default async function AdminSettingsPage() {
               </span>
             </label>
           </div>
-        </Section>
+        </AdminSection>
 
-        <Section
+        <AdminSection
           title="약관 문서"
           description="고객에게 노출되는 정책 문서입니다."
+          icon={FileText}
           className="xl:col-span-2"
         >
           <div className="grid gap-3 xl:grid-cols-2">
@@ -231,7 +249,7 @@ export default async function AdminSettingsPage() {
                 defaultValue={policy?.terms ?? ''}
                 rows={7}
                 required
-                className={textareaClass}
+                className={`mt-1.5 ${adminTextareaClass}`}
               />
             </label>
             <label className="block">
@@ -241,7 +259,7 @@ export default async function AdminSettingsPage() {
                 defaultValue={policy?.privacy ?? ''}
                 rows={7}
                 required
-                className={textareaClass}
+                className={`mt-1.5 ${adminTextareaClass}`}
               />
             </label>
             <label className="block">
@@ -251,7 +269,7 @@ export default async function AdminSettingsPage() {
                 defaultValue={policy?.collectionConsent ?? ''}
                 rows={6}
                 required
-                className={textareaClass}
+                className={`mt-1.5 ${adminTextareaClass}`}
               />
             </label>
             <label className="block">
@@ -261,46 +279,50 @@ export default async function AdminSettingsPage() {
                 defaultValue={policy?.companyInfo ?? ''}
                 rows={6}
                 required
-                className={textareaClass}
+                className={`mt-1.5 ${adminTextareaClass}`}
               />
             </label>
           </div>
           <div className="mt-3 flex justify-end border-t border-neutral-100 pt-3">
-            <button className={compactButtonClass}>
+            <button className={adminPrimaryButtonClass}>
               <Save size={15} />
               설정 저장
             </button>
           </div>
-        </Section>
+        </AdminSection>
       </form>
 
-      <Section title="관리자 계정" description="계정, 역할, 권한, 상태를 한 화면에서 관리합니다.">
+      <AdminSection
+        title="관리자 계정"
+        description="계정, 역할, 권한, 상태를 한 화면에서 관리합니다."
+        icon={UsersRound}
+      >
         <form action={saveAdminAccount} className="grid gap-3 border-b border-neutral-200 pb-3">
           <div className="grid gap-2 md:grid-cols-[140px_minmax(190px,1fr)_120px_150px_140px_120px]">
-            <input name="loginId" placeholder="관리자 ID" className={fieldControlClass} required />
+            <input name="loginId" placeholder="관리자 ID" className={adminFieldClass} required />
             <input
               name="email"
               type="email"
               placeholder="이메일"
-              className={fieldControlClass}
+              className={adminFieldClass}
               required
             />
-            <input name="name" placeholder="이름" className={fieldControlClass} required />
+            <input name="name" placeholder="이름" className={adminFieldClass} required />
             <input
               name="password"
               type="password"
               placeholder="초기 비밀번호"
-              className={fieldControlClass}
+              className={adminFieldClass}
               required
             />
-            <select name="role" defaultValue="operator" className={fieldControlClass}>
+            <select name="role" defaultValue="operator" className={adminFieldClass}>
               {ADMIN_ROLES.map((role) => (
                 <option key={role.value} value={role.value}>
                   {role.label}
                 </option>
               ))}
             </select>
-            <select name="status" defaultValue="active" className={fieldControlClass}>
+            <select name="status" defaultValue="active" className={adminFieldClass}>
               <option value="active">사용</option>
               <option value="inactive">중지</option>
               <option value="blocked">차단</option>
@@ -310,7 +332,7 @@ export default async function AdminSettingsPage() {
             {ADMIN_PERMISSIONS.map((permission) => (
               <label
                 key={permission.value}
-                className="flex h-8 items-center gap-2 rounded border border-neutral-200 bg-neutral-50 px-2 text-xs font-semibold text-neutral-700"
+                className="flex h-8 items-center gap-2 rounded border border-neutral-200 bg-neutral-50/80 px-2 text-xs font-semibold text-neutral-700 shadow-sm shadow-neutral-950/[0.025]"
               >
                 <input
                   type="checkbox"
@@ -323,139 +345,249 @@ export default async function AdminSettingsPage() {
             ))}
           </div>
           <div className="flex justify-end">
-            <button className={compactButtonClass}>
+            <button className={adminPrimaryButtonClass}>
               <UserPlus size={15} />
               관리자 등록
             </button>
           </div>
         </form>
 
-        <div className="mt-3 overflow-x-auto rounded border border-neutral-300">
-          <table className="w-full min-w-[1120px] table-fixed border-collapse text-[13px]">
-            <thead>
-              <tr className="bg-neutral-100 text-left text-xs font-bold text-neutral-700">
-                <th className="w-[260px] border border-neutral-300 px-2.5 py-2">계정</th>
-                <th className="w-32 border border-neutral-300 px-2.5 py-2">역할</th>
-                <th className="w-[420px] border border-neutral-300 px-2.5 py-2">권한</th>
-                <th className="w-28 border border-neutral-300 px-2.5 py-2">상태</th>
-                <th className="w-28 border border-neutral-300 px-2.5 py-2 text-right">
-                  최근 로그인
-                </th>
-                <th className="w-20 border border-neutral-300 px-2.5 py-2 text-right">저장</th>
-              </tr>
-            </thead>
-            <tbody>
-              {adminUsers.length === 0 ? (
-                <tr>
+        <div className="mt-3">
+          <AdminDataGrid
+            caption="관리자 계정 목록"
+            columns={[
+              { key: 'no', label: 'No', align: 'right', widthClassName: 'w-14', sortKey: 'no' },
+              {
+                key: 'loginId',
+                label: '관리자 ID',
+                widthClassName: 'w-32',
+                priority: 'primary',
+                sortKey: 'loginId',
+              },
+              { key: 'email', label: '이메일', widthClassName: 'w-60', sortKey: 'email' },
+              { key: 'name', label: '이름', widthClassName: 'w-36', sortKey: 'name' },
+              { key: 'password', label: '비밀번호', widthClassName: 'w-44' },
+              { key: 'role', label: '역할', widthClassName: 'w-36', sortKey: 'role' },
+              { key: 'permissions', label: '권한', widthClassName: 'w-[440px]' },
+              { key: 'status', label: '상태', widthClassName: 'w-32', sortKey: 'status' },
+              {
+                key: 'lastLogin',
+                label: '최근 로그인',
+                align: 'right',
+                widthClassName: 'w-28',
+                sortKey: 'lastLoginAt',
+              },
+              { key: 'save', label: '저장', align: 'right', widthClassName: 'w-24' },
+            ]}
+            rows={sortedAdminUsers}
+            rowKey={(adminUser) => adminUser.id.toString()}
+            emptyText="등록된 관리자 계정이 없습니다."
+            minWidthClassName="min-w-[1320px]"
+            currentSortKey={sortState.sort}
+            currentSortDirection={sortState.dir}
+            getSortHref={createAdminSortHref('/admin/settings', params)}
+            renderRow={(adminUser, index) => {
+              const permissions = permissionValues(adminUser.permissions);
+              return (
+                <tr
+                  key={adminUser.id.toString()}
+                  className="bg-white align-top transition hover:bg-neutral-50"
+                >
+                  <td className={`${adminGridCellClass} text-right font-bold text-neutral-500`}>
+                    {sortedAdminUsers.length - index}
+                  </td>
+                  <td className={adminGridStickyCellClass}>
+                    <form id={`admin-user-${adminUser.id.toString()}`} action={saveAdminAccount}>
+                      <input type="hidden" name="id" value={adminUser.id.toString()} />
+                      <input
+                        name="loginId"
+                        defaultValue={adminUser.loginId}
+                        className={`${adminFieldClass} font-bold`}
+                      />
+                    </form>
+                  </td>
+                  <td className={adminGridCellClass}>
+                    <input
+                      form={`admin-user-${adminUser.id.toString()}`}
+                      name="email"
+                      type="email"
+                      defaultValue={adminUser.email}
+                      className={adminFieldClass}
+                    />
+                  </td>
+                  <td className={adminGridCellClass}>
+                    <input
+                      form={`admin-user-${adminUser.id.toString()}`}
+                      name="name"
+                      defaultValue={adminUser.name}
+                      className={adminFieldClass}
+                    />
+                  </td>
+                  <td className={adminGridCellClass}>
+                    <input
+                      form={`admin-user-${adminUser.id.toString()}`}
+                      name="password"
+                      type="password"
+                      placeholder="변경 시 입력"
+                      className={adminFieldClass}
+                    />
+                  </td>
+                  <td className={adminGridCellClass}>
+                    <select
+                      form={`admin-user-${adminUser.id.toString()}`}
+                      name="role"
+                      defaultValue={adminUser.role}
+                      className={adminFieldClass}
+                    >
+                      {ADMIN_ROLES.map((role) => (
+                        <option key={role.value} value={role.value}>
+                          {role.label}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className={adminGridCellClass}>
+                    <div className="grid gap-x-3 gap-y-1.5 sm:grid-cols-2">
+                      {ADMIN_PERMISSIONS.map((permission) => (
+                        <label
+                          key={permission.value}
+                          className="flex items-center gap-1.5 text-xs font-medium text-neutral-700"
+                        >
+                          <input
+                            form={`admin-user-${adminUser.id.toString()}`}
+                            type="checkbox"
+                            name="permissions"
+                            value={permission.value}
+                            defaultChecked={permissions.includes(permission.value)}
+                            className="h-3.5 w-3.5 rounded border-neutral-300 accent-neutral-900"
+                          />
+                          {permission.label}
+                        </label>
+                      ))}
+                    </div>
+                  </td>
+                  <td className={adminGridCellClass}>
+                    <select
+                      form={`admin-user-${adminUser.id.toString()}`}
+                      name="status"
+                      defaultValue={adminUser.status}
+                      className={adminFieldClass}
+                    >
+                      <option value="active">사용</option>
+                      <option value="inactive">중지</option>
+                      <option value="blocked">차단</option>
+                    </select>
+                  </td>
                   <td
-                    colSpan={6}
-                    className="h-20 border border-neutral-200 px-3 text-center text-neutral-500"
+                    className={`${adminGridCellClass} text-right text-xs font-medium text-neutral-500`}
                   >
-                    등록된 관리자 계정이 없습니다.
+                    {adminUser.lastLoginAt?.toLocaleDateString('ko-KR') ?? '이력 없음'}
+                  </td>
+                  <td className={`${adminGridCellClass} text-right`}>
+                    <button
+                      form={`admin-user-${adminUser.id.toString()}`}
+                      className={adminGridButtonClass}
+                    >
+                      <ShieldCheck size={14} />
+                      저장
+                    </button>
                   </td>
                 </tr>
-              ) : (
-                adminUsers.map((adminUser) => {
-                  const permissions = permissionValues(adminUser.permissions);
-                  return (
-                    <tr key={adminUser.id.toString()} className="align-top hover:bg-blue-50/60">
-                      <td className="border border-neutral-200 px-2.5 py-2">
-                        <form
-                          id={`admin-user-${adminUser.id.toString()}`}
-                          action={saveAdminAccount}
-                          className="grid gap-1.5"
+              );
+            }}
+            renderMobileCard={(adminUser) => {
+              const permissions = permissionValues(adminUser.permissions);
+              return (
+                <AdminMobileCard>
+                  <form
+                    id={`admin-user-mobile-${adminUser.id.toString()}`}
+                    action={saveAdminAccount}
+                    className="grid gap-2"
+                  >
+                    <input type="hidden" name="id" value={adminUser.id.toString()} />
+                    <input
+                      name="loginId"
+                      defaultValue={adminUser.loginId}
+                      className={`${adminFieldClass} h-11 font-bold`}
+                      aria-label="관리자 ID"
+                    />
+                    <input
+                      name="email"
+                      type="email"
+                      defaultValue={adminUser.email}
+                      className={`${adminFieldClass} h-11`}
+                      aria-label="이메일"
+                    />
+                    <input
+                      name="name"
+                      defaultValue={adminUser.name}
+                      className={`${adminFieldClass} h-11`}
+                      aria-label="이름"
+                    />
+                    <input
+                      name="password"
+                      type="password"
+                      placeholder="변경 시 입력"
+                      className={`${adminFieldClass} h-11`}
+                      aria-label="비밀번호"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <select
+                        name="role"
+                        defaultValue={adminUser.role}
+                        className={`${adminFieldClass} h-11`}
+                        aria-label="역할"
+                      >
+                        {ADMIN_ROLES.map((role) => (
+                          <option key={role.value} value={role.value}>
+                            {role.label}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        name="status"
+                        defaultValue={adminUser.status}
+                        className={`${adminFieldClass} h-11`}
+                        aria-label="상태"
+                      >
+                        <option value="active">사용</option>
+                        <option value="inactive">중지</option>
+                        <option value="blocked">차단</option>
+                      </select>
+                    </div>
+                    <div className="grid gap-1.5 rounded-md bg-neutral-50 p-2 sm:grid-cols-2">
+                      {ADMIN_PERMISSIONS.map((permission) => (
+                        <label
+                          key={permission.value}
+                          className="flex min-h-8 items-center gap-2 text-xs font-medium text-neutral-700"
                         >
-                          <input type="hidden" name="id" value={adminUser.id.toString()} />
                           <input
-                            name="loginId"
-                            defaultValue={adminUser.loginId}
-                            className={`${fieldControlClass} font-bold`}
+                            type="checkbox"
+                            name="permissions"
+                            value={permission.value}
+                            defaultChecked={permissions.includes(permission.value)}
+                            className="h-3.5 w-3.5 rounded border-neutral-300 accent-neutral-900"
                           />
-                          <input
-                            name="email"
-                            type="email"
-                            defaultValue={adminUser.email}
-                            className={fieldControlClass}
-                          />
-                          <input
-                            name="name"
-                            defaultValue={adminUser.name}
-                            className={fieldControlClass}
-                          />
-                          <input
-                            name="password"
-                            type="password"
-                            placeholder="변경 시 입력"
-                            className={fieldControlClass}
-                          />
-                        </form>
-                      </td>
-                      <td className="border border-neutral-200 px-2.5 py-2">
-                        <select
-                          form={`admin-user-${adminUser.id.toString()}`}
-                          name="role"
-                          defaultValue={adminUser.role}
-                          className={fieldControlClass}
-                        >
-                          {ADMIN_ROLES.map((role) => (
-                            <option key={role.value} value={role.value}>
-                              {role.label}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="border border-neutral-200 px-2.5 py-2">
-                        <div className="grid gap-x-3 gap-y-1.5 sm:grid-cols-2">
-                          {ADMIN_PERMISSIONS.map((permission) => (
-                            <label
-                              key={permission.value}
-                              className="flex items-center gap-1.5 text-xs font-medium text-neutral-700"
-                            >
-                              <input
-                                form={`admin-user-${adminUser.id.toString()}`}
-                                type="checkbox"
-                                name="permissions"
-                                value={permission.value}
-                                defaultChecked={permissions.includes(permission.value)}
-                                className="h-3.5 w-3.5 rounded border-neutral-300 accent-neutral-900"
-                              />
-                              {permission.label}
-                            </label>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="border border-neutral-200 px-2.5 py-2">
-                        <select
-                          form={`admin-user-${adminUser.id.toString()}`}
-                          name="status"
-                          defaultValue={adminUser.status}
-                          className={fieldControlClass}
-                        >
-                          <option value="active">사용</option>
-                          <option value="inactive">중지</option>
-                          <option value="blocked">차단</option>
-                        </select>
-                      </td>
-                      <td className="border border-neutral-200 px-2.5 py-2 text-right text-xs font-medium text-neutral-500">
+                          {permission.label}
+                        </label>
+                      ))}
+                    </div>
+                    <dl className="grid gap-2">
+                      <AdminMobileField label="최근 로그인" align="right">
                         {adminUser.lastLoginAt?.toLocaleDateString('ko-KR') ?? '이력 없음'}
-                      </td>
-                      <td className="border border-neutral-200 px-2.5 py-2 text-right">
-                        <button
-                          form={`admin-user-${adminUser.id.toString()}`}
-                          className="inline-flex h-9 items-center justify-center gap-1 rounded border border-neutral-300 bg-white px-2.5 text-xs font-bold hover:bg-neutral-100"
-                        >
-                          <ShieldCheck size={14} />
-                          저장
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                      </AdminMobileField>
+                    </dl>
+                    <button className={adminGridButtonClass}>
+                      <ShieldCheck size={14} />
+                      저장
+                    </button>
+                  </form>
+                </AdminMobileCard>
+              );
+            }}
+          />
         </div>
-      </Section>
+      </AdminSection>
     </div>
   );
 }

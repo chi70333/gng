@@ -36,9 +36,7 @@ export default function JoinPage({ searchParams }: JoinPageProps) {
     <div className="mx-auto flex min-h-[calc(100dvh-8rem)] w-full max-w-md flex-col justify-center px-4 py-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-neutral-900">회원가입</h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          기존 회원 기준과 동일하게 아이디로 가입합니다.
-        </p>
+        <p className="mt-1 text-sm text-neutral-500">아이디와 비밀번호로 가입합니다.</p>
       </div>
 
       {message && (

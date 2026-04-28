@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
 import { parseBigIntRouteParam } from '@/lib/route-params';
+import { AdminPageHeader, adminSecondaryButtonClass } from '@/components/admin/AdminUI';
 import { ProductForm } from '../ProductForm';
 
 export const dynamic = 'force-dynamic';
@@ -51,19 +52,16 @@ export default async function EditProductPage({ params }: { params: { id: string
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-bold text-neutral-500">상품 관리</p>
-          <h1 className="mt-1 truncate text-2xl font-extrabold text-neutral-950">상품 수정</h1>
-          <p className="mt-1 truncate text-sm text-neutral-500">{product.name}</p>
-        </div>
-        <Link
-          href="/admin/products"
-          className="inline-flex min-h-11 items-center justify-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-bold text-neutral-800 shadow-sm hover:bg-neutral-50 md:min-h-10"
-        >
-          목록으로
-        </Link>
-      </div>
+      <AdminPageHeader
+        eyebrow="상품 관리"
+        title="상품 수정"
+        description={product.name}
+        actions={
+          <Link href="/admin/products" className={adminSecondaryButtonClass}>
+            목록으로
+          </Link>
+        }
+      />
       <ProductForm product={product} categories={categories} />
     </div>
   );

@@ -61,7 +61,6 @@ function createOrderNo(): string {
 
 function getPaymentProvider(method: string): string {
   if (method === 'bank') return 'manual-bank';
-  if (method === 'transfer') return 'bank-transfer';
   return 'checkout-pending';
 }
 
@@ -71,7 +70,7 @@ function buildPaymentRawResponse(input: CreateOrderInput) {
     source: 'checkout',
     paymentMethod: method,
     bankDeposit:
-      method === 'bank' || method === 'transfer'
+      method === 'bank'
         ? {
             account: process.env.BANK_TRANSFER_ACCOUNT ?? null,
             depositorName: input.depositorName || input.buyerName || input.receiver,

@@ -2,13 +2,13 @@
 // Cache: ISR 60s + product:<slug> service cache tag.
 
 import type { Metadata } from 'next';
-import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { Star, Package, ChevronRight } from 'lucide-react';
+import { Star, ChevronRight } from 'lucide-react';
 import BreadcrumbNav from '@/components/shop/BreadcrumbNav';
 import AddToCartPanel from '@/components/shop/AddToCartPanel';
 import ProductQnaForm from '@/components/shop/ProductQnaForm';
+import ProductImageGallery from '@/components/shop/ProductImageGallery';
 import {
   getCachedProductBySlug,
   getCachedProductMetadataBySlug,
@@ -67,66 +67,6 @@ function groupSkusByOption(
     );
   }
   return result;
-}
-
-function ProductImageGallery({
-  product,
-  canShowPrice,
-}: {
-  product: ProductDetail;
-  canShowPrice: boolean;
-}) {
-  const mainImage =
-    product.images.find((image) => image.isMain) ?? product.images[0];
-  const displayUrl = mainImage?.url ?? product.thumbnail;
-
-  return (
-    <div className="w-full shrink-0 md:w-[420px]">
-      <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-neutral-100">
-        {displayUrl ? (
-          <Image
-            src={displayUrl}
-            alt={product.name}
-            fill
-            sizes="(max-width: 768px) 100vw, 420px"
-            className="object-cover"
-            priority
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-neutral-300">
-            <Package size={48} />
-          </div>
-        )}
-        {canShowPrice && product.salePrice && (
-          <span className="absolute left-3 top-3 rounded-lg bg-red-500 px-2 py-1 text-sm font-bold text-white">
-            {calcDiscountPct(product.price, product.salePrice)}% 할인
-          </span>
-        )}
-      </div>
-
-      {product.images.length > 1 && (
-        <div className="scrollbar-none mt-3 flex gap-2 overflow-x-auto pb-1">
-          {product.images.slice(0, 6).map((image) => (
-            <div
-              key={image.id}
-              className={cn(
-                'relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 bg-neutral-100 transition-colors',
-                image.isMain ? 'border-neutral-900' : 'border-transparent',
-              )}
-            >
-              <Image
-                src={image.url}
-                alt={image.alt ?? product.name}
-                fill
-                sizes="64px"
-                className="object-cover"
-              />
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 function ProductOptions({ product }: { product: ProductDetail }) {
@@ -225,7 +165,14 @@ export default async function GoodsDetailPage({ params }: { params: { id: string
       <BreadcrumbNav items={breadcrumbs} />
 
       <div className="mt-4 flex flex-col gap-8 md:flex-row">
-        <ProductImageGallery product={product} canShowPrice={canShowPrice} />
+        <ProductImageGallery
+          key={product.id}
+          productName={product.name}
+          thumbnail={product.thumbnail}
+          images={product.images}
+          canShowPrice={canShowPrice}
+          discountPct={discountPct}
+        />
 
         <div className="min-w-0 flex-1 space-y-5">
           {product.brand && (

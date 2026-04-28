@@ -24,16 +24,29 @@ export const adminProductStatusSchema = z.enum(['draft', 'active', 'sold_out', '
 
 const emptyStringToUndefined = (value: unknown) => (value === '' ? undefined : value);
 
-export const adminProductListQuerySchema = z.object({
-  q: z.string().trim().max(100).optional().default(''),
-  status: z.preprocess(emptyStringToUndefined, adminProductStatusSchema.optional()),
-  categoryId: z.preprocess(emptyStringToUndefined, z.coerce.bigint().optional()),
-  stock: z.preprocess(emptyStringToUndefined, z.enum(['low', 'managed', 'unlimited']).optional()),
-  page: z.preprocess(
-    emptyStringToUndefined,
-    z.coerce.number().int().min(1).max(1000).optional().default(1),
-  ),
-});
+export const adminProductListQuerySchema = z
+  .object({
+    q: z.string().trim().max(100).optional().default(''),
+    status: z.preprocess(emptyStringToUndefined, adminProductStatusSchema.optional()),
+    categoryId: z.preprocess(emptyStringToUndefined, z.coerce.bigint().optional()),
+    stock: z.preprocess(emptyStringToUndefined, z.enum(['low', 'managed', 'unlimited']).optional()),
+    page: z.preprocess(
+      emptyStringToUndefined,
+      z.coerce.number().int().min(1).max(1000).optional().default(1),
+    ),
+    pageSize: z.preprocess(
+      emptyStringToUndefined,
+      z.coerce.number().int().min(10).max(200).optional().default(30),
+    ),
+  })
+  .transform((value) => ({
+    q: value.q,
+    page: value.page,
+    pageSize: value.pageSize,
+    ...(value.status ? { status: value.status } : {}),
+    ...(value.categoryId ? { categoryId: value.categoryId } : {}),
+    ...(value.stock ? { stock: value.stock } : {}),
+  }));
 
 export const adminProductFormSchema = z
   .object({
@@ -47,7 +60,7 @@ export const adminProductFormSchema = z
       .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug는 영문 소문자, 숫자, 하이픈만 사용할 수 있습니다.'),
     name: z.string().trim().min(1, '상품명을 입력해주세요.').max(200),
     summary: z.string().trim().max(500).optional().or(z.literal('')),
-    description: z.string().trim().max(20000).optional().or(z.literal('')),
+    description: z.string().trim().max(50000).optional().or(z.literal('')),
     price: moneyString,
     salePrice: optionalMoneyString,
     costPrice: optionalMoneyString,

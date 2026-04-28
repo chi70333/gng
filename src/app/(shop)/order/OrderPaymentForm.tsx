@@ -1,8 +1,20 @@
 'use client';
 
 import Image from 'next/image';
-import { Search, X } from 'lucide-react';
+import {
+  Banknote,
+  CheckCircle2,
+  ClipboardList,
+  ReceiptText,
+  Search,
+  Truck,
+  UserRound,
+  WalletCards,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useFormStatus } from 'react-dom';
 import { FormattedNumberInput } from '@/components/ui/FormattedNumberInput';
 import { formatKRW, formatNumber } from '@/lib/format';
@@ -55,6 +67,11 @@ export type OrderPaymentFormProps = {
   subtotal: number;
   shippingFee: number;
   hasUnavailableItem: boolean;
+  bankInfo: {
+    bankName: string;
+    bankAccount: string;
+    bankLogoText: string;
+  };
   error?: string;
 };
 
@@ -91,8 +108,36 @@ type PostcodeWindow = Window & {
 const postcodeScriptId = 'daum-postcode-script';
 const postcodeScriptSrc = 'https://t1.kakaocdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js';
 const fieldClass =
-  'min-h-11 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-neutral-300';
-const labelClass = 'mb-1 block text-xs font-semibold text-neutral-700';
+  'min-h-11 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-neutral-200';
+const labelClass = 'mb-1.5 block text-xs font-bold text-neutral-700';
+const sectionClass = 'rounded-lg border border-neutral-200 bg-white p-4 shadow-sm sm:p-5';
+
+function FormSection({
+  icon: Icon,
+  title,
+  description,
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className={sectionClass}>
+      <div className="flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-neutral-900 text-white">
+          <Icon aria-hidden="true" size={18} />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-base font-extrabold text-neutral-950">{title}</h2>
+          {description && <p className="mt-1 text-sm leading-5 text-neutral-500">{description}</p>}
+        </div>
+      </div>
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+}
 
 function loadPostcodeScript(): Promise<void> {
   const postcodeWindow = window as PostcodeWindow;
@@ -146,13 +191,7 @@ function calculateCouponDiscount(coupon: PaymentCoupon | undefined, subtotal: nu
   return Math.min(toWon(capped), subtotal);
 }
 
-function PaymentSubmitButton({
-  finalTotal,
-  disabled,
-}: {
-  finalTotal: number;
-  disabled: boolean;
-}) {
+function PaymentSubmitButton({ finalTotal, disabled }: { finalTotal: number; disabled: boolean }) {
   const { pending } = useFormStatus();
 
   return (
@@ -174,6 +213,7 @@ export function OrderPaymentForm({
   subtotal,
   shippingFee,
   hasUnavailableItem,
+  bankInfo,
   error,
 }: OrderPaymentFormProps) {
   const defaultAddress = orderUser?.defaultAddress ?? null;
@@ -199,6 +239,7 @@ export function OrderPaymentForm({
   const maxUsablePoints = Math.min(orderUser?.pointBalance ?? 0, payableBeforePoints);
   const appliedPoints = Math.min(pointValue(pointsToUse), maxUsablePoints);
   const finalTotal = toWon(payableBeforePoints - appliedPoints);
+  const bankAccountLabel = [bankInfo.bankName, bankInfo.bankAccount].filter(Boolean).join(' ');
 
   useEffect(() => {
     if (pointValue(pointsToUse) > maxUsablePoints) {
@@ -268,393 +309,425 @@ export function OrderPaymentForm({
 
   return (
     <>
-      <div className="mx-auto grid max-w-6xl gap-4 px-3 py-4 lg:grid-cols-[minmax(0,1fr)_300px] lg:px-4">
-        <section>
-          <h1 className="mb-3 text-lg font-bold text-neutral-900">결제하기</h1>
-          {error && (
-            <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
-              입력 정보를 확인해 주세요. 재고가 부족하거나 필수 정보가 누락되었을 수 있습니다.
-            </p>
-          )}
-          {hasUnavailableItem && (
-            <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700">
-              구매할 수 없는 상품이 있습니다. 장바구니에서 수량 또는 상품을 조정해 주세요.
-            </p>
-          )}
+      <div className="bg-neutral-50">
+        <div className="mx-auto grid max-w-6xl gap-4 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-6 lg:py-8">
+          <section className="min-w-0">
+            <div className="mb-4">
+              <p className="text-xs font-bold text-emerald-700">무통장입금 전용 주문서</p>
+              <h1 className="mt-1 text-2xl font-extrabold text-neutral-950">주문서 작성</h1>
+              <p className="mt-2 text-sm leading-6 text-neutral-600">
+                배송 정보와 입금자 정보를 확인해 주세요. 주문 접수 후 관리자 입금 확인을 거쳐
+                결제완료로 처리됩니다.
+              </p>
+            </div>
+            {error && (
+              <p className="mb-3 rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+                입력 정보를 확인해 주세요. 재고가 부족하거나 필수 정보가 누락되었을 수 있습니다.
+              </p>
+            )}
+            {hasUnavailableItem && (
+              <p className="mb-3 rounded-md border border-amber-100 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+                구매할 수 없는 상품이 있습니다. 장바구니에서 수량 또는 상품을 조정해 주세요.
+              </p>
+            )}
 
-          <form action={createOrderAction} className="space-y-3">
-            <section className="rounded-lg border border-neutral-200 bg-white p-3">
-              <h2 className="text-sm font-bold text-neutral-900">구매자 정보</h2>
-              <div className="mt-3 grid gap-2 md:grid-cols-2">
-                <label className="block">
-                  <span className={labelClass}>이름</span>
-                  <input
-                    name="buyerName"
-                    required
-                    defaultValue={orderUser?.name ?? sessionName ?? ''}
-                    className={fieldClass}
-                  />
-                </label>
-                <label className="block">
-                  <span className={labelClass}>연락처</span>
-                  <input
-                    name="buyerPhone"
-                    type="tel"
-                    required
-                    defaultValue={orderUser?.phone ?? ''}
-                    className={fieldClass}
-                  />
-                </label>
-                <label className="block md:col-span-2">
-                  <span className={labelClass}>이메일</span>
-                  <input
-                    name="buyerEmail"
-                    type="email"
-                    defaultValue={orderUser?.email ?? sessionEmail ?? ''}
-                    className={fieldClass}
-                  />
-                </label>
-              </div>
-            </section>
-
-            <section className="rounded-lg border border-neutral-200 bg-white p-3">
-              <h2 className="text-sm font-bold text-neutral-900">배송 정보</h2>
-              {orderUser && orderUser.addresses.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  <p className="text-xs font-semibold text-neutral-700">저장된 배송지</p>
-                  {orderUser.addresses.map((address) => (
-                    <div
-                      key={address.id}
-                      className="rounded-md border border-neutral-200 p-3 text-sm text-neutral-700"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-semibold text-neutral-900">
-                              {address.label || address.receiver}
-                            </span>
-                            {address.isDefault && (
-                              <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[11px] text-white">
-                                기본
-                              </span>
-                            )}
-                          </div>
-                          <p className="mt-1">{address.receiver} / {address.phone}</p>
-                          <p className="mt-1 text-neutral-500">
-                            [{address.zipCode}] {address.address1} {address.address2 ?? ''}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => selectAddress(address)}
-                          className="min-h-11 shrink-0 rounded-md border border-neutral-300 px-3 text-xs font-bold text-neutral-800"
-                        >
-                          선택
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="mt-3 grid gap-2 md:grid-cols-2">
-                <label className="block">
-                  <span className={labelClass}>받는 분</span>
-                  <input
-                    name="receiver"
-                    required
-                    value={receiver}
-                    onChange={(event) => setReceiver(event.target.value.slice(0, 50))}
-                    className={fieldClass}
-                  />
-                </label>
-                <label className="block">
-                  <span className={labelClass}>연락처</span>
-                  <input
-                    name="phone"
-                    type="tel"
-                    required
-                    value={phone}
-                    onChange={(event) => setPhone(event.target.value.slice(0, 20))}
-                    className={fieldClass}
-                  />
-                </label>
-                <div className="block">
-                  <span className={labelClass}>우편번호</span>
-                  <div className="flex gap-2">
+            <form action={createOrderAction} className="space-y-4">
+              <FormSection
+                icon={UserRound}
+                title="구매자 정보"
+                description="주문 확인과 안내를 받을 연락처입니다."
+              >
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="block">
+                    <span className={labelClass}>이름</span>
                     <input
-                      name="zipCode"
+                      name="buyerName"
                       required
-                      value={zipCode}
-                      onChange={(event) =>
-                        setZipCode(event.target.value.replace(/[^0-9]/g, '').slice(0, 5))
-                      }
-                      inputMode="numeric"
-                      autoComplete="postal-code"
+                      defaultValue={orderUser?.name ?? sessionName ?? ''}
                       className={fieldClass}
                     />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPostcodeError('');
-                        setPostcodeLayerHeight(480);
-                        setPostcodeOpen(true);
-                      }}
-                      className="flex min-h-11 shrink-0 items-center justify-center gap-1 rounded-md border border-neutral-900 bg-white px-3 text-sm font-semibold text-neutral-900"
-                      aria-label="주소 검색"
-                    >
-                      <Search aria-hidden="true" size={16} />
-                      검색
-                    </button>
-                  </div>
-                  {postcodeError && (
-                    <p className="mt-1 text-xs text-red-600" role="alert">
-                      {postcodeError}
-                    </p>
-                  )}
-                </div>
-                <label className="block md:col-span-2">
-                  <span className={labelClass}>주소</span>
-                  <input
-                    name="address1"
-                    required
-                    value={address1}
-                    onChange={(event) => setAddress1(event.target.value.slice(0, 200))}
-                    autoComplete="street-address"
-                    className={fieldClass}
-                  />
-                </label>
-                <label className="block md:col-span-2">
-                  <span className={labelClass}>상세주소</span>
-                  <input
-                    ref={detailAddressRef}
-                    name="address2"
-                    value={address2}
-                    onChange={(event) => setAddress2(event.target.value.slice(0, 200))}
-                    autoComplete="address-line2"
-                    className={fieldClass}
-                  />
-                </label>
-              </div>
-              {orderUser && (
-                <label className="mt-3 flex min-h-11 items-center gap-2 text-sm text-neutral-700">
-                  <input name="saveShippingAddress" type="checkbox" className="h-4 w-4" />
-                  <span>이 배송지를 최근 배송지에 저장합니다.</span>
-                </label>
-              )}
-            </section>
-
-            {orderUser && (
-              <section className="rounded-lg border border-neutral-200 bg-white p-3">
-                <h2 className="text-sm font-bold text-neutral-900">할인 적용</h2>
-                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  </label>
                   <label className="block">
-                    <span className={labelClass}>쿠폰</span>
-                    <select
-                      name="couponIssueId"
-                      value={couponIssueId}
-                      onChange={(event) => setCouponIssueId(event.target.value)}
+                    <span className={labelClass}>연락처</span>
+                    <input
+                      name="buyerPhone"
+                      type="tel"
+                      required
+                      defaultValue={orderUser?.phone ?? ''}
                       className={fieldClass}
-                    >
-                      <option value="">사용 안 함</option>
-                      {orderUser.coupons.map((coupon) => (
-                        <option key={coupon.id} value={coupon.id}>
-                          {coupon.label}
-                        </option>
+                    />
+                  </label>
+                  <label className="block md:col-span-2">
+                    <span className={labelClass}>이메일</span>
+                    <input
+                      name="buyerEmail"
+                      type="email"
+                      defaultValue={orderUser?.email ?? sessionEmail ?? ''}
+                      className={fieldClass}
+                    />
+                  </label>
+                </div>
+              </FormSection>
+
+              <FormSection
+                icon={Truck}
+                title="배송 정보"
+                description="정확한 배송을 위해 받는 분과 주소를 확인해 주세요."
+              >
+                {orderUser && orderUser.addresses.length > 0 && (
+                  <div className="mb-4 space-y-2">
+                    <p className="text-xs font-bold text-neutral-700">저장된 배송지</p>
+                    <div className="grid gap-2">
+                      {orderUser.addresses.map((address) => (
+                        <div
+                          key={address.id}
+                          className="rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-700"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-bold text-neutral-950">
+                                  {address.label || address.receiver}
+                                </span>
+                                {address.isDefault && (
+                                  <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[11px] font-bold text-white">
+                                    기본
+                                  </span>
+                                )}
+                              </div>
+                              <p className="mt-1 font-medium text-neutral-800">
+                                {address.receiver} / {address.phone}
+                              </p>
+                              <p className="mt-1 leading-5 text-neutral-500">
+                                [{address.zipCode}] {address.address1} {address.address2 ?? ''}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => selectAddress(address)}
+                              className="min-h-11 shrink-0 rounded-md border border-neutral-300 bg-white px-3 text-xs font-bold text-neutral-900"
+                            >
+                              선택
+                            </button>
+                          </div>
+                        </div>
                       ))}
-                    </select>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="block">
+                    <span className={labelClass}>받는 분</span>
+                    <input
+                      name="receiver"
+                      required
+                      value={receiver}
+                      onChange={(event) => setReceiver(event.target.value.slice(0, 50))}
+                      className={fieldClass}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className={labelClass}>연락처</span>
+                    <input
+                      name="phone"
+                      type="tel"
+                      required
+                      value={phone}
+                      onChange={(event) => setPhone(event.target.value.slice(0, 20))}
+                      className={fieldClass}
+                    />
                   </label>
                   <div className="block">
-                    <span className={labelClass}>
-                      포인트 {formatNumber(orderUser.pointBalance)} P 보유
-                    </span>
+                    <span className={labelClass}>우편번호</span>
                     <div className="flex gap-2">
-                      <FormattedNumberInput
-                        name="pointsToUse"
-                        min={0}
-                        max={maxUsablePoints}
-                        value={pointsToUse}
-                        onValueChange={updatePoint}
+                      <input
+                        name="zipCode"
+                        required
+                        value={zipCode}
+                        onChange={(event) =>
+                          setZipCode(event.target.value.replace(/[^0-9]/g, '').slice(0, 5))
+                        }
+                        inputMode="numeric"
+                        autoComplete="postal-code"
                         className={fieldClass}
-                        aria-label="사용할 포인트"
                       />
                       <button
                         type="button"
-                        disabled={maxUsablePoints <= 0}
-                        onClick={() => setPointsToUse(String(maxUsablePoints))}
-                        className="min-h-11 shrink-0 rounded-md border border-neutral-900 px-3 text-xs font-bold text-neutral-900 disabled:border-neutral-200 disabled:text-neutral-300"
+                        onClick={() => {
+                          setPostcodeError('');
+                          setPostcodeLayerHeight(480);
+                          setPostcodeOpen(true);
+                        }}
+                        className="flex min-h-11 shrink-0 items-center justify-center gap-1 rounded-md border border-neutral-900 bg-white px-3 text-sm font-bold text-neutral-900"
+                        aria-label="주소 검색"
                       >
-                        전액사용
+                        <Search aria-hidden="true" size={16} />
+                        검색
                       </button>
                     </div>
-                    <div className="mt-1 flex items-center justify-between gap-2 text-xs text-neutral-500">
-                      <span>결제금액 한도 내에서 사용됩니다.</span>
-                      {appliedPoints > 0 && (
+                    {postcodeError && (
+                      <p className="mt-1 text-xs text-red-600" role="alert">
+                        {postcodeError}
+                      </p>
+                    )}
+                  </div>
+                  <label className="block md:col-span-2">
+                    <span className={labelClass}>주소</span>
+                    <input
+                      name="address1"
+                      required
+                      value={address1}
+                      onChange={(event) => setAddress1(event.target.value.slice(0, 200))}
+                      autoComplete="street-address"
+                      className={fieldClass}
+                    />
+                  </label>
+                  <label className="block md:col-span-2">
+                    <span className={labelClass}>상세주소</span>
+                    <input
+                      ref={detailAddressRef}
+                      name="address2"
+                      value={address2}
+                      onChange={(event) => setAddress2(event.target.value.slice(0, 200))}
+                      autoComplete="address-line2"
+                      className={fieldClass}
+                    />
+                  </label>
+                </div>
+                {orderUser && (
+                  <label className="mt-4 flex min-h-11 items-center gap-2 rounded-md bg-neutral-50 px-3 text-sm text-neutral-700">
+                    <input name="saveShippingAddress" type="checkbox" className="h-4 w-4" />
+                    <span>이 배송지를 최근 배송지에 저장합니다.</span>
+                  </label>
+                )}
+              </FormSection>
+
+              {orderUser && (
+                <FormSection
+                  icon={WalletCards}
+                  title="할인 적용"
+                  description="쿠폰과 포인트는 결제 금액 한도 안에서 사용할 수 있습니다."
+                >
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="block">
+                      <span className={labelClass}>쿠폰</span>
+                      <select
+                        name="couponIssueId"
+                        value={couponIssueId}
+                        onChange={(event) => setCouponIssueId(event.target.value)}
+                        className={fieldClass}
+                      >
+                        <option value="">사용 안 함</option>
+                        {orderUser.coupons.map((coupon) => (
+                          <option key={coupon.id} value={coupon.id}>
+                            {coupon.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="block">
+                      <span className={labelClass}>
+                        포인트 {formatNumber(orderUser.pointBalance)} P 보유
+                      </span>
+                      <div className="flex gap-2">
+                        <FormattedNumberInput
+                          name="pointsToUse"
+                          min={0}
+                          max={maxUsablePoints}
+                          value={pointsToUse}
+                          onValueChange={updatePoint}
+                          className={fieldClass}
+                          aria-label="사용할 포인트"
+                        />
                         <button
                           type="button"
-                          onClick={() => setPointsToUse('')}
-                          className="min-h-11 px-1 font-semibold text-neutral-700"
+                          disabled={maxUsablePoints <= 0}
+                          onClick={() => setPointsToUse(String(maxUsablePoints))}
+                          className="min-h-11 shrink-0 rounded-md border border-neutral-900 px-3 text-xs font-bold text-neutral-900 disabled:border-neutral-200 disabled:text-neutral-300"
                         >
-                          사용 취소
+                          전액사용
                         </button>
+                      </div>
+                      <div className="mt-1 flex items-center justify-between gap-2 text-xs text-neutral-500">
+                        <span>결제금액 한도 내에서 사용됩니다.</span>
+                        {appliedPoints > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setPointsToUse('')}
+                            className="min-h-11 px-1 font-semibold text-neutral-700"
+                          >
+                            사용 취소
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </FormSection>
+              )}
+
+              <FormSection
+                icon={Banknote}
+                title="결제 정보"
+                description="현재 결제수단은 무통장입금만 지원합니다."
+              >
+                <input type="hidden" name="paymentMethod" value="bank" />
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-700 text-white">
+                      <CheckCircle2 aria-hidden="true" size={18} />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-extrabold text-emerald-950">무통장입금</p>
+                      <p className="mt-1 text-sm leading-5 text-emerald-800">
+                        주문 접수 후 아래 계좌로 입금해 주세요. 입금 확인 뒤 배송 준비가 시작됩니다.
+                      </p>
+                      {bankAccountLabel && (
+                        <div className="mt-3 rounded-md bg-white px-3 py-2">
+                          <p className="text-xs font-bold text-neutral-500">입금 계좌</p>
+                          <p className="mt-1 break-words text-base font-extrabold text-neutral-950">
+                            {bankAccountLabel}
+                          </p>
+                        </div>
                       )}
                     </div>
                   </div>
                 </div>
-              </section>
-            )}
-
-            <section className="rounded-lg border border-neutral-200 bg-white p-3">
-              <h2 className="text-sm font-bold text-neutral-900">결제수단</h2>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {[
-                  ['bank', '무통장입금'],
-                  ['card', '신용카드'],
-                  ['vbank', '가상계좌'],
-                  ['mobile', '휴대폰 결제'],
-                  ['transfer', '계좌이체'],
-                ].map(([value, label]) => (
-                  <label
-                    key={value}
-                    className="flex min-h-11 items-center gap-2 rounded-md border border-neutral-300 px-3 text-sm"
-                  >
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <label className="block">
+                    <span className={labelClass}>입금자명</span>
                     <input
-                      name="paymentMethod"
-                      type="radio"
-                      value={value}
-                      defaultChecked={value === 'bank'}
+                      name="depositorName"
+                      defaultValue={orderUser?.name ?? sessionName ?? ''}
+                      className={fieldClass}
                     />
-                    <span>{label}</span>
                   </label>
-                ))}
-              </div>
-              <p className="mt-2 text-xs text-neutral-500">
-                PG 연동 전까지 결제수단은 주문 접수 상태로 저장됩니다. 무통장 주문은 관리자 확인 후
-                처리합니다.
-              </p>
-              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  <label className="block">
+                    <span className={labelClass}>입금 예정일</span>
+                    <input name="depositDueDate" type="date" className={fieldClass} />
+                  </label>
+                </div>
+              </FormSection>
+
+              <FormSection
+                icon={ReceiptText}
+                title="증빙 신청"
+                description="현금영수증 또는 세금계산서가 필요하면 정보를 입력해 주세요."
+              >
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="block">
+                    <span className={labelClass}>현금영수증</span>
+                    <select name="cashReceiptType" className={fieldClass}>
+                      <option value="none">신청 안 함</option>
+                      <option value="personal">개인 소득공제</option>
+                      <option value="business">사업자 지출증빙</option>
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className={labelClass}>휴대폰/사업자번호</span>
+                    <input name="cashReceiptIdentity" className={fieldClass} />
+                  </label>
+                  <label className="flex min-h-11 items-center gap-2 text-sm text-neutral-700 md:col-span-2">
+                    <input name="taxInvoiceRequested" type="checkbox" className="h-4 w-4" />
+                    <span>세금계산서를 신청합니다.</span>
+                  </label>
+                  <label className="block">
+                    <span className={labelClass}>상호명</span>
+                    <input name="taxInvoiceCompanyName" className={fieldClass} />
+                  </label>
+                  <label className="block">
+                    <span className={labelClass}>사업자등록번호</span>
+                    <input name="taxInvoiceBusinessNumber" className={fieldClass} />
+                  </label>
+                </div>
+              </FormSection>
+
+              <section className={sectionClass}>
                 <label className="block">
-                  <span className={labelClass}>입금자명</span>
-                  <input
-                    name="depositorName"
-                    defaultValue={orderUser?.name ?? sessionName ?? ''}
-                    className={fieldClass}
+                  <span className={labelClass}>배송 메모</span>
+                  <textarea
+                    name="memo"
+                    rows={3}
+                    className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-200"
+                    placeholder="배송 전 연락, 부재 시 요청사항 등을 입력해 주세요."
                   />
                 </label>
-                <label className="block">
-                  <span className={labelClass}>입금 예정일</span>
-                  <input name="depositDueDate" type="date" className={fieldClass} />
+                <label className="mt-4 flex min-h-11 items-start gap-2 rounded-md bg-neutral-50 px-3 py-3 text-sm leading-5 text-neutral-700">
+                  <input name="agree" type="checkbox" required className="h-4 w-4" />
+                  <span>상품, 결제 금액, 배송 정보를 확인했으며 구매 진행에 동의합니다.</span>
                 </label>
-              </div>
-            </section>
+              </section>
 
-            <section className="rounded-lg border border-neutral-200 bg-white p-3">
-              <h2 className="text-sm font-bold text-neutral-900">증빙 신청</h2>
-              <div className="mt-3 grid gap-2 md:grid-cols-2">
-                <label className="block">
-                  <span className={labelClass}>현금영수증</span>
-                  <select name="cashReceiptType" className={fieldClass}>
-                    <option value="none">신청 안 함</option>
-                    <option value="personal">개인 소득공제</option>
-                    <option value="business">사업자 지출증빙</option>
-                  </select>
-                </label>
-                <label className="block">
-                  <span className={labelClass}>휴대폰/사업자번호</span>
-                  <input name="cashReceiptIdentity" className={fieldClass} />
-                </label>
-                <label className="flex min-h-11 items-center gap-2 text-sm text-neutral-700 md:col-span-2">
-                  <input name="taxInvoiceRequested" type="checkbox" className="h-4 w-4" />
-                  <span>세금계산서를 신청합니다.</span>
-                </label>
-                <label className="block">
-                  <span className={labelClass}>상호명</span>
-                  <input name="taxInvoiceCompanyName" className={fieldClass} />
-                </label>
-                <label className="block">
-                  <span className={labelClass}>사업자등록번호</span>
-                  <input name="taxInvoiceBusinessNumber" className={fieldClass} />
-                </label>
-              </div>
-            </section>
+              <PaymentSubmitButton finalTotal={finalTotal} disabled={hasUnavailableItem} />
+            </form>
+          </section>
 
-            <section className="rounded-lg border border-neutral-200 bg-white p-3">
-              <label className="block">
-                <span className={labelClass}>배송 메모</span>
-                <textarea
-                  name="memo"
-                  rows={2}
-                  className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-300"
-                />
-              </label>
-              <label className="mt-3 flex min-h-11 items-center gap-2 text-sm text-neutral-700">
-                <input name="agree" type="checkbox" required className="h-4 w-4" />
-                <span>상품, 결제 금액, 배송 정보를 확인했으며 구매 진행에 동의합니다.</span>
-              </label>
-            </section>
-
-            <PaymentSubmitButton finalTotal={finalTotal} disabled={hasUnavailableItem} />
-          </form>
-        </section>
-
-        <aside className="h-fit rounded-lg border border-neutral-200 bg-white p-3 lg:sticky lg:top-20">
-          <h2 className="mb-3 text-sm font-bold text-neutral-900">결제 요약</h2>
-          <ul className="mb-3 space-y-2">
-            {cartItems.map((item) => (
-              <li key={item.skuId} className="flex gap-2 text-sm">
-                <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-neutral-100">
-                  {item.thumbnail && (
-                    <Image
-                      src={item.thumbnail}
-                      alt={item.name}
-                      fill
-                      sizes="48px"
-                      className="object-cover"
-                    />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="line-clamp-2 text-xs font-medium text-neutral-900">{item.name}</p>
-                  {item.optionSummary && (
-                    <p className="mt-0.5 line-clamp-1 text-[11px] text-neutral-500">
-                      {item.optionSummary}
+          <aside className="order-first h-fit rounded-lg border border-neutral-200 bg-white p-4 shadow-sm lg:sticky lg:top-20 lg:order-none">
+            <div className="mb-3 flex items-center gap-2">
+              <ClipboardList aria-hidden="true" size={18} className="text-neutral-900" />
+              <h2 className="text-base font-extrabold text-neutral-950">결제 요약</h2>
+            </div>
+            <ul className="mb-4 space-y-3">
+              {cartItems.map((item) => (
+                <li key={item.skuId} className="flex gap-3 text-sm">
+                  <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md bg-neutral-100">
+                    {item.thumbnail && (
+                      <Image
+                        src={item.thumbnail}
+                        alt={item.name}
+                        fill
+                        sizes="56px"
+                        className="object-cover"
+                      />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 text-sm font-bold leading-5 text-neutral-950">
+                      {item.name}
                     </p>
-                  )}
-                  <p className="mt-0.5 text-[11px] text-neutral-500">수량 {item.quantity}개</p>
+                    {item.optionSummary && (
+                      <p className="mt-0.5 line-clamp-1 text-xs text-neutral-500">
+                        {item.optionSummary}
+                      </p>
+                    )}
+                    <p className="mt-1 text-xs text-neutral-500">수량 {item.quantity}개</p>
+                  </div>
+                  <span className="shrink-0 text-sm font-extrabold text-neutral-950">
+                    {formatKRW(Number(item.unitPrice) * item.quantity)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div className="space-y-2 border-t border-neutral-100 pt-4 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-neutral-500">상품 합계</span>
+                <span className="font-bold text-neutral-900">{formatKRW(subtotal)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-neutral-500">배송비</span>
+                <span className="font-bold text-neutral-900">{formatKRW(shippingFee)}</span>
+              </div>
+              {couponDiscount > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-neutral-500">쿠폰 할인</span>
+                  <span className="font-bold text-blue-700">-{formatKRW(couponDiscount)}</span>
                 </div>
-                <span className="shrink-0 text-xs font-bold text-neutral-900">
-                  {formatKRW(Number(item.unitPrice) * item.quantity)}
+              )}
+              {appliedPoints > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-neutral-500">포인트 사용</span>
+                  <span className="font-bold text-blue-700">-{formatNumber(appliedPoints)} P</span>
+                </div>
+              )}
+              <div className="flex items-end justify-between border-t border-neutral-100 pt-4">
+                <span className="font-bold text-neutral-900">최종 결제금액</span>
+                <span className="text-xl font-extrabold text-neutral-950">
+                  {formatKRW(finalTotal)}
                 </span>
-              </li>
-            ))}
-          </ul>
-          <div className="space-y-2 border-t border-neutral-100 pt-3 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-neutral-500">상품 합계</span>
-              <span className="font-bold text-neutral-900">{formatKRW(subtotal)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-neutral-500">배송비</span>
-              <span className="font-bold text-neutral-900">{formatKRW(shippingFee)}</span>
-            </div>
-            {couponDiscount > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-neutral-500">쿠폰 할인</span>
-                <span className="font-bold text-blue-700">-{formatKRW(couponDiscount)}</span>
               </div>
-            )}
-            {appliedPoints > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-neutral-500">포인트 사용</span>
-                <span className="font-bold text-blue-700">-{formatNumber(appliedPoints)} P</span>
-              </div>
-            )}
-            <div className="flex items-center justify-between border-t border-neutral-100 pt-3 text-base">
-              <span className="font-bold text-neutral-900">최종 결제금액</span>
-              <span className="font-extrabold text-neutral-950">{formatKRW(finalTotal)}</span>
             </div>
-          </div>
-        </aside>
+          </aside>
+        </div>
       </div>
 
       {postcodeOpen && (

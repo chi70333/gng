@@ -32,9 +32,9 @@ export function AdminShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-neutral-100 text-neutral-900">
-      <aside className="fixed inset-y-0 left-0 hidden w-60 border-r border-neutral-200 bg-white lg:block">
-        <div className="border-b border-neutral-100 px-5 py-5">
+    <div className="min-h-screen bg-[#f3f4f6] text-neutral-900">
+      <aside className="fixed inset-y-0 left-0 hidden w-60 border-r border-neutral-200 bg-white/95 shadow-[8px_0_24px_rgba(15,23,42,0.035)] lg:block">
+        <div className="border-b border-neutral-100 bg-gradient-to-b from-white to-neutral-50 px-5 py-5">
           <Link
             href="/admin"
             className="block text-lg font-extrabold hover:text-neutral-700"
@@ -51,7 +51,7 @@ export function AdminShell({
               <Link
                 key={item.href}
                 href={item.href}
-                className="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
+                className="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-semibold text-neutral-700 transition hover:-translate-y-px hover:bg-neutral-100 hover:text-neutral-950"
               >
                 <Icon size={18} />
                 {item.label}
@@ -61,8 +61,8 @@ export function AdminShell({
         </nav>
       </aside>
       <div className="lg:pl-60">
-        <header className="sticky top-0 z-10 border-b border-neutral-200 bg-white/95 px-4 py-3 backdrop-blur">
-          <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-3">
+        <header className="sticky top-0 z-10 border-b border-neutral-200 bg-white/90 px-4 py-3 shadow-sm shadow-neutral-950/[0.025] backdrop-blur">
+          <div className="max-w-screen-2xl mx-auto flex items-center justify-between gap-3">
             <Link href="/admin" className="text-base font-extrabold lg:hidden">
               GNG Admin
             </Link>
@@ -75,7 +75,7 @@ export function AdminShell({
                 <input type="hidden" name="callbackUrl" value="/admin/login" />
                 <button
                   type="submit"
-                  className="flex h-11 w-11 items-center justify-center rounded-md text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
+                  className="flex h-10 w-10 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-600 shadow-sm transition hover:-translate-y-px hover:bg-neutral-100 hover:text-neutral-900"
                   aria-label="로그아웃"
                 >
                   <LogOut size={18} />
@@ -84,18 +84,16 @@ export function AdminShell({
             </div>
           </div>
         </header>
-        <main className="mx-auto max-w-screen-2xl px-4 py-5 pb-24 lg:px-6">
-          {children}
-        </main>
+        <main className="max-w-screen-2xl mx-auto px-4 py-5 pb-24 lg:px-6">{children}</main>
       </div>
-      <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-neutral-200 bg-white lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-neutral-200 bg-white/95 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] backdrop-blur lg:hidden">
         {navItems.slice(0, 5).map((item) => {
           const Icon = item.icon;
           return (
             <Link
               key={item.href}
               href={item.href}
-              className="flex min-h-14 flex-col items-center justify-center gap-1 text-[11px] font-semibold text-neutral-600"
+              className="flex min-h-14 flex-col items-center justify-center gap-1 text-[11px] font-semibold text-neutral-600 transition hover:bg-neutral-50 hover:text-neutral-950"
             >
               <Icon size={18} />
               {item.label}

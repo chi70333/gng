@@ -15,10 +15,27 @@ import {
   TicketPercent,
   UserRound,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
 import { formatKRW, formatNumber } from '@/lib/format';
+import {
+  AdminDataGrid,
+  AdminMobileCard,
+  AdminMobileField,
+  adminGridCellClass,
+  adminGridStickyCellClass,
+} from '@/components/admin/AdminDataGrid';
 import { AdminStatusBadge } from '@/components/admin/AdminStatusBadge';
+import {
+  AdminInfoTile,
+  AdminPageHeader,
+  AdminSection,
+  adminFieldClass,
+  adminPrimaryButtonClass,
+  adminSecondaryButtonClass,
+  adminTextareaClass,
+} from '@/components/admin/AdminUI';
 import { recordAdminUserMessage, updateAdminUserStatus } from '../../../actions';
 import { AdminUserPointsClient } from './AdminUserPointsClient';
 
@@ -94,7 +111,7 @@ function InfoRow({
   strong?: boolean;
 }) {
   return (
-    <div className="grid gap-1 rounded-md bg-neutral-50 px-3 py-2">
+    <div className="grid gap-1 rounded-md border border-neutral-200 bg-white px-3 py-2 shadow-sm shadow-neutral-950/[0.025]">
       <dt className="text-xs font-bold text-neutral-500">{label}</dt>
       <dd
         className={`min-h-5 break-all text-sm ${strong ? 'font-extrabold text-neutral-950' : 'font-medium text-neutral-800'}`}
@@ -112,17 +129,9 @@ function StatCard({
 }: {
   label: string;
   value: string;
-  icon: React.ComponentType<{ className?: string; size?: number | string }>;
+  icon: LucideIcon;
 }) {
-  return (
-    <div className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-bold text-neutral-500">{label}</p>
-        <Icon className="text-neutral-300" size={22} />
-      </div>
-      <p className="mt-3 text-2xl font-extrabold text-neutral-950">{value}</p>
-    </div>
-  );
+  return <AdminInfoTile label={label} value={value} icon={Icon} />;
 }
 
 export default async function AdminUserDetailPage({ params }: { params: { id: string } }) {
@@ -162,23 +171,18 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <Link
-            href="/admin/users"
-            className="inline-flex min-h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-sm font-bold text-neutral-700 shadow-sm hover:bg-neutral-50"
-          >
+      <AdminPageHeader
+        title={user.name}
+        description={`${user.loginId ?? '아이디 없음'} / ${user.email} / ${displayPhone(user.phone)}`}
+        actions={
+          <Link href="/admin/users" className={adminSecondaryButtonClass}>
             <ArrowLeft size={16} />
             회원 목록
           </Link>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <h1 className="break-all text-2xl font-extrabold text-neutral-950">{user.name}</h1>
-            <AdminStatusBadge status={user.status} />
-          </div>
-          <p className="mt-1 break-all text-sm text-neutral-500">
-            {user.loginId ?? '아이디 없음'} / {user.email} / {displayPhone(user.phone)}
-          </p>
-        </div>
+        }
+      />
+      <div className="-mt-3">
+        <AdminStatusBadge status={user.status} />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -202,11 +206,7 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <section className="space-y-5">
-          <section className="rounded-lg border border-neutral-200 bg-white shadow-sm">
-            <div className="flex items-center gap-2 border-b border-neutral-100 px-4 py-3">
-              <UserRound className="text-neutral-300" size={20} />
-              <h2 className="text-base font-extrabold text-neutral-950">회원 기본 정보</h2>
-            </div>
+          <AdminSection title="회원 기본 정보" icon={UserRound}>
             <dl className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
               <InfoRow label="회원명" value={user.name} strong />
               <InfoRow label="아이디" value={user.loginId ?? '-'} />
@@ -221,57 +221,80 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
               <InfoRow label="최근 로그인 IP" value={user.lastLoginIp ?? '-'} />
               <InfoRow label="상태" value={statusLabel(user.status)} strong />
             </dl>
-          </section>
+          </AdminSection>
 
-          <section className="rounded-lg border border-neutral-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-4 py-3">
-              <div>
-                <h2 className="text-base font-extrabold text-neutral-950">최근 주문</h2>
-                <p className="mt-1 text-xs text-neutral-500">
-                  전체 {formatNumber(user._count.orders)}건 중 최근 10건
-                </p>
-              </div>
-              <PackageCheck className="text-neutral-300" size={22} />
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[680px] text-sm">
-                <thead className="bg-neutral-50 text-xs text-neutral-500">
-                  <tr>
-                    <th className="px-4 py-3 text-left">주문번호</th>
-                    <th className="px-4 py-3 text-left">주문일</th>
-                    <th className="px-4 py-3 text-left">상태</th>
-                    <th className="px-4 py-3 text-right">결제금액</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-100">
-                  {user.orders.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="h-24 px-4 text-center text-neutral-500">
-                        주문 이력이 없습니다.
-                      </td>
-                    </tr>
-                  ) : (
-                    user.orders.map((order) => (
-                      <tr key={order.orderNo} className="hover:bg-neutral-50">
-                        <td className="px-4 py-3 font-extrabold text-blue-700">
-                          <Link href={`/admin/orders/${order.orderNo}`}>{order.orderNo}</Link>
-                        </td>
-                        <td className="px-4 py-3 text-neutral-600">
-                          {order.createdAt.toLocaleDateString('ko-KR')}
-                        </td>
-                        <td className="px-4 py-3">
-                          <AdminStatusBadge status={order.status} />
-                        </td>
-                        <td className="px-4 py-3 text-right font-extrabold">
-                          {formatKRW(order.total.toString())}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          <AdminSection
+            title="최근 주문"
+            description={`전체 ${formatNumber(user._count.orders)}건 중 최근 10건`}
+            icon={PackageCheck}
+            bodyClassName="p-0"
+          >
+            <AdminDataGrid
+              caption="최근 주문"
+              columns={[
+                { key: 'no', label: 'No', align: 'right', widthClassName: 'w-16' },
+                {
+                  key: 'order',
+                  label: '주문번호',
+                  widthClassName: 'min-w-[220px]',
+                  priority: 'primary',
+                },
+                { key: 'date', label: '주문일', widthClassName: 'w-36' },
+                { key: 'status', label: '상태', widthClassName: 'w-32' },
+                { key: 'amount', label: '결제금액', align: 'right', widthClassName: 'w-36' },
+              ]}
+              rows={user.orders}
+              rowKey={(order) => order.orderNo}
+              emptyText="주문 이력이 없습니다."
+              minWidthClassName="min-w-[720px]"
+              className="rounded-none border-0 shadow-none"
+              renderRow={(order, index) => (
+                <tr key={order.orderNo} className="bg-white transition hover:bg-neutral-50">
+                  <td className={`${adminGridCellClass} text-right font-bold text-neutral-500`}>
+                    {user.orders.length - index}
+                  </td>
+                  <td className={adminGridStickyCellClass}>
+                    <Link
+                      href={`/admin/orders/${order.orderNo}`}
+                      className="font-extrabold text-blue-700 hover:underline"
+                    >
+                      {order.orderNo}
+                    </Link>
+                  </td>
+                  <td className={`${adminGridCellClass} text-neutral-600`}>
+                    {order.createdAt.toLocaleDateString('ko-KR')}
+                  </td>
+                  <td className={adminGridCellClass}>
+                    <AdminStatusBadge status={order.status} />
+                  </td>
+                  <td className={`${adminGridCellClass} text-right font-extrabold`}>
+                    {formatKRW(order.total.toString())}
+                  </td>
+                </tr>
+              )}
+              renderMobileCard={(order) => (
+                <AdminMobileCard>
+                  <Link
+                    href={`/admin/orders/${order.orderNo}`}
+                    className="font-extrabold text-blue-700"
+                  >
+                    {order.orderNo}
+                  </Link>
+                  <dl className="mt-3 grid grid-cols-2 gap-2">
+                    <AdminMobileField label="주문일">
+                      {order.createdAt.toLocaleDateString('ko-KR')}
+                    </AdminMobileField>
+                    <AdminMobileField label="결제금액" align="right">
+                      {formatKRW(order.total.toString())}
+                    </AdminMobileField>
+                    <AdminMobileField label="상태">
+                      <AdminStatusBadge status={order.status} />
+                    </AdminMobileField>
+                  </dl>
+                </AdminMobileCard>
+              )}
+            />
+          </AdminSection>
 
           <AdminUserPointsClient
             userId={user.id.toString()}
@@ -281,11 +304,7 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
         </section>
 
         <aside className="space-y-5">
-          <section className="rounded-lg border border-neutral-200 bg-white shadow-sm">
-            <div className="flex items-center gap-2 border-b border-neutral-100 px-4 py-3">
-              <ShieldCheck className="text-neutral-300" size={20} />
-              <h2 className="text-base font-extrabold text-neutral-950">회원 상태</h2>
-            </div>
+          <AdminSection title="회원 상태" icon={ShieldCheck}>
             <form action={updateAdminUserStatus} className="grid gap-3 p-4">
               <input type="hidden" name="userId" value={user.id.toString()} />
               <label className="grid gap-1 text-sm font-bold text-neutral-700">
@@ -293,7 +312,7 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
                 <select
                   name="status"
                   defaultValue={user.status}
-                  className="min-h-11 w-full rounded-md border border-neutral-200 px-3 font-normal text-neutral-900"
+                  className={`${adminFieldClass} h-11`}
                 >
                   <option value="active">정상</option>
                   <option value="dormant">휴면</option>
@@ -301,18 +320,14 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
                   <option value="blocked">차단</option>
                 </select>
               </label>
-              <button className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-neutral-900 px-4 text-sm font-bold text-white hover:bg-neutral-800">
+              <button className={`${adminPrimaryButtonClass} h-11`}>
                 <Save size={16} />
                 상태 저장
               </button>
             </form>
-          </section>
+          </AdminSection>
 
-          <section className="rounded-lg border border-neutral-200 bg-white shadow-sm">
-            <div className="flex items-center gap-2 border-b border-neutral-100 px-4 py-3">
-              <TicketPercent className="text-neutral-300" size={20} />
-              <h2 className="text-base font-extrabold text-neutral-950">최근 쿠폰</h2>
-            </div>
+          <AdminSection title="최근 쿠폰" icon={TicketPercent} bodyClassName="p-0">
             <ul className="divide-y divide-neutral-100">
               {user.couponIssues.length === 0 ? (
                 <li className="p-4 text-sm text-neutral-500">발급된 쿠폰이 없습니다.</li>
@@ -343,22 +358,14 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
                 ))
               )}
             </ul>
-          </section>
+          </AdminSection>
 
-          <section className="rounded-lg border border-neutral-200 bg-white shadow-sm">
-            <div className="flex items-center gap-2 border-b border-neutral-100 px-4 py-3">
-              <MessageSquareText className="text-neutral-300" size={20} />
-              <h2 className="text-base font-extrabold text-neutral-950">메일/SMS 발송 요청</h2>
-            </div>
+          <AdminSection title="메일/SMS 발송 요청" icon={MessageSquareText}>
             <form action={recordAdminUserMessage} className="grid gap-3 p-4">
               <input type="hidden" name="userId" value={user.id.toString()} />
               <label className="grid gap-1 text-sm font-bold text-neutral-700">
                 발송 채널
-                <select
-                  name="channel"
-                  defaultValue="sms"
-                  className="min-h-11 w-full rounded-md border border-neutral-200 px-3 font-normal text-neutral-900"
-                >
+                <select name="channel" defaultValue="sms" className={`${adminFieldClass} h-11`}>
                   <option value="sms">SMS</option>
                   <option value="email">메일</option>
                 </select>
@@ -368,7 +375,7 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
                 <input
                   name="subject"
                   placeholder="메일 제목"
-                  className="min-h-11 w-full rounded-md border border-neutral-200 px-3 font-normal text-neutral-900"
+                  className={`${adminFieldClass} h-11`}
                 />
               </label>
               <label className="grid gap-1 text-sm font-bold text-neutral-700">
@@ -377,16 +384,16 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
                   name="content"
                   rows={5}
                   placeholder="발송 내용"
-                  className="w-full rounded-md border border-neutral-200 px-3 py-2 font-normal text-neutral-900"
+                  className={adminTextareaClass}
                   required
                 />
               </label>
-              <button className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-neutral-900 px-4 text-sm font-bold text-white hover:bg-neutral-800">
+              <button className={`${adminPrimaryButtonClass} h-11`}>
                 <Mail size={16} />
                 요청 기록
               </button>
             </form>
-          </section>
+          </AdminSection>
         </aside>
       </div>
     </div>

@@ -9,7 +9,15 @@ import { AlertTriangle, Boxes, FileText, PackageCheck, UsersRound } from 'lucide
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
 import { formatKRW, formatNumber } from '@/lib/format';
+import {
+  AdminDataGrid,
+  AdminMobileCard,
+  AdminMobileField,
+  adminGridCellClass,
+  adminGridStickyCellClass,
+} from '@/components/admin/AdminDataGrid';
 import { AdminStatusBadge } from '@/components/admin/AdminStatusBadge';
+import { AdminInfoTile, AdminPageHeader, AdminSection } from '@/components/admin/AdminUI';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,9 +52,15 @@ const getAdminStats = unstable_cache(
       prisma.user.count({ where: { deletedAt: null } }),
       prisma.order.count({ where: { status: 'pending', deletedAt: null } }),
       prisma.productSku.count({ where: { isActive: true, stock: { lte: 5 } } }),
-      prisma.order.count({ where: { deletedAt: null, createdAt: { gte: todayStart, lt: todayEnd } } }),
-      prisma.user.count({ where: { deletedAt: null, createdAt: { gte: todayStart, lt: todayEnd } } }),
-      prisma.post.count({ where: { deletedAt: null, createdAt: { gte: todayStart, lt: todayEnd } } }),
+      prisma.order.count({
+        where: { deletedAt: null, createdAt: { gte: todayStart, lt: todayEnd } },
+      }),
+      prisma.user.count({
+        where: { deletedAt: null, createdAt: { gte: todayStart, lt: todayEnd } },
+      }),
+      prisma.post.count({
+        where: { deletedAt: null, createdAt: { gte: todayStart, lt: todayEnd } },
+      }),
       prisma.order.findMany({
         where: { deletedAt: null, createdAt: { gte: todayStart, lt: todayEnd } },
         orderBy: { createdAt: 'desc' },
@@ -148,7 +162,7 @@ function paymentLabel(method: string | undefined): string {
     vbank: '가상계좌',
     point: '마일리지',
   };
-  return method ? labels[method] ?? method : '미결제';
+  return method ? (labels[method] ?? method) : '미결제';
 }
 
 function formatDateTime(value: Date | string): string {
@@ -166,121 +180,157 @@ export default async function AdminDashboardPage() {
     { label: '상품', value: stats.products, href: '/admin/products', icon: Boxes },
     { label: '주문', value: stats.orders, href: '/admin/orders', icon: PackageCheck },
     { label: '회원', value: stats.users, href: '/admin/users', icon: UsersRound },
-    { label: '결제 대기', value: stats.pendingOrders, href: '/admin/orders?status=pending', icon: PackageCheck },
-    { label: '재고 5개 이하', value: stats.lowStock, href: '/admin/products?stock=low', icon: AlertTriangle },
+    {
+      label: '결제 대기',
+      value: stats.pendingOrders,
+      href: '/admin/orders?status=pending',
+      icon: PackageCheck,
+    },
+    {
+      label: '재고 5개 이하',
+      value: stats.lowStock,
+      href: '/admin/products?stock=low',
+      icon: AlertTriangle,
+    },
   ];
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-extrabold text-neutral-950">관리자 대시보드</h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            레거시 대시보드의 오늘 주문, 신규회원, 게시판 현황, 인기 상품을 한눈에 확인합니다.
-          </p>
-        </div>
-      </div>
+      <AdminPageHeader
+        title="관리자 대시보드"
+        description="오늘 주문, 신규회원, 게시판 현황, 인기 상품을 한눈에 확인합니다."
+      />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {cards.map((card) => {
           const Icon = card.icon;
           return (
-            <Link
-              key={card.label}
-              href={card.href}
-              className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-bold text-neutral-500">{card.label}</p>
-                <Icon className="text-neutral-300" size={22} />
-              </div>
-              <p className="mt-4 text-2xl font-extrabold text-neutral-950">{formatNumber(card.value)}</p>
+            <Link key={card.label} href={card.href}>
+              <AdminInfoTile label={card.label} value={formatNumber(card.value)} icon={Icon} />
             </Link>
           );
         })}
       </div>
 
-      <section className="rounded-lg border border-neutral-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
-          <div>
-            <h2 className="text-base font-extrabold">오늘 주문 리스트</h2>
-            <p className="mt-1 text-xs text-neutral-500">
-              오늘 {formatNumber(stats.todayOrders)}건 / 전체 {formatNumber(stats.orders)}건
-            </p>
-          </div>
+      <AdminSection
+        title="오늘 주문 리스트"
+        description={`오늘 ${formatNumber(stats.todayOrders)}건 / 전체 ${formatNumber(stats.orders)}건`}
+        bodyClassName="p-0"
+        headerAction={
           <Link href="/admin/orders" className="text-sm font-bold text-blue-700 hover:underline">
             더보기
           </Link>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] text-sm">
-            <thead className="bg-neutral-50 text-xs text-neutral-500">
-              <tr>
-                <th className="px-4 py-3 text-left">주문번호</th>
-                <th className="px-4 py-3 text-left">주문자</th>
-                <th className="px-4 py-3 text-left">전화번호</th>
-                <th className="px-4 py-3 text-left">결제방법</th>
-                <th className="px-4 py-3 text-right">결제금액</th>
-                <th className="px-4 py-3 text-left">거래상태</th>
-                <th className="px-4 py-3 text-right">주문날짜</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {stats.recentOrders.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="h-24 px-4 text-center text-neutral-500">
-                    오늘 주문내역이 없습니다.
-                  </td>
-                </tr>
-              ) : (
-                stats.recentOrders.map((order) => {
-                  const buyerName = order.user?.name || readJsonString(order.buyerInfo, ['name']) || '비회원';
-                  const phone = order.user?.phone || readJsonString(order.buyerInfo, ['phone', 'tel']) || '-';
-                  const payment = order.payments[0];
+        }
+      >
+        <AdminDataGrid
+          caption="오늘 주문 리스트"
+          columns={[
+            { key: 'no', label: 'No', align: 'right', widthClassName: 'w-16' },
+            { key: 'order', label: '주문', widthClassName: 'min-w-[220px]', priority: 'primary' },
+            { key: 'buyer', label: '주문자', widthClassName: 'w-44' },
+            { key: 'phone', label: '전화번호', widthClassName: 'w-36' },
+            { key: 'payment', label: '결제방법', widthClassName: 'w-28' },
+            { key: 'amount', label: '결제금액', align: 'right', widthClassName: 'w-32' },
+            { key: 'status', label: '거래상태', widthClassName: 'w-28' },
+            { key: 'date', label: '주문날짜', align: 'right', widthClassName: 'w-44' },
+          ]}
+          rows={stats.recentOrders}
+          rowKey={(order) => order.orderNo}
+          emptyText="오늘 주문내역이 없습니다."
+          minWidthClassName="min-w-[900px]"
+          className="rounded-none border-0 shadow-none"
+          renderRow={(order, index) => {
+            const buyerName =
+              order.user?.name || readJsonString(order.buyerInfo, ['name']) || '비회원';
+            const phone =
+              order.user?.phone || readJsonString(order.buyerInfo, ['phone', 'tel']) || '-';
+            const payment = order.payments[0];
 
-                  return (
-                    <tr key={order.orderNo} className="hover:bg-neutral-50">
-                      <td className="px-4 py-3 font-bold text-blue-700">
-                        <Link href={`/admin/orders/${order.orderNo}`}>{order.orderNo}</Link>
-                      </td>
-                      <td className="px-4 py-3">{buyerName}</td>
-                      <td className="px-4 py-3">{phone}</td>
-                      <td className="px-4 py-3">{paymentLabel(payment?.method)}</td>
-                      <td className="px-4 py-3 text-right font-bold">{formatKRW(order.total.toString())}</td>
-                      <td className="px-4 py-3">
-                        <AdminStatusBadge status={order.status} />
-                      </td>
-                      <td className="px-4 py-3 text-right text-neutral-500">
-                        {formatDateTime(order.createdAt)}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+            return (
+              <tr key={order.orderNo} className="bg-white transition hover:bg-neutral-50">
+                <td className={`${adminGridCellClass} text-right font-bold text-neutral-500`}>
+                  {stats.recentOrders.length - index}
+                </td>
+                <td className={adminGridStickyCellClass}>
+                  <Link
+                    href={`/admin/orders/${order.orderNo}`}
+                    className="font-bold text-blue-700 hover:underline"
+                  >
+                    {order.orderNo}
+                  </Link>
+                  <p className="mt-1 text-xs text-neutral-500">{formatDateTime(order.createdAt)}</p>
+                </td>
+                <td className={adminGridCellClass}>{buyerName}</td>
+                <td className={adminGridCellClass}>{phone}</td>
+                <td className={adminGridCellClass}>{paymentLabel(payment?.method)}</td>
+                <td className={`${adminGridCellClass} text-right font-extrabold text-neutral-950`}>
+                  {formatKRW(order.total.toString())}
+                </td>
+                <td className={adminGridCellClass}>
+                  <AdminStatusBadge status={order.status} />
+                </td>
+                <td className={`${adminGridCellClass} text-right text-neutral-500`}>
+                  {formatDateTime(order.createdAt)}
+                </td>
+              </tr>
+            );
+          }}
+          renderMobileCard={(order) => {
+            const buyerName =
+              order.user?.name || readJsonString(order.buyerInfo, ['name']) || '비회원';
+            const payment = order.payments[0];
+
+            return (
+              <AdminMobileCard>
+                <Link
+                  href={`/admin/orders/${order.orderNo}`}
+                  className="font-extrabold text-blue-700"
+                >
+                  {order.orderNo}
+                </Link>
+                <dl className="mt-3 grid grid-cols-2 gap-2">
+                  <AdminMobileField label="주문자">{buyerName}</AdminMobileField>
+                  <AdminMobileField label="결제금액" align="right">
+                    {formatKRW(order.total.toString())}
+                  </AdminMobileField>
+                  <AdminMobileField label="결제방법">
+                    {paymentLabel(payment?.method)}
+                  </AdminMobileField>
+                  <AdminMobileField label="상태">
+                    <AdminStatusBadge status={order.status} />
+                  </AdminMobileField>
+                  <div className="col-span-2">
+                    <AdminMobileField label="주문날짜">
+                      {formatDateTime(order.createdAt)}
+                    </AdminMobileField>
+                  </div>
+                </dl>
+              </AdminMobileCard>
+            );
+          }}
+        />
+      </AdminSection>
 
       <div className="grid gap-5 xl:grid-cols-2">
-        <section className="rounded-lg border border-neutral-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
-            <div>
-              <h2 className="text-base font-extrabold">신규회원</h2>
-              <p className="mt-1 text-xs text-neutral-500">
-                오늘 {formatNumber(stats.todayUsers)}명 / 전체 {formatNumber(stats.users)}명
-              </p>
-            </div>
+        <AdminSection
+          title="신규회원"
+          description={`오늘 ${formatNumber(stats.todayUsers)}명 / 전체 ${formatNumber(stats.users)}명`}
+          bodyClassName="p-0"
+          headerAction={
             <Link href="/admin/users" className="text-sm font-bold text-blue-700 hover:underline">
               더보기
             </Link>
-          </div>
+          }
+        >
           <ul className="divide-y divide-neutral-100">
             {stats.recentUsers.length === 0 ? (
               <li className="p-4 text-sm text-neutral-500">오늘 가입한 회원이 없습니다.</li>
             ) : (
               stats.recentUsers.map((user) => (
-                <li key={user.id} className="grid gap-2 p-4 sm:grid-cols-[1fr_90px_90px_120px] sm:items-center">
+                <li
+                  key={user.id}
+                  className="grid gap-2 p-4 sm:grid-cols-[1fr_90px_90px_120px] sm:items-center"
+                >
                   <div className="min-w-0">
                     <Link href={`/admin/users/${user.id}`} className="font-bold hover:underline">
                       {user.name}
@@ -290,7 +340,9 @@ export default async function AdminDashboardPage() {
                     </p>
                   </div>
                   <p className="text-sm text-neutral-600">{user.grade?.name ?? '-'}</p>
-                  <p className="text-sm text-neutral-600">{formatNumber(user.pointHistories[0]?.balance ?? 0)}</p>
+                  <p className="text-sm text-neutral-600">
+                    {formatNumber(user.pointHistories[0]?.balance ?? 0)}
+                  </p>
                   <p className="text-sm text-neutral-500 sm:text-right">
                     {formatDate(user.createdAt)}
                   </p>
@@ -298,18 +350,18 @@ export default async function AdminDashboardPage() {
               ))
             )}
           </ul>
-        </section>
+        </AdminSection>
 
-        <section className="rounded-lg border border-neutral-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
-            <div>
-              <h2 className="text-base font-extrabold">오늘 게시판 현황</h2>
-              <p className="mt-1 text-xs text-neutral-500">오늘 게시글 {formatNumber(stats.todayPosts)}건</p>
-            </div>
+        <AdminSection
+          title="오늘 게시판 현황"
+          description={`오늘 게시글 ${formatNumber(stats.todayPosts)}건`}
+          bodyClassName="p-0"
+          headerAction={
             <Link href="/admin/boards" className="text-sm font-bold text-blue-700 hover:underline">
               더보기
             </Link>
-          </div>
+          }
+        >
           <ul className="divide-y divide-neutral-100">
             {stats.recentInquiries.length === 0 ? (
               <li className="p-4 text-sm text-neutral-500">미답변 1:1 문의가 없습니다.</li>
@@ -328,7 +380,7 @@ export default async function AdminDashboardPage() {
               ))
             )}
           </ul>
-        </section>
+        </AdminSection>
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">
@@ -367,46 +419,40 @@ function RankTable({
   products: { id: string; name: string; price: string; value: number }[];
 }) {
   return (
-    <section className="rounded-lg border border-neutral-200 bg-white shadow-sm">
-      <div className="border-b border-neutral-100 px-4 py-3">
-        <h2 className="text-base font-extrabold">{title}</h2>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[520px] text-sm">
-          <thead className="bg-neutral-50 text-xs text-neutral-500">
-            <tr>
-              <th className="w-14 px-4 py-3 text-center">순위</th>
-              <th className="px-4 py-3 text-left">상품명</th>
-              <th className="w-28 px-4 py-3 text-right">판매가격</th>
-              <th className="w-24 px-4 py-3 text-right">{valueLabel}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-neutral-100">
-            {products.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="h-24 px-4 text-center text-neutral-500">
-                  표시할 상품이 없습니다.
-                </td>
-              </tr>
-            ) : (
-              products.map((product, index) => (
-                <tr key={product.id} className="hover:bg-neutral-50">
-                  <td className="px-4 py-3 text-center font-bold">{index + 1}</td>
-                  <td className="px-4 py-3">
-                    <Link href={`/admin/products/${product.id}`} className="line-clamp-1 font-bold hover:underline">
-                      {product.name}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 text-right">{formatKRW(product.price)}</td>
-                  <td className="px-4 py-3 text-right font-bold text-blue-700">
-                    {formatNumber(product.value)}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <AdminSection title={title} bodyClassName="p-0">
+      <AdminDataGrid
+        caption={title}
+        columns={[
+          { key: 'no', label: 'No', align: 'right', widthClassName: 'w-16' },
+          { key: 'product', label: '상품', widthClassName: 'min-w-[260px]', priority: 'primary' },
+          { key: 'price', label: '판매가격', align: 'right', widthClassName: 'w-28' },
+          { key: 'value', label: valueLabel, align: 'right', widthClassName: 'w-24' },
+        ]}
+        rows={products}
+        rowKey={(product) => product.id}
+        emptyText="표시할 상품이 없습니다."
+        minWidthClassName="min-w-[560px]"
+        className="rounded-none border-0 shadow-none"
+        renderRow={(product, index) => (
+          <tr key={product.id} className="bg-white transition hover:bg-neutral-50">
+            <td className={`${adminGridCellClass} text-right font-bold text-neutral-500`}>
+              {index + 1}
+            </td>
+            <td className={adminGridStickyCellClass}>
+              <Link
+                href={`/admin/products/${product.id}`}
+                className="line-clamp-1 font-bold hover:underline"
+              >
+                {product.name}
+              </Link>
+            </td>
+            <td className={`${adminGridCellClass} text-right`}>{formatKRW(product.price)}</td>
+            <td className={`${adminGridCellClass} text-right font-bold text-blue-700`}>
+              {formatNumber(product.value)}
+            </td>
+          </tr>
+        )}
+      />
+    </AdminSection>
   );
 }

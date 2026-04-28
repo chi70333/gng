@@ -2,6 +2,7 @@
 
 import { ImagePlus, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+import { adminFieldClass, adminSecondaryButtonClass } from '@/components/admin/AdminUI';
 
 type InitialImageRow = {
   url: string;
@@ -114,7 +115,7 @@ export function ProductImageFields({
       {rows.map((row, index) => (
         <div
           key={index}
-          className="grid gap-3 rounded-md border border-neutral-200 bg-white p-3 shadow-sm md:grid-cols-[80px_1fr_auto]"
+          className="grid gap-3 rounded-md border border-neutral-200 bg-white p-3 shadow-sm shadow-neutral-950/[0.04] md:grid-cols-[80px_1fr_auto]"
         >
           <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-md border border-neutral-100 bg-neutral-100">
             {row.url ? (
@@ -132,7 +133,7 @@ export function ProductImageFields({
             <input type="hidden" name="imageKeys" value={row.key} />
             <input type="hidden" name="imageUrls" value={row.url} />
             <label className="block rounded-md border border-dashed border-neutral-300 bg-neutral-50 p-2">
-              <span className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-white px-3 text-sm font-bold text-neutral-800 shadow-sm md:min-h-10">
+              <span className={`${adminSecondaryButtonClass} flex h-11 cursor-pointer md:h-10`}>
                 <ImagePlus size={18} />
                 {row.uploading ? '업로드 중...' : '이미지 파일 선택'}
               </span>
@@ -157,12 +158,12 @@ export function ProductImageFields({
                 value={row.alt}
                 onChange={(event) => updateRow(index, { alt: event.target.value })}
                 placeholder="검색과 접근성을 위한 이미지 설명"
-                className="mt-1 min-h-11 w-full rounded-md border border-neutral-300 px-3 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 md:min-h-10"
+                className={`mt-1 ${adminFieldClass} h-11 md:h-10`}
               />
             </label>
           </div>
           <div className="flex items-center gap-2 md:flex-col md:items-end">
-            <label className="inline-flex min-h-11 items-center gap-2 rounded-md border border-neutral-300 bg-white px-3 text-sm font-bold shadow-sm md:min-h-10">
+            <label className={`${adminSecondaryButtonClass} h-11 md:h-10`}>
               <input
                 type="radio"
                 checked={mainIndex === index}
@@ -174,7 +175,7 @@ export function ProductImageFields({
               type="button"
               onClick={() => removeRow(index)}
               aria-label="이미지 삭제"
-              className="inline-flex min-h-11 items-center justify-center rounded-md border border-neutral-300 bg-white px-3 text-neutral-600 shadow-sm hover:bg-neutral-50 md:min-h-10"
+              className={`${adminSecondaryButtonClass} h-11 px-3 text-neutral-600 md:h-10`}
             >
               <Trash2 size={18} />
             </button>
@@ -184,7 +185,7 @@ export function ProductImageFields({
       <button
         type="button"
         onClick={() => setRows((current) => [...current, { ...EMPTY_ROW }])}
-        className="inline-flex min-h-11 items-center gap-2 rounded-md border border-neutral-300 bg-white px-4 text-sm font-bold text-neutral-800 shadow-sm hover:bg-neutral-50 md:min-h-10"
+        className={`${adminSecondaryButtonClass} h-11 md:h-10`}
       >
         <Plus size={18} />
         이미지 추가

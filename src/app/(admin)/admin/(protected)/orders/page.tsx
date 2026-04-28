@@ -4,11 +4,30 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Prisma } from '@prisma/client';
-import { Download } from 'lucide-react';
+import { Check, Download, RotateCcw, Search } from 'lucide-react';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
 import { formatKRW, formatNumber } from '@/lib/format';
+import {
+  AdminDataGrid,
+  type AdminSortDirection,
+  AdminMobileCard,
+  AdminMobileField,
+  adminGridButtonClass,
+  adminGridCellClass,
+  adminGridStickyCellClass,
+} from '@/components/admin/AdminDataGrid';
+import { AdminGridSelectAll } from '@/components/admin/AdminGridSelectAll';
+import { AdminPageSizeSelect } from '@/components/admin/AdminPageSizeSelect';
 import { AdminPagination } from '@/components/admin/AdminPagination';
+import {
+  AdminPageHeader,
+  AdminSection,
+  adminDangerButtonClass,
+  adminFieldClass,
+  adminPrimaryButtonClass,
+  adminSecondaryButtonClass,
+} from '@/components/admin/AdminUI';
 import { adminOrderListQuerySchema } from '@/schemas/admin-order';
 import { bulkUpdateAdminOrders, updateAdminOrderStatus } from '../../actions';
 
@@ -16,7 +35,7 @@ export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: '주문 관리',
-  description: '레거시 관리자 주문 조회 화면과 동일한 조건으로 주문을 관리합니다.',
+  description: '관리자 주문 조회 조건으로 주문을 관리합니다.',
 };
 
 const STATUS_OPTIONS = [
@@ -41,7 +60,7 @@ const PAYMENT_LABELS: Record<string, string> = {
   point: '마일리지',
 };
 
-const LIST_COUNTS = [20, 50, 100, 200, 500, 1000];
+const LIST_COUNTS = [20, 30, 50, 100, 200, 500, 1000];
 
 type OrderSearchParams = {
   card?: string;
@@ -59,7 +78,35 @@ type OrderSearchParams = {
   fis?: string;
   trade_list_cnt?: string;
   page?: string;
+  sort?: string;
+  dir?: string;
 };
+
+const ORDER_SORT_KEYS = ['no', 'orderNo', 'createdAt', 'buyer', 'total', 'status'] as const;
+type OrderSortKey = (typeof ORDER_SORT_KEYS)[number];
+
+function parseOrderSort(searchParams: OrderSearchParams): {
+  sort?: OrderSortKey;
+  dir: AdminSortDirection;
+} {
+  const sort = ORDER_SORT_KEYS.includes(searchParams.sort as OrderSortKey)
+    ? (searchParams.sort as OrderSortKey)
+    : undefined;
+  const dir = searchParams.dir === 'asc' ? 'asc' : 'desc';
+  return { sort, dir };
+}
+
+function orderOrderBy(
+  sort: OrderSortKey,
+  dir: AdminSortDirection,
+): Prisma.OrderOrderByWithRelationInput {
+  if (sort === 'orderNo') return { orderNo: dir };
+  if (sort === 'createdAt' || sort === 'no') return { createdAt: dir };
+  if (sort === 'buyer') return { user: { name: dir } };
+  if (sort === 'total') return { total: dir };
+  if (sort === 'status') return { status: dir };
+  return { createdAt: dir };
+}
 
 function pad2(value: number): string {
   return String(value).padStart(2, '0');
@@ -75,10 +122,6 @@ function defaultDateParts() {
     month2: now.getMonth() + 1,
     day2: now.getDate(),
   };
-}
-
-function dateValue(year: number, month: number, day: number): string {
-  return `${year}-${pad2(month)}-${pad2(day)}`;
 }
 
 function getDateRange(query: ReturnType<typeof adminOrderListQuerySchema.parse>) {
@@ -156,9 +199,17 @@ function readJsonString(value: unknown, keys: string[]): string {
   return '';
 }
 
-function orderSourceLabel(order: { payments: { provider: string | null }[]; userId: bigint | null }) {
-  if (order.payments.some((payment) => payment.provider?.toLowerCase().includes('npay'))) return 'N';
+function orderSourceLabel(order: {
+  payments: { provider: string | null }[];
+  userId: bigint | null;
+}) {
+  if (order.payments.some((payment) => payment.provider?.toLowerCase().includes('npay')))
+    return 'N';
   return order.userId ? 'PC' : '비회원';
+}
+
+function orderStatusLabel(status: string): string {
+  return STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
 }
 
 function appendParams(params: URLSearchParams, key: string, value: string | number | undefined) {
@@ -173,6 +224,7 @@ export default async function AdminOrdersPage({
 }) {
   await requireAdmin('order.read');
   const query = adminOrderListQuerySchema.parse(searchParams);
+  const sortState = parseOrderSort(searchParams);
   const { startParts, endParts, start, endExclusive } = getDateRange(query);
 
   const and: Prisma.OrderWhereInput[] = [{ deletedAt: null }];
@@ -198,7 +250,7 @@ export default async function AdminOrdersPage({
   const [orderRows, todayCount] = await Promise.all([
     prisma.order.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
+      orderBy: orderOrderBy(sortState.sort ?? 'no', sortState.dir),
       skip: (query.page - 1) * pageSize,
       take: pageSize + 1,
       select: {
@@ -217,7 +269,9 @@ export default async function AdminOrdersPage({
         shipments: { select: { carrier: true, trackingNo: true, status: true }, take: 1 },
       },
     }),
-    prisma.order.count({ where: { deletedAt: null, createdAt: { gte: todayStart, lt: todayEnd } } }),
+    prisma.order.count({
+      where: { deletedAt: null, createdAt: { gte: todayStart, lt: todayEnd } },
+    }),
   ]);
   const hasNext = orderRows.length > pageSize;
   const orders = orderRows.slice(0, pageSize);
@@ -225,12 +279,12 @@ export default async function AdminOrdersPage({
     query.page > 1 || hasNext || orders.length > 0
       ? await Promise.all([
           prisma.order.count({ where }),
-          prisma.order.aggregate({ where, _sum: { total: true, subtotal: true, pointsUsed: true } }),
+          prisma.order.aggregate({
+            where,
+            _sum: { total: true, subtotal: true, pointsUsed: true },
+          }),
         ])
-      : [
-          0,
-          { _sum: { total: null, subtotal: null, pointsUsed: null } },
-        ];
+      : [0, { _sum: { total: null, subtotal: null, pointsUsed: null } }];
 
   const params = new URLSearchParams();
   appendParams(params, 'card', query.card);
@@ -247,138 +301,256 @@ export default async function AdminOrdersPage({
   params.set('serhs', String(query.serhs));
   params.set('fis', query.fis);
   params.set('trade_list_cnt', String(pageSize));
+  if (sortState.sort) {
+    params.set('sort', sortState.sort);
+    params.set('dir', sortState.dir);
+  }
   const baseHref = `/admin/orders?${params.toString()}`;
   const exportHref = `/api/admin/orders/export?${params.toString()}`;
   const totalAmount = totals._sum.total ?? new Prisma.Decimal(0);
   const mileageIncludedTotal = totalAmount.plus(totals._sum.pointsUsed ?? 0);
+  const getSortHref = (sort: string, dir: AdminSortDirection) => {
+    const nextParams = new URLSearchParams(params);
+    if (nextParams.get('sort') === sort) {
+      nextParams.delete('sort');
+      nextParams.delete('dir');
+    } else {
+      nextParams.set('sort', sort);
+      nextParams.set('dir', dir);
+    }
+    nextParams.delete('page');
+    const nextQuery = nextParams.toString();
+    return nextQuery ? `/admin/orders?${nextQuery}` : '/admin/orders';
+  };
+  const defaultParts = defaultDateParts();
+  const hasFilters =
+    query.card !== '0' ||
+    query.paym !== '0' ||
+    query.status !== '-' ||
+    query.search !== 'total' ||
+    query.searchstring !== '' ||
+    query.trade_list_cnt !== 30 ||
+    startParts.year !== defaultParts.year ||
+    startParts.month !== defaultParts.month ||
+    startParts.day !== defaultParts.day ||
+    endParts.year !== defaultParts.year2 ||
+    endParts.month !== defaultParts.month2 ||
+    endParts.day !== defaultParts.day2;
 
   return (
-    <div className="min-w-0">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-extrabold text-neutral-950">주문 관리</h1>
-        </div>
-        <p className="text-sm font-bold text-blue-700">
-          오늘 주문: <span className="text-base">{formatNumber(todayCount)}</span>건
-        </p>
-      </div>
-      <div className="mt-3 flex justify-end">
-        <Link
-          href={exportHref}
-          className="inline-flex min-h-11 items-center gap-2 rounded-md border border-neutral-200 bg-white px-4 text-sm font-bold text-neutral-800 hover:bg-neutral-50"
-        >
-          <Download size={18} />
-          엑셀 다운로드
-        </Link>
-      </div>
+    <div className="min-w-0 space-y-4">
+      <AdminPageHeader
+        title="주문 관리"
+        description={
+          <>
+            오늘 주문 <span className="font-bold text-blue-700">{formatNumber(todayCount)}건</span>
+          </>
+        }
+        actions={
+          <Link href={exportHref} className={adminSecondaryButtonClass}>
+            <Download size={18} />
+            엑셀 다운로드
+          </Link>
+        }
+      />
 
-      <form className="mt-5 border border-neutral-300 bg-[#f5f5f5] p-3 text-xs" method="get">
-        <div className="flex flex-wrap items-center gap-2">
-          <select name="card" defaultValue={query.card} className="h-7 w-[104px] border border-neutral-400 bg-white px-1">
-            <option value="0">결제구분</option>
-            <option value="2">일반결제</option>
-            <option value="1">간편결제</option>
-          </select>
-          <select name="paym" defaultValue={query.paym} className="h-7 w-[104px] border border-neutral-400 bg-white px-1">
-            <option value="0">결제방법</option>
-            <option value="card">카드결제</option>
-            <option value="hand">휴대폰</option>
-            <option value="iche">계좌이체</option>
-            <option value="cyber">가상계좌</option>
-            <option value="bank">무통장입금</option>
-          </select>
-          <select name="status" defaultValue={query.status} className="h-7 w-[112px] border border-neutral-400 bg-white px-1">
-            <option value="-">전체 상태</option>
-            <option value="11">주문통합</option>
-            {STATUS_OPTIONS.map((status) => (
-              <option key={status.value} value={status.value}>
-                {status.label}
-              </option>
-            ))}
-          </select>
-          <select name="search" defaultValue={query.search} className="ml-0 h-7 w-[112px] border border-neutral-400 bg-white px-1 md:ml-5">
-            <option value="total">통합검색</option>
-            <option value="t.name">주문자명</option>
-            <option value="t.ceo_name">회사명</option>
-            <option value="t.tradecode">주문코드</option>
-            <option value="t.userid">주문자 아이디</option>
-            <option value="t.rname">수령자</option>
-            <option value="g.name">상품명</option>
-          </select>
-          <input
-            name="searchstring"
-            defaultValue={query.searchstring}
-            className="h-7 w-[130px] border border-neutral-400 bg-white px-2"
-            aria-label="검색어"
-          />
-          <button className="h-12 w-[60px] rounded bg-black text-xs font-bold text-white">
-            검색
-          </button>
+      <form
+        className="rounded-lg border border-neutral-200 bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.045)] ring-1 ring-white sm:p-4"
+        method="get"
+      >
+        <input type="hidden" name="serhs" value="1" />
+        <input type="hidden" name="fis" value="2" />
+
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-[140px_150px_150px_150px_minmax(240px,1fr)]">
+          <label className="grid gap-1 text-xs font-bold text-neutral-600">
+            결제구분
+            <select name="card" defaultValue={query.card} className={`${adminFieldClass} h-11`}>
+              <option value="0">전체 결제</option>
+              <option value="2">일반결제</option>
+              <option value="1">간편결제</option>
+            </select>
+          </label>
+          <label className="grid gap-1 text-xs font-bold text-neutral-600">
+            결제방법
+            <select name="paym" defaultValue={query.paym} className={`${adminFieldClass} h-11`}>
+              <option value="0">전체 방법</option>
+              <option value="card">카드결제</option>
+              <option value="hand">휴대폰</option>
+              <option value="iche">계좌이체</option>
+              <option value="cyber">가상계좌</option>
+              <option value="bank">무통장입금</option>
+            </select>
+          </label>
+          <label className="grid gap-1 text-xs font-bold text-neutral-600">
+            주문상태
+            <select name="status" defaultValue={query.status} className={`${adminFieldClass} h-11`}>
+              <option value="-">전체 상태</option>
+              <option value="11">주문통합</option>
+              {STATUS_OPTIONS.map((status) => (
+                <option key={status.value} value={status.value}>
+                  {status.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1 text-xs font-bold text-neutral-600">
+            검색대상
+            <select name="search" defaultValue={query.search} className={`${adminFieldClass} h-11`}>
+              <option value="total">통합검색</option>
+              <option value="t.name">주문자명</option>
+              <option value="t.ceo_name">회사명</option>
+              <option value="t.tradecode">주문코드</option>
+              <option value="t.userid">주문자 아이디</option>
+              <option value="t.rname">수령자</option>
+              <option value="g.name">상품명</option>
+            </select>
+          </label>
+          <label className="col-span-2 grid gap-1 text-xs font-bold text-neutral-600 xl:col-span-1">
+            검색어
+            <input
+              name="searchstring"
+              defaultValue={query.searchstring}
+              placeholder="주문번호, 이름, 아이디, 상품명"
+              className={`${adminFieldClass} h-11`}
+            />
+          </label>
         </div>
 
-        <div className="mt-2 flex flex-wrap items-center gap-1">
-          <input type="hidden" name="serhs" value="1" />
-          <input type="hidden" name="fis" value="2" />
-          <select name="year" defaultValue={startParts.year} className="h-7 w-[72px] border border-neutral-400 bg-white px-1">
-            {Array.from({ length: new Date().getFullYear() - 2017 }, (_, index) => 2018 + index).map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
-          <span>년</span>
-          <select name="month" defaultValue={startParts.month} className="h-7 w-[52px] border border-neutral-400 bg-white px-1">
-            {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
-              <option key={month} value={month}>
-                {pad2(month)}
-              </option>
-            ))}
-          </select>
-          <span>월</span>
-          <select name="day" defaultValue={startParts.day} className="h-7 w-[52px] border border-neutral-400 bg-white px-1">
-            {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
-              <option key={day} value={day}>
-                {pad2(day)}
-              </option>
-            ))}
-          </select>
-          <span>일</span>
-          <span className="mx-1">~</span>
-          <select name="year2" defaultValue={endParts.year} className="h-7 w-[72px] border border-neutral-400 bg-white px-1">
-            {Array.from({ length: new Date().getFullYear() - 2017 }, (_, index) => 2018 + index).map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
-          <span>년</span>
-          <select name="month2" defaultValue={endParts.month} className="h-7 w-[52px] border border-neutral-400 bg-white px-1">
-            {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
-              <option key={month} value={month}>
-                {pad2(month)}
-              </option>
-            ))}
-          </select>
-          <span>월</span>
-          <select name="day2" defaultValue={endParts.day} className="h-7 w-[52px] border border-neutral-400 bg-white px-1">
-            {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
-              <option key={day} value={day}>
-                {pad2(day)}
-              </option>
-            ))}
-          </select>
-          <span>일</span>
-          <select name="trade_list_cnt" defaultValue={pageSize} className="ml-0 h-7 w-[120px] border border-neutral-400 bg-white px-1 md:ml-auto">
-            {LIST_COUNTS.map((count) => (
-              <option key={count} value={count}>
-                목록 {count}개씩
-              </option>
-            ))}
-          </select>
+        <div className="mt-4 grid gap-3 border-t border-neutral-100 pt-4 xl:grid-cols-[minmax(260px,1fr)_minmax(260px,1fr)_150px_auto] xl:items-end">
+          <fieldset className="min-w-0">
+            <legend className="mb-1 text-xs font-bold text-neutral-600">조회 시작일</legend>
+            <div className="grid grid-cols-[minmax(78px,1fr)_auto_minmax(54px,0.75fr)_auto_minmax(54px,0.75fr)_auto] items-center gap-1.5">
+              <select
+                name="year"
+                defaultValue={startParts.year}
+                aria-label="조회 시작 연도"
+                className={`${adminFieldClass} h-11`}
+              >
+                {Array.from(
+                  { length: new Date().getFullYear() - 2017 },
+                  (_, index) => 2018 + index,
+                ).map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs font-bold text-neutral-500">년</span>
+              <select
+                name="month"
+                defaultValue={startParts.month}
+                aria-label="조회 시작 월"
+                className={`${adminFieldClass} h-11`}
+              >
+                {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
+                  <option key={month} value={month}>
+                    {pad2(month)}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs font-bold text-neutral-500">월</span>
+              <select
+                name="day"
+                defaultValue={startParts.day}
+                aria-label="조회 시작 일"
+                className={`${adminFieldClass} h-11`}
+              >
+                {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
+                  <option key={day} value={day}>
+                    {pad2(day)}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs font-bold text-neutral-500">일</span>
+            </div>
+          </fieldset>
+
+          <fieldset className="min-w-0">
+            <legend className="mb-1 text-xs font-bold text-neutral-600">조회 종료일</legend>
+            <div className="grid grid-cols-[minmax(78px,1fr)_auto_minmax(54px,0.75fr)_auto_minmax(54px,0.75fr)_auto] items-center gap-1.5">
+              <select
+                name="year2"
+                defaultValue={endParts.year}
+                aria-label="조회 종료 연도"
+                className={`${adminFieldClass} h-11`}
+              >
+                {Array.from(
+                  { length: new Date().getFullYear() - 2017 },
+                  (_, index) => 2018 + index,
+                ).map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs font-bold text-neutral-500">년</span>
+              <select
+                name="month2"
+                defaultValue={endParts.month}
+                aria-label="조회 종료 월"
+                className={`${adminFieldClass} h-11`}
+              >
+                {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
+                  <option key={month} value={month}>
+                    {pad2(month)}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs font-bold text-neutral-500">월</span>
+              <select
+                name="day2"
+                defaultValue={endParts.day}
+                aria-label="조회 종료 일"
+                className={`${adminFieldClass} h-11`}
+              >
+                {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
+                  <option key={day} value={day}>
+                    {pad2(day)}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs font-bold text-neutral-500">일</span>
+            </div>
+          </fieldset>
+
+          <label className="grid gap-1 text-xs font-bold text-neutral-600">
+            표시 개수
+            <select
+              name="trade_list_cnt"
+              defaultValue={pageSize}
+              className={`${adminFieldClass} h-11`}
+            >
+              {LIST_COUNTS.map((count) => (
+                <option key={count} value={count}>
+                  목록 {count}개씩
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="flex flex-wrap gap-2 xl:justify-end">
+            <button className={`${adminPrimaryButtonClass} h-11 flex-1 xl:flex-none`}>
+              <Search size={17} />
+              검색
+            </button>
+            {hasFilters ? (
+              <Link
+                href="/admin/orders"
+                className={`${adminSecondaryButtonClass} h-11 flex-1 xl:flex-none`}
+              >
+                <RotateCcw size={16} />
+                초기화
+              </Link>
+            ) : null}
+          </div>
         </div>
       </form>
 
-      <form id="bulkOrderForm" action={bulkUpdateAdminOrders} className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 bg-white p-3 text-xs">
+      <form
+        id="bulkOrderForm"
+        action={bulkUpdateAdminOrders}
+        className="flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 bg-white p-3 text-xs shadow-[0_8px_24px_rgba(15,23,42,0.045)] ring-1 ring-white"
+      >
         <input type="hidden" name="card" value={query.card} />
         <input type="hidden" name="paym" value={query.paym} />
         <input type="hidden" name="status" value={query.status} />
@@ -394,145 +566,313 @@ export default async function AdminOrdersPage({
         <input type="hidden" name="fis" value={query.fis} />
         <input type="hidden" name="trade_list_cnt" value={pageSize} />
         <span className="font-bold text-neutral-700">선택 주문</span>
-        <select name="bulkStatus" defaultValue="paid" className="h-8 rounded border border-neutral-300 bg-white px-2">
+        <select name="bulkStatus" defaultValue="paid" className={adminFieldClass}>
           {STATUS_OPTIONS.map((status) => (
             <option key={status.value} value={status.value}>
               {status.label}
             </option>
           ))}
         </select>
-        <button name="intent" value="status" className="h-8 rounded bg-neutral-900 px-3 font-bold text-white">
+        <button name="intent" value="status" className={adminPrimaryButtonClass}>
           상태 일괄변경
         </button>
-        <button name="intent" value="delete" className="h-8 rounded border border-red-200 bg-red-50 px-3 font-bold text-red-700">
+        <button name="intent" value="delete" className={adminDangerButtonClass}>
           선택 삭제
         </button>
         <button
           formAction="/api/admin/orders/export"
           formMethod="get"
-          className="h-8 rounded border border-neutral-200 bg-white px-3 font-bold text-neutral-800 hover:bg-neutral-50"
+          className={adminSecondaryButtonClass}
         >
           선택 엑셀
         </button>
       </form>
 
-      <div className="mt-4 w-full overflow-x-auto border border-neutral-300 bg-white">
-        <table className="w-full min-w-[1180px] border-collapse text-xs">
-          <thead>
-            <tr className="h-8 bg-[#d7f0fa] text-center font-bold">
-              <th className="w-10 border border-neutral-300">선택</th>
-              <th className="min-w-[170px] border border-neutral-300">주문상품</th>
-              <th className="w-[130px] border border-neutral-300">주문일시</th>
-              <th className="w-[100px] border border-neutral-300">회사명</th>
-              <th className="w-[110px] border border-neutral-300">주문자</th>
-              <th className="w-[80px] border border-neutral-300">회원구분</th>
-              <th className="w-[150px] border border-neutral-300">
-                <span className="block text-[11px] font-normal text-red-600">m:마일리지, c:쿠폰</span>
-                결제금액
-              </th>
-              <th className="w-[90px] border border-neutral-300">결제방식</th>
-              <th className="w-[70px] border border-neutral-300">주문경로</th>
-              <th className="w-[130px] border border-neutral-300">주문상태</th>
-              <th className="w-[70px] border border-neutral-300">자료</th>
-              <th className="w-[110px] border border-neutral-300">배송방법</th>
-              <th className="w-[70px] border border-neutral-300">SMS</th>
-              <th className="w-[80px] border border-neutral-300">입금/환불</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orders.length === 0 ? (
-              <tr>
-                <td colSpan={14} className="h-24 border border-neutral-300 text-center">
-                  주문 내역이 없습니다.
+      <AdminSection
+        title="주문 목록"
+        description={`주문건수 ${formatNumber(total)}건`}
+        bodyClassName="p-0"
+      >
+        <AdminDataGrid
+          caption="주문 목록"
+          columns={[
+            { key: 'no', label: 'No', align: 'right', widthClassName: 'w-20', sortKey: 'no' },
+            {
+              key: 'select',
+              label: <AdminGridSelectAll name="orderNo" formId="bulkOrderForm" />,
+              align: 'center',
+              widthClassName: 'w-16',
+            },
+            { key: 'orderNo', label: '주문번호', widthClassName: 'w-48', sortKey: 'orderNo' },
+            {
+              key: 'product',
+              label: '주문상품',
+              widthClassName: 'min-w-[260px]',
+              priority: 'primary',
+            },
+            {
+              key: 'createdAt',
+              label: '주문일시',
+              align: 'right',
+              widthClassName: 'w-44',
+              sortKey: 'createdAt',
+            },
+            { key: 'company', label: '회사명', widthClassName: 'w-36' },
+            { key: 'buyer', label: '주문자', widthClassName: 'w-32', sortKey: 'buyer' },
+            { key: 'memberType', label: '회원구분', widthClassName: 'w-28' },
+            {
+              key: 'amount',
+              label: '결제금액',
+              align: 'right',
+              widthClassName: 'w-36',
+              sortKey: 'total',
+            },
+            { key: 'payment', label: '결제방식', align: 'center', widthClassName: 'w-32' },
+            { key: 'source', label: '주문경로', align: 'center', widthClassName: 'w-24' },
+            { key: 'status', label: '주문상태', widthClassName: 'w-32', sortKey: 'status' },
+            { key: 'shipment', label: '배송방법', widthClassName: 'w-44' },
+            { key: 'sms', label: 'SMS', align: 'center', widthClassName: 'w-24' },
+          ]}
+          rows={orders}
+          rowKey={(order) => order.orderNo}
+          emptyText="주문 내역이 없습니다."
+          minWidthClassName="min-w-[1120px]"
+          toolbarEnd={
+            <AdminPageSizeSelect
+              action="/admin/orders"
+              name="trade_list_cnt"
+              value={pageSize}
+              options={LIST_COUNTS}
+              hiddenFields={Array.from(params.entries()).map(([name, value]) => ({ name, value }))}
+            />
+          }
+          currentSortKey={sortState.sort}
+          currentSortDirection={sortState.dir}
+          getSortHref={getSortHref}
+          renderRow={(order, index) => {
+            const firstItem = order.items[0];
+            const itemLabel = firstItem
+              ? order.items.length > 1
+                ? `${firstItem.productName} 외 ${order.items.length - 1}건`
+                : firstItem.productName
+              : '주문 상품 없음';
+            const payment = order.payments[0];
+            const shipment = order.shipments[0];
+            const buyerName =
+              order.user?.name || readJsonString(order.buyerInfo, ['name', 'receiver']) || '비회원';
+            const companyName = readJsonString(order.buyerInfo, [
+              'company',
+              'companyName',
+              'ceoName',
+            ]);
+            const memberType = order.userId ? '일반회원' : '비회원';
+            const paymentLabel = payment
+              ? (PAYMENT_LABELS[payment.method] ??
+                PAYMENT_LABELS[payment.provider ?? ''] ??
+                payment.method)
+              : '-';
+            const rowNo = total - (query.page - 1) * pageSize - index;
+
+            return (
+              <tr key={order.orderNo} className="bg-white transition hover:bg-neutral-50">
+                <td className={`${adminGridCellClass} text-right font-bold text-neutral-500`}>
+                  {formatNumber(rowNo)}
+                </td>
+                <td className={`${adminGridCellClass} text-center`}>
+                  <input
+                    form="bulkOrderForm"
+                    type="checkbox"
+                    name="orderNo"
+                    value={order.orderNo}
+                    aria-label={`${order.orderNo} 선택`}
+                    className="h-4 w-4 rounded border-neutral-300 accent-neutral-900"
+                  />
+                </td>
+                <td
+                  className={`${adminGridCellClass} font-mono text-xs font-semibold text-blue-700`}
+                >
+                  <Link href={`/admin/orders/${order.orderNo}`} className="hover:underline">
+                    {order.orderNo}
+                  </Link>
+                </td>
+                <td className={adminGridStickyCellClass}>
+                  <Link
+                    href={`/admin/orders/${order.orderNo}`}
+                    className="line-clamp-1 font-extrabold hover:text-blue-700 hover:underline"
+                  >
+                    {itemLabel}
+                  </Link>
+                </td>
+                <td className={`${adminGridCellClass} text-right text-xs text-neutral-500`}>
+                  {order.createdAt.toLocaleString('ko-KR')}
+                </td>
+                <td className={adminGridCellClass}>
+                  <span className="line-clamp-1">{companyName || '-'}</span>
+                </td>
+                <td className={`${adminGridCellClass} font-bold text-neutral-950`}>{buyerName}</td>
+                <td className={adminGridCellClass}>{memberType}</td>
+                <td className={`${adminGridCellClass} text-right`}>
+                  <strong className="block text-base text-red-700">
+                    {formatKRW(order.total.toString())}
+                  </strong>
+                  <span
+                    className={
+                      order.pointsUsed > 0
+                        ? 'mt-0.5 block text-[11px] font-semibold text-blue-700'
+                        : 'mt-0.5 block text-[11px] font-medium text-neutral-400'
+                    }
+                  >
+                    마일리지 {formatKRW(order.pointsUsed.toString())}
+                  </span>
+                </td>
+                <td className={`${adminGridCellClass} text-center`}>{paymentLabel}</td>
+                <td className={`${adminGridCellClass} text-center`}>{orderSourceLabel(order)}</td>
+                <td className={adminGridCellClass}>
+                  <form
+                    action={updateAdminOrderStatus}
+                    className="grid grid-cols-[minmax(82px,1fr)_28px] items-center gap-1"
+                  >
+                    <input type="hidden" name="orderNo" value={order.orderNo} />
+                    <select
+                      name="status"
+                      defaultValue={order.status}
+                      className={`${adminFieldClass} h-8 min-w-0 px-1.5 text-xs shadow-none`}
+                    >
+                      {STATUS_OPTIONS.map((status) => (
+                        <option key={status.value} value={status.value}>
+                          {status.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className={`${adminGridButtonClass} w-7 px-0`}
+                      aria-label={`${order.orderNo} 주문상태 저장`}
+                      title="저장"
+                    >
+                      <Check size={14} />
+                    </button>
+                  </form>
+                </td>
+                <td className={adminGridCellClass}>
+                  {shipment ? (
+                    <span className="line-clamp-1 text-xs text-neutral-600">
+                      {[shipment.carrier, shipment.trackingNo].filter(Boolean).join(' / ') || '-'}
+                    </span>
+                  ) : (
+                    <span className="text-neutral-400">배송 정보 없음</span>
+                  )}
+                </td>
+                <td className={`${adminGridCellClass} text-center`}>
+                  <button className={adminGridButtonClass}>SMS</button>
                 </td>
               </tr>
-            ) : (
-              orders.map((order) => {
-                const firstItem = order.items[0];
-                const itemLabel = firstItem
-                  ? order.items.length > 1
-                    ? `${firstItem.productName.slice(0, 10)} 상품 외 ${order.items.length - 1}`
-                    : firstItem.productName
-                  : '주문 상품 없음';
-                const payment = order.payments[0];
-                const shipment = order.shipments[0];
-                const buyerName = order.user?.name || readJsonString(order.buyerInfo, ['name', 'receiver']) || '비회원';
-                const companyName = readJsonString(order.buyerInfo, ['company', 'companyName', 'ceoName']);
-                const memberType = order.userId ? '일반회원' : '비회원';
-                const paymentLabel = payment
-                  ? PAYMENT_LABELS[payment.method] ?? PAYMENT_LABELS[payment.provider ?? ''] ?? payment.method
-                  : '-';
+            );
+          }}
+          renderMobileCard={(order) => {
+            const firstItem = order.items[0];
+            const itemLabel = firstItem
+              ? order.items.length > 1
+                ? `${firstItem.productName} 외 ${order.items.length - 1}건`
+                : firstItem.productName
+              : '주문 상품 없음';
+            const payment = order.payments[0];
+            const shipment = order.shipments[0];
+            const buyerName =
+              order.user?.name || readJsonString(order.buyerInfo, ['name', 'receiver']) || '비회원';
+            const companyName = readJsonString(order.buyerInfo, [
+              'company',
+              'companyName',
+              'ceoName',
+            ]);
+            const paymentLabel = payment
+              ? (PAYMENT_LABELS[payment.method] ??
+                PAYMENT_LABELS[payment.provider ?? ''] ??
+                payment.method)
+              : '-';
 
-                return (
-                  <tr key={order.orderNo} className="bg-[#fafafa] hover:bg-[#e4fff4]">
-                    <td className="h-10 border border-neutral-300 text-center">
-                      <input form="bulkOrderForm" type="checkbox" name="orderNo" value={order.orderNo} aria-label={`${order.orderNo} 선택`} />
-                    </td>
-                    <td className="border border-neutral-300 px-2 font-bold">
-                      <Link href={`/admin/orders/${order.orderNo}`} className="text-neutral-950 hover:underline">
-                        {itemLabel}
-                      </Link>
-                      {dateValue(order.createdAt.getFullYear(), order.createdAt.getMonth() + 1, order.createdAt.getDate()) ===
-                      dateValue(new Date().getFullYear(), new Date().getMonth() + 1, new Date().getDate()) ? (
-                        <span className="float-right text-[11px] font-bold text-red-600">NEW</span>
-                      ) : null}
-                    </td>
-                    <td className="border border-neutral-300 text-center text-red-700">
-                      {order.createdAt.toLocaleString('ko-KR').replace(/-/g, '.')}
-                    </td>
-                    <td className="border border-neutral-300 text-center">{companyName || '-'}</td>
-                    <td className="border border-neutral-300 text-center text-[#6600ff]">{buyerName}</td>
-                    <td className="border border-neutral-300 text-center">{memberType}</td>
-                    <td className="border border-neutral-300 px-2 text-right">
-                      {order.pointsUsed ? (
-                        <div className="text-left text-[11px] text-blue-700">m:-{formatNumber(order.pointsUsed)}</div>
-                      ) : null}
-                      <strong className="text-[#cc0000]">{formatKRW(order.total.toString())}</strong>
-                    </td>
-                    <td className="border border-neutral-300 text-center text-red-700">{paymentLabel}</td>
-                    <td className="border border-neutral-300 text-center">{orderSourceLabel(order)}</td>
-                    <td className="border border-neutral-300 px-2">
-                      <form action={updateAdminOrderStatus} className="flex items-center gap-1">
-                        <input type="hidden" name="orderNo" value={order.orderNo} />
-                        <select name="status" defaultValue={order.status} className="h-7 w-[92px] border border-neutral-400 bg-white text-[11px]">
-                          {STATUS_OPTIONS.map((status) => (
-                            <option key={status.value} value={status.value}>
-                              {status.label}
-                            </option>
-                          ))}
-                        </select>
-                        <button className="h-7 rounded border border-neutral-500 px-1 text-[11px]">저장</button>
-                      </form>
-                    </td>
-                    <td className="border border-neutral-300 text-center">-</td>
-                    <td className="border border-neutral-300 text-center">
-                      {shipment ? (
-                        <>
-                          {shipment.carrier ?? '-'}
-                          <br />
-                          {shipment.trackingNo ?? '-'}
-                        </>
-                      ) : (
-                        '-'
-                      )}
-                    </td>
-                    <td className="border border-neutral-300 text-center">
-                      <button className="h-6 w-[50px] rounded border border-neutral-500 bg-neutral-100 text-[11px]">
-                        SMS
-                      </button>
-                    </td>
-                    <td className="border border-neutral-300 text-center">X</td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+            return (
+              <AdminMobileCard>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Link
+                      href={`/admin/orders/${order.orderNo}`}
+                      className="line-clamp-2 font-extrabold text-neutral-950"
+                    >
+                      {itemLabel}
+                    </Link>
+                    <p className="mt-1 font-mono text-xs font-semibold text-neutral-500">
+                      {order.orderNo}
+                    </p>
+                  </div>
+                  <input
+                    form="bulkOrderForm"
+                    type="checkbox"
+                    name="orderNo"
+                    value={order.orderNo}
+                    aria-label={`${order.orderNo} 선택`}
+                    className="mt-1 h-5 w-5 shrink-0 rounded border-neutral-300 accent-neutral-900"
+                  />
+                </div>
+                <dl className="mt-3 grid grid-cols-2 gap-2">
+                  <AdminMobileField label="주문자">
+                    {buyerName}
+                    <span className="mt-1 block text-xs text-neutral-500">
+                      {companyName || '회사명 없음'}
+                    </span>
+                  </AdminMobileField>
+                  <AdminMobileField label="결제금액" align="right">
+                    {formatKRW(order.total.toString())}
+                    <span
+                      className={
+                        order.pointsUsed > 0
+                          ? 'mt-1 block text-xs text-blue-700'
+                          : 'mt-1 block text-xs text-neutral-400'
+                      }
+                    >
+                      마일리지 {formatKRW(order.pointsUsed.toString())}
+                    </span>
+                  </AdminMobileField>
+                  <AdminMobileField label="결제/경로">
+                    {paymentLabel} / {orderSourceLabel(order)}
+                  </AdminMobileField>
+                  <AdminMobileField label="상태">{orderStatusLabel(order.status)}</AdminMobileField>
+                  <div className="col-span-2">
+                    <AdminMobileField label="주문일시">
+                      {order.createdAt.toLocaleString('ko-KR')}
+                    </AdminMobileField>
+                  </div>
+                  <div className="col-span-2">
+                    <AdminMobileField label="배송">
+                      {shipment
+                        ? `${shipment.carrier ?? '-'} / ${shipment.trackingNo ?? '-'}`
+                        : '배송 정보 없음'}
+                    </AdminMobileField>
+                  </div>
+                </dl>
+                <form action={updateAdminOrderStatus} className="mt-3 flex gap-2">
+                  <input type="hidden" name="orderNo" value={order.orderNo} />
+                  <select
+                    name="status"
+                    defaultValue={order.status}
+                    className={`${adminFieldClass} h-11 min-w-0 flex-1`}
+                  >
+                    {STATUS_OPTIONS.map((status) => (
+                      <option key={status.value} value={status.value}>
+                        {status.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button className={`${adminSecondaryButtonClass} h-11`}>저장</button>
+                </form>
+              </AdminMobileCard>
+            );
+          }}
+        />
+      </AdminSection>
 
-      <div className="mt-3 text-right text-sm font-bold">
-        주문건수: {formatNumber(total)}건 | 합계금액: {formatKRW(totalAmount.toString())} | 마일리지 포함:{' '}
-        {formatKRW(mileageIncludedTotal.toString())}
+      <div className="text-right text-sm font-bold">
+        주문건수: {formatNumber(total)}건 | 합계금액: {formatKRW(totalAmount.toString())} | 마일리지
+        포함: {formatKRW(mileageIncludedTotal.toString())}
       </div>
 
       <AdminPagination baseHref={baseHref} page={query.page} hasNext={hasNext} />

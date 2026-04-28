@@ -44,6 +44,10 @@ function consentedAt(value: 'y' | 'n'): Date | undefined {
   return value === 'y' ? new Date() : undefined;
 }
 
+function legacySocialLoginId(provider: SocialProvider, providerUid: string): string {
+  return `${provider}-${providerUid}`;
+}
+
 function businessProfileData(input: RegisterInput | SocialRegisterInput) {
   if (input.memberType !== 'D') return undefined;
 
@@ -159,6 +163,7 @@ export async function registerSocialUser(
     const user = await prisma.$transaction(async (tx) => {
       const created = await tx.user.create({
         data: {
+          loginId: legacySocialLoginId(input.provider, input.providerUid),
           email: input.email,
           name: input.name,
           phone,

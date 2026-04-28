@@ -6,16 +6,22 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { Decimal } from '@prisma/client/runtime/library';
 import { auth } from '@/server/auth';
-import { getCart, mergeCart, type CartIdentity, type CartItem } from '@/server/services/cart.service';
+import {
+  getCart,
+  mergeCart,
+  type CartIdentity,
+  type CartItem,
+} from '@/server/services/cart.service';
 import { prisma } from '@/server/db';
 import { formatKRW } from '@/lib/format';
+import { getCachedSitePolicy } from '@/server/services/site-policy.service';
 import { OrderPaymentForm, type OrderPaymentFormProps } from './OrderPaymentForm';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: '결제하기',
-  description: '배송지와 결제 정보를 확인하고 구매를 진행합니다.',
+  description: '배송지와 무통장입금 정보를 확인하고 주문을 접수합니다.',
 };
 
 const CART_COOKIE = 'gng_cart_id';
@@ -192,13 +198,16 @@ export default async function OrderPage({ searchParams }: OrderPageProps) {
   const subtotal = new Decimal(cart.subtotal);
   const shippingFee = subtotal.gte(50000) ? new Decimal(0) : new Decimal(3000);
   const orderUser = await getOrderUserData(session?.user?.email ?? null, subtotal);
+  const sitePolicy = await getCachedSitePolicy();
   const hasUnavailableItem = cart.items.some((item) => !item.isAvailable);
 
   if (cart.items.length === 0) {
     return (
       <div className="mx-auto max-w-sm px-4 py-14 text-center">
         <h1 className="text-lg font-bold text-neutral-900">결제할 상품이 없습니다</h1>
-        <p className="mt-3 text-sm text-neutral-500">장바구니에 상품을 담은 뒤 다시 진행해 주세요.</p>
+        <p className="mt-3 text-sm text-neutral-500">
+          장바구니에 상품을 담은 뒤 다시 진행해 주세요.
+        </p>
         <Link
           href="/"
           className="mt-5 inline-flex min-h-11 items-center justify-center rounded-md bg-neutral-900 px-5 text-sm font-semibold text-white"
@@ -218,6 +227,11 @@ export default async function OrderPage({ searchParams }: OrderPageProps) {
       subtotal={Number(subtotal.toString())}
       shippingFee={Number(shippingFee.toString())}
       hasUnavailableItem={hasUnavailableItem}
+      bankInfo={{
+        bankName: sitePolicy.bankName,
+        bankAccount: sitePolicy.bankAccount,
+        bankLogoText: sitePolicy.bankLogoText,
+      }}
       error={searchParams.error}
     />
   );

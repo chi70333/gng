@@ -41,7 +41,7 @@ const registerInput = {
 
 const socialInput = {
   provider: 'kakao' as const,
-  providerUid: 'kakao-1',
+  providerUid: '1234567890',
   email: 'social@example.com',
   name: '소셜회원',
   phone: '010-9876-5432',
@@ -175,6 +175,7 @@ describe('auth registration service', () => {
     expect(txUserCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          loginId: 'kakao-1234567890',
           addresses: {
             create: expect.objectContaining({
               label: '기본 배송지',
@@ -189,7 +190,7 @@ describe('auth registration service', () => {
           socialAccounts: {
             create: {
               provider: 'kakao',
-              providerUid: 'kakao-1',
+              providerUid: '1234567890',
             },
           },
         }),

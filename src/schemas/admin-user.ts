@@ -6,6 +6,7 @@ export const adminUserListQuerySchema = z.object({
   q: z.string().trim().max(100).optional().default(''),
   status: adminUserStatusSchema.optional(),
   page: z.coerce.number().int().min(1).max(1000).optional().default(1),
+  pageSize: z.coerce.number().int().min(10).max(200).optional().default(30),
 });
 
 export const adminUserStatusFormSchema = z.object({
@@ -43,6 +44,11 @@ export const adminUserPointFormSchema = z.object({
   userId: z.coerce.bigint(),
   delta: z.coerce.number().int().min(-10000000).max(10000000),
   reason: z.string().trim().min(1).max(200),
+});
+
+export const adminUserPointHistoryQuerySchema = z.object({
+  userId: z.coerce.bigint(),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(20),
 });
 
 export const adminUserMessageFormSchema = z.object({

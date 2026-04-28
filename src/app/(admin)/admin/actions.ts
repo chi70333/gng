@@ -79,6 +79,10 @@ function redirectWithAdminUsersResult(
   redirect(`${target}${separator}${resultParams.toString()}`);
 }
 
+function firstFormIssueMessage(error: { issues: { message: string }[] }): string {
+  return error.issues[0]?.message ?? '요청 내용을 확인해주세요.';
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -99,6 +103,36 @@ function collectProductImages(formData: FormData) {
     key: keys[index] ?? '',
     alt: alts[index] ?? '',
   }));
+}
+
+function collectDescriptionImageKeys(formData: FormData): string[] {
+  return [
+    ...new Set(
+      formData
+        .getAll('descriptionImageKeys')
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function sanitizeProductDescriptionHtml(value: string | null): string | null {
+  if (!value) return null;
+  const sanitized = value
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(
+      /<\s*(script|style|iframe|object|embed|link|meta|base|form|input|button|textarea|select|option|svg|math)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi,
+      '',
+    )
+    .replace(
+      /<\s*\/?\s*(script|style|iframe|object|embed|link|meta|base|form|input|button|textarea|select|option|svg|math)[^>]*>/gi,
+      '',
+    )
+    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\s+style\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\s+(href|src)\s*=\s*(["'])\s*(javascript|data):[\s\S]*?\2/gi, '');
+
+  return sanitized.trim() ? sanitized : null;
 }
 
 function parseCsv(text: string): string[][] {
@@ -206,6 +240,8 @@ export async function saveAdminProduct(formData: FormData) {
     mainImageIndex: formString(formData, 'mainImageIndex'),
     images: collectProductImages(formData),
   });
+  const description = sanitizeProductDescriptionHtml(optionalString(parsed.description));
+  const descriptionImageKeys = collectDescriptionImageKeys(formData);
   const mainImage = parsed.images[parsed.mainImageIndex] ?? parsed.images[0];
   const thumbnail = mainImage?.url ?? '';
   const effectiveStock = parsed.useStock === '1' ? 999999 : parsed.stock;
@@ -242,7 +278,7 @@ export async function saveAdminProduct(formData: FormData) {
             slug: parsed.slug,
             name: parsed.name,
             summary: optionalString(parsed.summary),
-            description: optionalString(parsed.description),
+            description,
             price: parsed.price,
             salePrice: optionalString(parsed.salePrice),
             costPrice: optionalString(parsed.costPrice),
@@ -258,7 +294,7 @@ export async function saveAdminProduct(formData: FormData) {
             slug: parsed.slug,
             name: parsed.name,
             summary: optionalString(parsed.summary),
-            description: optionalString(parsed.description),
+            description,
             price: parsed.price,
             salePrice: optionalString(parsed.salePrice),
             costPrice: optionalString(parsed.costPrice),
@@ -294,9 +330,14 @@ export async function saveAdminProduct(formData: FormData) {
         isMain: index === parsed.mainImageIndex,
       })),
     });
-    const uploadedKeys = parsed.images
-      .map((image) => image.key?.trim())
-      .filter((key): key is string => Boolean(key));
+    const uploadedKeys = [
+      ...new Set([
+        ...parsed.images
+          .map((image) => image.key?.trim())
+          .filter((key): key is string => Boolean(key)),
+        ...descriptionImageKeys,
+      ]),
+    ];
     for (const key of uploadedKeys) {
       await tx.fileObject.upsert({
         where: { key },
@@ -744,11 +785,14 @@ async function deleteAdminUsers(
 
 export async function bulkDeleteAdminUsers(formData: FormData) {
   const admin = await requireAdmin('user.write');
-  const parsed = adminUserBulkDeleteFormSchema.parse({
+  const parsed = adminUserBulkDeleteFormSchema.safeParse({
     userIds: selectedBigInts(formData, 'userId'),
   });
+  if (!parsed.success) {
+    redirectWithAdminUsersResult(undefined, { bulkError: firstFormIssueMessage(parsed.error) });
+  }
 
-  await deleteAdminUsers(admin, parsed.userIds);
+  await deleteAdminUsers(admin, parsed.data.userIds);
   revalidatePath('/admin/users');
   redirect('/admin/users');
 }
@@ -759,29 +803,36 @@ export async function bulkUpdateAdminUsers(formData: FormData) {
   const redirectTo = formString(formData, 'redirectTo');
 
   if (intent === 'delete') {
-    const parsed = adminUserBulkDeleteFormSchema.parse({
+    const parsed = adminUserBulkDeleteFormSchema.safeParse({
       userIds: selectedBigInts(formData, 'userId'),
     });
-    const deleted = await deleteAdminUsers(admin, parsed.userIds);
+    if (!parsed.success) {
+      redirectWithAdminUsersResult(redirectTo, { bulkError: firstFormIssueMessage(parsed.error) });
+    }
+    const deleted = await deleteAdminUsers(admin, parsed.data.userIds);
     revalidatePath('/admin/users');
     redirectWithAdminUsersResult(redirectTo, { deleted });
   }
 
-  const parsed = adminUserBulkPointFormSchema.parse({
+  const parsed = adminUserBulkPointFormSchema.safeParse({
     intent,
     userIds: selectedBigInts(formData, 'userId'),
     delta: formString(formData, 'bulkMileageAmount'),
     reason: formString(formData, 'bulkMileageReason'),
   });
+  if (!parsed.success) {
+    redirectWithAdminUsersResult(redirectTo, { bulkError: firstFormIssueMessage(parsed.error) });
+  }
+  const pointForm = parsed.data;
   const reason =
-    optionalString(parsed.reason) ??
-    (parsed.intent === 'mileage-reset'
+    optionalString(pointForm.reason) ??
+    (pointForm.intent === 'mileage-reset'
       ? '관리자 마일리지 일괄 초기화'
       : '관리자 마일리지 일괄 부여');
 
   await prisma.$transaction(async (tx) => {
-    for (const userId of parsed.userIds) {
-      if (parsed.intent === 'mileage-reset') {
+    for (const userId of pointForm.userIds) {
+      if (pointForm.intent === 'mileage-reset') {
         await createPointLedgerBalanceEntry(tx, {
           userId,
           targetBalance: 0,
@@ -790,7 +841,7 @@ export async function bulkUpdateAdminUsers(formData: FormData) {
       } else {
         await createPointLedgerEntry(tx, {
           userId,
-          delta: parsed.delta ?? 0,
+          delta: pointForm.delta ?? 0,
           reason,
         });
       }
@@ -800,17 +851,17 @@ export async function bulkUpdateAdminUsers(formData: FormData) {
   await writeAdminAuditLog({
     admin,
     action:
-      parsed.intent === 'mileage-reset' ? 'user.points.bulk.reset' : 'user.points.bulk.grant',
+      pointForm.intent === 'mileage-reset' ? 'user.points.bulk.reset' : 'user.points.bulk.grant',
     entity: 'User',
     payload: {
-      userIds: parsed.userIds.map((userId) => userId.toString()),
-      delta: parsed.intent === 'mileage-grant' ? parsed.delta : undefined,
+      userIds: pointForm.userIds.map((userId) => userId.toString()),
+      delta: pointForm.intent === 'mileage-grant' ? pointForm.delta : undefined,
       reason,
     },
   });
   revalidatePath('/admin/users');
   redirectWithAdminUsersResult(redirectTo, {
-    mileageUpdated: parsed.userIds.length,
+    mileageUpdated: pointForm.userIds.length,
     mileageSkipped: 0,
   });
 }

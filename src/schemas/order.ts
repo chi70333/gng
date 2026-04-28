@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const paymentMethodSchema = z.enum(['card', 'bank', 'vbank', 'mobile', 'transfer']);
+export const paymentMethodSchema = z.literal('bank');
 
 function blankToUndefined(value: unknown) {
   if (value == null) return undefined;
@@ -36,10 +36,15 @@ export const createOrderSchema = z.object({
   saveShippingAddress: z.coerce.boolean().default(false),
   shippingBaseFee: z.coerce.number().int().min(0).optional(),
   shippingExtraFee: z.coerce.number().int().min(0).optional(),
-  couponIssueId: z
-    .preprocess((value) => (value === '' || value == null ? undefined : value), z.coerce.bigint().optional()),
+  couponIssueId: z.preprocess(
+    (value) => (value === '' || value == null ? undefined : value),
+    z.coerce.bigint().optional(),
+  ),
   pointsToUse: z
-    .preprocess((value) => (value === '' || value == null ? 0 : value), z.coerce.number().int().min(0))
+    .preprocess(
+      (value) => (value === '' || value == null ? 0 : value),
+      z.coerce.number().int().min(0),
+    )
     .default(0),
 });
 

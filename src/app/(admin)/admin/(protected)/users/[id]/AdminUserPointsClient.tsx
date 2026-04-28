@@ -3,6 +3,7 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { Coins, Save } from 'lucide-react';
 import { formatNumber } from '@/lib/format';
+import { AdminSection, adminFieldClass, adminPrimaryButtonClass } from '@/components/admin/AdminUI';
 
 export type AdminUserPointRow = {
   id: string;
@@ -24,10 +25,13 @@ type MessageState = {
 } | null;
 
 function formatDateTime(value: string): string {
-  return new Intl.DateTimeFormat('ko-KR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(value));
+  const kst = new Date(new Date(value).getTime() + 9 * 60 * 60 * 1000);
+  const year = String(kst.getUTCFullYear()).slice(2);
+  const month = String(kst.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(kst.getUTCDate()).padStart(2, '0');
+  const hour = String(kst.getUTCHours()).padStart(2, '0');
+  const minute = String(kst.getUTCMinutes()).padStart(2, '0');
+  return `${year}. ${month}. ${day}. ${hour}:${minute}`;
 }
 
 function isPointRow(value: unknown): value is AdminUserPointRow {
@@ -115,16 +119,13 @@ export function AdminUserPointsClient({ userId, initialBalance, initialPoints }:
   }
 
   return (
-    <section className="rounded-lg border border-neutral-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-neutral-100 px-4 py-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <Coins className="text-neutral-300" size={20} />
-            <h2 className="text-base font-extrabold text-neutral-950">마일리지 내역</h2>
-          </div>
-          <p className="mt-1 text-sm text-neutral-500">현재 잔액 {formatNumber(balance)} P</p>
-        </div>
-        {message ? (
+    <AdminSection
+      title="마일리지 내역"
+      description={`현재 잔액 ${formatNumber(balance)} P`}
+      icon={Coins}
+      bodyClassName="p-0"
+      headerAction={
+        message ? (
           <p
             className={`rounded-full px-3 py-1 text-sm font-bold ${
               message.kind === 'success' ? 'bg-blue-50 text-blue-700' : 'bg-rose-50 text-rose-700'
@@ -133,9 +134,9 @@ export function AdminUserPointsClient({ userId, initialBalance, initialPoints }:
           >
             {message.text}
           </p>
-        ) : null}
-      </div>
-
+        ) : null
+      }
+    >
       <form
         onSubmit={onSubmit}
         className="grid gap-3 p-4 md:grid-cols-[180px_1fr_auto] md:items-end"
@@ -148,7 +149,7 @@ export function AdminUserPointsClient({ userId, initialBalance, initialPoints }:
             value={delta}
             onChange={(event) => setDelta(event.target.value)}
             placeholder="예: 1000 또는 -1000"
-            className="min-h-11 w-full rounded-md border border-neutral-200 px-3 font-normal text-neutral-900"
+            className={`${adminFieldClass} h-11`}
             required
           />
         </label>
@@ -159,15 +160,11 @@ export function AdminUserPointsClient({ userId, initialBalance, initialPoints }:
             value={reason}
             onChange={(event) => setReason(event.target.value)}
             placeholder="예: CS 보상 적립"
-            className="min-h-11 w-full rounded-md border border-neutral-200 px-3 font-normal text-neutral-900"
+            className={`${adminFieldClass} h-11`}
             required
           />
         </label>
-        <button
-          type="submit"
-          disabled={isSaving}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-neutral-900 px-4 text-sm font-bold text-white hover:bg-neutral-800 disabled:cursor-wait disabled:opacity-60"
-        >
+        <button type="submit" disabled={isSaving} className={`${adminPrimaryButtonClass} h-11`}>
           <Save size={16} />
           {isSaving ? '저장 중' : '저장'}
         </button>
@@ -196,6 +193,6 @@ export function AdminUserPointsClient({ userId, initialBalance, initialPoints }:
           ))
         )}
       </ul>
-    </section>
+    </AdminSection>
   );
 }

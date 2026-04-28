@@ -7,7 +7,16 @@ import type {
 } from '@prisma/client';
 import type { ReactNode } from 'react';
 import { saveAdminProduct } from '../../actions';
+import {
+  adminFieldClass,
+  adminPrimaryButtonClass,
+  adminSecondaryButtonClass,
+  adminSurfaceClass,
+  adminSurfaceHeaderClass,
+  adminTextareaClass,
+} from '@/components/admin/AdminUI';
 import { FormattedNumberInput } from '@/components/ui/FormattedNumberInput';
+import { ProductDescriptionEditor } from './ProductDescriptionEditor';
 import { ProductImageFields } from './ProductImageFields';
 
 type ProductForForm =
@@ -62,11 +71,9 @@ const DEFAULT_LEGACY_ADMIN: LegacyAdminAttributes = {
   quantityDiscountVisible: 'N',
 };
 
-const inputClass =
-  'mt-1.5 min-h-11 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-950 shadow-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 md:min-h-10';
-const textareaClass =
-  'mt-1.5 w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-950 shadow-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10';
-const sectionClass = 'overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm';
+const inputClass = `mt-1.5 ${adminFieldClass} h-11 md:h-10`;
+const textareaClass = `mt-1.5 ${adminTextareaClass}`;
+const sectionClass = adminSurfaceClass;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -148,7 +155,7 @@ function Section({
 }) {
   return (
     <section className={sectionClass}>
-      <div className="border-b border-neutral-100 bg-neutral-50/70 px-4 py-3">
+      <div className={adminSurfaceHeaderClass}>
         <h2 className="text-sm font-extrabold text-neutral-950">{title}</h2>
         {description ? <p className="mt-0.5 text-xs text-neutral-500">{description}</p> : null}
       </div>
@@ -169,7 +176,7 @@ function RadioCard({
   children: ReactNode;
 }) {
   return (
-    <label className="inline-flex min-h-11 items-center gap-2 rounded-md border border-neutral-300 bg-white px-3 text-sm font-bold text-neutral-800 shadow-sm md:min-h-10">
+    <label className="inline-flex min-h-11 items-center gap-2 rounded-md border border-neutral-300 bg-white px-3 text-sm font-bold text-neutral-800 shadow-sm shadow-neutral-950/[0.035] transition hover:border-neutral-400 md:min-h-10">
       <input type="radio" name={name} value={value} defaultChecked={defaultChecked} />
       {children}
     </label>
@@ -340,16 +347,19 @@ export function ProductForm({
             />
           </Section>
 
-          <Section title="상세 설명" description="상품 안내 문구와 상세 설명을 입력합니다.">
-            <label className="block">
+          <Section
+            title="상세 설명"
+            description="상품 안내 문구를 꾸미고 상세 이미지를 본문 위치에 삽입합니다."
+          >
+            <div>
               <FieldLabel>상품 안내</FieldLabel>
-              <textarea
-                name="description"
-                defaultValue={product?.description ?? ''}
-                rows={10}
-                className={textareaClass}
-              />
-            </label>
+              <div className="mt-1.5">
+                <ProductDescriptionEditor
+                  name="description"
+                  initialValue={product?.description ?? ''}
+                />
+              </div>
+            </div>
           </Section>
         </div>
 
@@ -549,15 +559,10 @@ export function ProductForm({
 
       <div className="sticky bottom-0 -mx-2 border-t border-neutral-200 bg-white/95 p-3 backdrop-blur">
         <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-          <a
-            href="/admin/products"
-            className="inline-flex min-h-11 items-center justify-center rounded-md border border-neutral-300 bg-white px-5 text-sm font-bold text-neutral-800 shadow-sm hover:bg-neutral-50 md:min-h-10"
-          >
+          <a href="/admin/products" className={`${adminSecondaryButtonClass} h-11 md:h-10`}>
             목록
           </a>
-          <button className="min-h-11 rounded-md bg-neutral-900 px-6 text-sm font-extrabold text-white shadow-sm hover:bg-neutral-800 md:min-h-10">
-            상품 저장
-          </button>
+          <button className={`${adminPrimaryButtonClass} h-11 px-6 md:h-10`}>상품 저장</button>
         </div>
       </div>
     </form>
