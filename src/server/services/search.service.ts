@@ -1,10 +1,14 @@
 // Legacy sources: search_result.php, search_post.php, suggest_search.php
 // Search strategy: Meilisearch over HTTP, cached at the edge for 30s.
 
+import { unstable_cache } from 'next/cache';
 import { fetchJson } from '@/lib/http';
 import { logger } from '@/lib/logger';
 import type { SearchSortOption } from '@/schemas/search';
-import type { ProductSummary } from '@/server/repositories/product.repository';
+import {
+  searchProductsByKeyword,
+  type ProductSummary,
+} from '@/server/repositories/product.repository';
 
 const SEARCH_REVALIDATE_SECONDS = 30;
 const SEARCH_INDEX = process.env.MEILI_PRODUCT_INDEX ?? 'products';
@@ -103,6 +107,47 @@ function toLegacySort(sort: SearchSortOption): ProductSearchResult['legacy'] {
   return { sortStr: 'ranking', sort: 'asc' };
 }
 
+function emptySearchResult(params: {
+  q: string;
+  page: number;
+  limit: number;
+  sort: SearchSortOption;
+}): ProductSearchResult {
+  return {
+    items: [],
+    total: 0,
+    page: params.page,
+    totalPages: 0,
+    sort: params.sort,
+    legacy: toLegacySort(params.sort),
+  };
+}
+
+function searchProductsFromDatabase(params: {
+  q: string;
+  page: number;
+  limit: number;
+  sort: SearchSortOption;
+}): Promise<ProductSearchResult> {
+  const legacySort = toLegacySort(params.sort);
+
+  return unstable_cache(
+    async () => {
+      const result = await searchProductsByKeyword(params);
+      return {
+        ...result,
+        sort: params.sort,
+        legacy: legacySort,
+      };
+    },
+    [`search-db-fallback:${params.q}:${params.page}:${params.limit}:${params.sort}`],
+    {
+      revalidate: SEARCH_REVALIDATE_SECONDS,
+      tags: [`search:${params.q}`, `search-sort:${params.sort}`, 'search-db-fallback'],
+    },
+  )();
+}
+
 export async function searchProducts(params: {
   q: string;
   page: number;
@@ -110,17 +155,9 @@ export async function searchProducts(params: {
   sort: SearchSortOption;
 }): Promise<ProductSearchResult> {
   const endpoint = meiliEndpoint(`/indexes/${SEARCH_INDEX}/search`);
-  const legacySort = toLegacySort(params.sort);
   if (!endpoint) {
-    logger.warn('MEILI_HOST is not configured; returning empty search result');
-    return {
-      items: [],
-      total: 0,
-      page: params.page,
-      totalPages: 0,
-      sort: params.sort,
-      legacy: legacySort,
-    };
+    logger.warn('MEILI_HOST is not configured; using cached DB search fallback');
+    return searchProductsFromDatabase(params);
   }
 
   const offset = (params.page - 1) * params.limit;
@@ -150,18 +187,16 @@ export async function searchProducts(params: {
       page: params.page,
       totalPages: Math.ceil(total / params.limit),
       sort: params.sort,
-      legacy: legacySort,
+      legacy: toLegacySort(params.sort),
     };
   } catch (err) {
-    logger.error({ err, q: params.q }, 'Meilisearch product search failed');
-    return {
-      items: [],
-      total: 0,
-      page: params.page,
-      totalPages: 0,
-      sort: params.sort,
-      legacy: legacySort,
-    };
+    logger.error({ err, q: params.q }, 'Meilisearch product search failed; using cached DB search fallback');
+    try {
+      return await searchProductsFromDatabase(params);
+    } catch (fallbackErr) {
+      logger.error({ err: fallbackErr, q: params.q }, 'DB search fallback failed');
+      return emptySearchResult(params);
+    }
   }
 }
 

@@ -2,14 +2,12 @@
 // Cache: no-cache. Cart is per-user/per-guest Redis data with 30d TTL.
 
 import type { Metadata } from 'next';
-import Image from 'next/image';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { ShoppingBag } from 'lucide-react';
 import { auth } from '@/server/auth';
 import { getCart, mergeCart, type CartIdentity } from '@/server/services/cart.service';
-import { formatKRW } from '@/lib/format';
-import CartItemControls from '@/components/shop/CartItemControls';
+import CartSelectionPanel from '@/components/shop/CartSelectionPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,7 +36,6 @@ async function resolveCartIdentity(): Promise<CartIdentity | null> {
 export default async function CartPage() {
   const identity = await resolveCartIdentity();
   const cart = identity ? await getCart(identity) : { items: [], subtotal: '0' };
-  const hasUnavailableItem = cart.items.some((item) => !item.isAvailable);
 
   return (
     <div className="mx-auto max-w-screen-xl px-4 py-6">
@@ -61,79 +58,7 @@ export default async function CartPage() {
           </Link>
         </div>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-          <ul className="space-y-3">
-            {cart.items.map((item) => (
-              <li key={item.skuId} className="flex gap-3 rounded-lg bg-white p-3">
-                <Link
-                  href={`/goods/${item.slug}`}
-                  className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-neutral-100"
-                >
-                  {item.thumbnail && (
-                    <Image
-                      src={item.thumbnail}
-                      alt={item.name}
-                      fill
-                      sizes="96px"
-                      className="object-cover"
-                    />
-                  )}
-                </Link>
-                <div className="min-w-0 flex-1">
-                  <Link
-                    href={`/goods/${item.slug}`}
-                    className="line-clamp-2 text-sm font-medium text-neutral-900"
-                  >
-                    {item.name}
-                  </Link>
-                  {item.optionSummary && (
-                    <p className="mt-1 text-xs text-neutral-500">
-                      {item.optionSummary}
-                    </p>
-                  )}
-                  {item.stockMessage && (
-                    <p className="mt-2 inline-flex rounded bg-red-50 px-2 py-1 text-xs font-medium text-red-600">
-                      {item.stockMessage}
-                    </p>
-                  )}
-                  <div className="mt-3 flex items-center justify-between">
-                    <span className="text-sm font-bold text-neutral-900">
-                      {formatKRW(item.unitPrice)}
-                    </span>
-                  </div>
-                  <div className="mt-3">
-                    <CartItemControls skuId={item.skuId} quantity={item.quantity} />
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-
-          <aside className="h-fit rounded-lg bg-white p-4">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-neutral-500">상품 합계</span>
-              <span className="font-bold text-neutral-900">
-                {formatKRW(cart.subtotal)}
-              </span>
-            </div>
-            {hasUnavailableItem ? (
-              <button
-                type="button"
-                disabled
-                className="mt-4 flex h-12 w-full items-center justify-center rounded-lg bg-neutral-200 text-sm font-semibold text-neutral-500"
-              >
-                품절 상품 확인 필요
-              </button>
-            ) : (
-              <Link
-                href="/order"
-                className="mt-4 flex h-12 w-full items-center justify-center rounded-lg bg-neutral-900 text-sm font-semibold text-white"
-              >
-                주문하기
-              </Link>
-            )}
-          </aside>
-        </div>
+        <CartSelectionPanel items={cart.items} />
       )}
     </div>
   );

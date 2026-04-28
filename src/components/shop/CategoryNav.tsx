@@ -25,23 +25,30 @@ export default function CategoryNav({
     <>
       {/* 모바일: 가로 스크롤 탭 */}
       <nav
-        className="md:hidden overflow-x-auto -mx-4 px-4 flex gap-2 pb-0.5 scrollbar-none"
+        className="-mx-4 md:hidden"
         aria-label="카테고리 탭"
       >
-        {categories.map((cat) => (
-          <Link
-            key={cat.id}
-            href={`/category/${cat.slug}`}
-            className={cn(
-              'shrink-0 h-9 px-4 text-sm rounded-full border transition-colors whitespace-nowrap',
-              activeSlug === cat.slug
-                ? 'bg-neutral-900 border-neutral-900 text-white font-medium'
-                : 'bg-white border-neutral-200 text-neutral-700 hover:border-neutral-400',
-            )}
-          >
-            {cat.name}
-          </Link>
-        ))}
+        <div className="scrollbar-none flex snap-x gap-2 overflow-x-auto px-4 pb-1">
+          {categories.map((cat) => {
+            const isActive = activeSlug === cat.slug;
+
+            return (
+              <Link
+                key={cat.id}
+                href={`/category/${cat.slug}`}
+                aria-current={isActive ? 'page' : undefined}
+                className={cn(
+                  'inline-flex h-11 max-w-[72vw] shrink-0 snap-start items-center justify-center rounded-lg border px-3.5 text-sm font-semibold shadow-sm transition-colors whitespace-nowrap',
+                  isActive
+                    ? 'border-neutral-900 bg-neutral-900 text-white shadow-neutral-900/10'
+                    : 'border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400 hover:bg-neutral-50 active:bg-neutral-100',
+                )}
+              >
+                <span className="truncate">{cat.name}</span>
+              </Link>
+            );
+          })}
+        </div>
       </nav>
 
       {/* 데스크톱: 사이드 리스트 */}

@@ -5,17 +5,18 @@ import { prisma } from '@/server/db';
 import { NotFoundError } from '@/lib/errors';
 import type { CreateProductQnaInput } from '@/schemas/product-qna';
 
-async function getUserIdByEmail(email: string): Promise<bigint> {
+async function getUserIdByEmail(email: string | null): Promise<bigint | null> {
+  if (!email) return null;
+
   const user = await prisma.user.findUnique({
     where: { email },
     select: { id: true },
   });
-  if (!user) throw new NotFoundError('User not found.');
-  return user.id;
+  return user?.id ?? null;
 }
 
 export async function createProductQna(
-  email: string,
+  email: string | null,
   input: CreateProductQnaInput,
 ): Promise<{ id: string }> {
   const [userId, product] = await Promise.all([
@@ -26,7 +27,7 @@ export async function createProductQna(
     }),
   ]);
 
-  if (!product) throw new NotFoundError('Product not found.');
+  if (!product) throw new NotFoundError('상품을 찾을 수 없습니다.');
 
   const row = await prisma.productQna.create({
     data: {

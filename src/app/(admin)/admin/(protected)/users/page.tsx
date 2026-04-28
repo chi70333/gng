@@ -249,48 +249,59 @@ export default async function AdminUsersPage({
         className="grid gap-3 rounded-lg border border-neutral-200 bg-white p-3 text-xs shadow-[0_8px_24px_rgba(15,23,42,0.045)] ring-1 ring-white"
       >
         <input type="hidden" name="redirectTo" value={currentHref} />
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <span className="font-bold text-neutral-700">선택 회원 마일리지</span>
-            <span className="mt-1 block text-neutral-500">
-              선택한 회원의 마일리지를 0으로 초기화하거나 같은 금액을 일괄 부여합니다.
-            </span>
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(240px,320px)]">
+          <div className="grid gap-3 rounded-lg border border-blue-100 bg-blue-50/40 p-3">
+            <div>
+              <span className="font-bold text-neutral-800">선택 회원 마일리지</span>
+              <span className="mt-1 block text-neutral-500">
+                선택한 회원의 마일리지를 0으로 초기화하거나 같은 금액을 일괄 부여합니다.
+              </span>
+            </div>
+            <div className="grid gap-2 md:grid-cols-[160px_minmax(220px,1fr)_auto_auto]">
+              <input
+                name="bulkMileageAmount"
+                type="number"
+                min="1"
+                max="10000000"
+                placeholder="부여 마일리지"
+                className={`${adminFieldClass} h-11`}
+              />
+              <input
+                name="bulkMileageReason"
+                defaultValue="관리자 마일리지 일괄 처리"
+                placeholder="처리 사유"
+                className={`${adminFieldClass} h-11`}
+              />
+              <button
+                name="intent"
+                value="mileage-grant"
+                className={`${adminPrimaryButtonClass} h-11`}
+              >
+                <Coins size={17} />
+                일괄 부여
+              </button>
+              <button
+                name="intent"
+                value="mileage-reset"
+                className={`${adminSecondaryButtonClass} h-11`}
+              >
+                <RotateCcw size={17} />
+                일괄 초기화
+              </button>
+            </div>
           </div>
-          <span className="mt-1 block text-neutral-500">
-            주문 이력은 보존하고 회원 개인정보와 개인 상태 데이터는 익명화/삭제합니다.
-          </span>
-        </div>
-        <div className="grid gap-2 md:grid-cols-[160px_minmax(220px,1fr)_auto_auto_auto]">
-          <input
-            name="bulkMileageAmount"
-            type="number"
-            min="1"
-            max="10000000"
-            placeholder="부여 마일리지"
-            className={`${adminFieldClass} h-11`}
-          />
-          <input
-            name="bulkMileageReason"
-            defaultValue="관리자 마일리지 일괄 처리"
-            placeholder="처리 사유"
-            className={`${adminFieldClass} h-11`}
-          />
-          <button name="intent" value="mileage-grant" className={`${adminPrimaryButtonClass} h-11`}>
-            <Coins size={17} />
-            일괄 부여
-          </button>
-          <button
-            name="intent"
-            value="mileage-reset"
-            className={`${adminSecondaryButtonClass} h-11`}
-          >
-            <RotateCcw size={17} />
-            일괄 초기화
-          </button>
-          <button name="intent" value="delete" className={`${adminDangerButtonClass} h-11`}>
-            <Trash2 size={17} />
-            선택 삭제
-          </button>
+          <div className="grid content-between gap-3 rounded-lg border border-red-100 bg-red-50 p-3">
+            <div>
+              <span className="font-bold text-red-800">선택 회원 삭제</span>
+              <span className="mt-1 block text-red-700/80">
+                주문 이력은 보존하고 회원 개인정보와 개인 상태 데이터는 익명화/삭제합니다.
+              </span>
+            </div>
+            <button name="intent" value="delete" className={`${adminDangerButtonClass} h-11`}>
+              <Trash2 size={17} />
+              선택 삭제
+            </button>
+          </div>
         </div>
       </form>
 

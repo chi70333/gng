@@ -4,6 +4,7 @@
 import { prisma } from '@/server/db';
 import { hashPassword } from '@/server/services/auth.service';
 import { createPointLedgerEntry } from '@/server/services/point-ledger.service';
+import type { Prisma } from '@prisma/client';
 import type {
   LegacyPointSyncInput,
   LegacyRegisterMemberInput,
@@ -26,6 +27,11 @@ export type LegacyMemberListResult = {
 
 function useridToEmail(userid: string, email?: string): string {
   return email ?? `${userid}@legacy.local`;
+}
+
+function normalizeLegacyPhone(phone?: string): string | null {
+  const normalized = phone?.replace(/[^0-9]/g, '') ?? '';
+  return normalized || null;
 }
 
 export async function listLegacyMembers(params: {
@@ -87,8 +93,16 @@ export async function registerLegacyMember(
   input: LegacyRegisterMemberInput,
 ): Promise<{ success: boolean; message?: string }> {
   const email = useridToEmail(input.userid, input.email);
+  const phone = normalizeLegacyPhone(input.hp);
+  const duplicateChecks: Prisma.UserWhereInput[] = [
+    { loginId: input.userid },
+    { email },
+    { email: input.userid },
+  ];
+  if (phone) duplicateChecks.push({ phone });
+
   const exists = await prisma.user.findFirst({
-    where: { OR: [{ loginId: input.userid }, { email }, { email: input.userid }] },
+    where: { OR: duplicateChecks },
     select: { id: true },
   });
 
@@ -99,7 +113,7 @@ export async function registerLegacyMember(
       email,
       loginId: input.userid,
       name: input.name,
-      phone: input.hp?.replace(/[^0-9]/g, '') || null,
+      phone,
       passwordHash: await hashPassword(input.password),
     },
   });

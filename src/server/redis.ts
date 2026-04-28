@@ -29,8 +29,13 @@ const memoryRedis = {
   set: async (
     key: string,
     value: unknown,
-    options?: { ex?: number },
-  ): Promise<'OK'> => {
+    options?: { ex?: number; nx?: boolean },
+  ): Promise<'OK' | null> => {
+    if (options?.nx && memoryStore.has(key)) {
+      const entry = memoryStore.get(key);
+      if (entry && !isExpired(entry)) return null;
+    }
+
     memoryStore.set(key, {
       value,
       expiresAt: options?.ex ? Date.now() + options.ex * 1000 : null,
@@ -57,6 +62,7 @@ export const keys = {
     `product:list:${categorySlug}:${page}:${sort}:${limit}`,
   bestProducts: (limit: number) => `product:best:${limit}`,
   newProducts: (limit: number) => `product:new:${limit}`,
+  productView: (slug: string, visitorId: string) => `product:view:${slug}:${visitorId}`,
   categoryTree: () => 'category:tree',
   categoryLegacyIndex: (legacyIndex: number) => `category:legacy-index:${legacyIndex}`,
   bannerMain: () => 'banner:main',

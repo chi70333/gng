@@ -21,6 +21,9 @@ export async function createOrderAction(formData: FormData): Promise<void> {
   const identity = await resolveCartIdentity();
   if (!identity) redirect('/cart');
   if (formData.get('agree') !== 'on') redirect('/order?error=validation');
+  const selectedSkuIds = formData
+    .getAll('selectedSkuIds')
+    .filter((value): value is string => typeof value === 'string' && value !== '');
 
   const parsed = createOrderSchema.safeParse({
     buyerName: formData.get('buyerName'),
@@ -47,14 +50,25 @@ export async function createOrderAction(formData: FormData): Promise<void> {
     saveShippingAddress: formData.get('saveShippingAddress') === 'on',
     couponIssueId: formData.get('couponIssueId'),
     pointsToUse: formData.get('pointsToUse'),
+    selectedSkuIds: selectedSkuIds.length > 0 ? selectedSkuIds : undefined,
   });
 
   if (!parsed.success) redirect('/order?error=validation');
 
+  let orderDetailUrl: string;
   try {
     const order = await createOrderFromCart(identity, parsed.data);
-    redirect(`/order/complete?orderNo=${encodeURIComponent(order.orderNo)}`);
+    const guestOrderParams = new URLSearchParams();
+    if (identity.type === 'guest') {
+      guestOrderParams.set('phone', parsed.data.buyerPhone ?? parsed.data.phone);
+    }
+    const queryString = guestOrderParams.toString();
+    orderDetailUrl = `/mypage/orders/${encodeURIComponent(order.orderNo)}${
+      queryString ? `?${queryString}` : ''
+    }`;
   } catch {
     redirect('/order?error=failed');
   }
+
+  redirect(orderDetailUrl);
 }

@@ -11,6 +11,17 @@ type ProductQnaResponse = {
   error?: { message?: string };
 };
 
+async function readResponseBody(res: Response): Promise<ProductQnaResponse> {
+  try {
+    return (await res.json()) as ProductQnaResponse;
+  } catch {
+    return {
+      ok: false,
+      error: { message: res.ok ? undefined : '문의 등록에 실패했습니다.' },
+    };
+  }
+}
+
 export default function ProductQnaForm({ productId }: ProductQnaFormProps) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -19,13 +30,38 @@ export default function ProductQnaForm({ productId }: ProductQnaFormProps) {
   const [isPending, startTransition] = useTransition();
 
   function submit(): void {
+    const trimmedTitle = title.trim();
+    const trimmedContent = content.trim();
+
+    if (trimmedTitle.length < 2) {
+      setMessage('제목을 2자 이상 입력해 주세요.');
+      return;
+    }
+
+    if (trimmedContent.length < 5) {
+      setMessage('문의 내용을 5자 이상 입력해 주세요.');
+      return;
+    }
+
     startTransition(async () => {
-      const res = await fetch('/api/product-qna', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId, title, content, isPrivate }),
-      });
-      const body = (await res.json()) as ProductQnaResponse;
+      let body: ProductQnaResponse;
+
+      try {
+        const res = await fetch('/api/product-qna', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            productId,
+            title: trimmedTitle,
+            content: trimmedContent,
+            isPrivate,
+          }),
+        });
+        body = await readResponseBody(res);
+      } catch {
+        setMessage('네트워크 상태를 확인한 뒤 다시 시도해 주세요.');
+        return;
+      }
 
       if (!body.ok) {
         setMessage(body.error?.message ?? '문의 등록에 실패했습니다.');
@@ -63,7 +99,11 @@ export default function ProductQnaForm({ productId }: ProductQnaFormProps) {
         />
         비공개 문의
       </label>
-      {message && <p className="text-sm text-neutral-500">{message}</p>}
+      {message && (
+        <p className="text-sm text-neutral-500" aria-live="polite">
+          {message}
+        </p>
+      )}
       <button
         type="button"
         disabled={isPending}

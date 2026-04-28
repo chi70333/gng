@@ -162,6 +162,25 @@ function serializeCartItems(items: CartItem[]): OrderPaymentFormProps['cartItems
   }));
 }
 
+function calculateSubtotal(items: CartItem[]): Decimal {
+  return items.reduce(
+    (sum, item) => sum.plus(new Decimal(item.unitPrice).mul(item.quantity)),
+    new Decimal(0),
+  );
+}
+
+function parseSelectedSkuIds(items: string | string[] | undefined): Set<string> | null {
+  if (!items) return null;
+
+  const raw = Array.isArray(items) ? items.join(',') : items;
+  const skuIds = raw
+    .split(',')
+    .map((skuId) => skuId.trim())
+    .filter((skuId) => /^[0-9]+$/.test(skuId));
+
+  return new Set(skuIds);
+}
+
 function serializeOrderUser(
   user: Awaited<ReturnType<typeof getOrderUserData>>,
 ): OrderPaymentFormProps['orderUser'] {
@@ -188,6 +207,7 @@ function serializeOrderUser(
 type OrderPageProps = {
   searchParams: {
     error?: string;
+    items?: string | string[];
   };
 };
 
@@ -195,13 +215,17 @@ export default async function OrderPage({ searchParams }: OrderPageProps) {
   const session = await auth();
   const identity = await resolveCartIdentity();
   const cart = identity ? await getCart(identity) : { items: [], subtotal: '0' };
-  const subtotal = new Decimal(cart.subtotal);
+  const selectedSkuIds = parseSelectedSkuIds(searchParams.items);
+  const orderItems = selectedSkuIds
+    ? cart.items.filter((item) => selectedSkuIds.has(item.skuId))
+    : cart.items;
+  const subtotal = calculateSubtotal(orderItems);
   const shippingFee = subtotal.gte(50000) ? new Decimal(0) : new Decimal(3000);
   const orderUser = await getOrderUserData(session?.user?.email ?? null, subtotal);
   const sitePolicy = await getCachedSitePolicy();
-  const hasUnavailableItem = cart.items.some((item) => !item.isAvailable);
+  const hasUnavailableItem = orderItems.some((item) => !item.isAvailable);
 
-  if (cart.items.length === 0) {
+  if (orderItems.length === 0) {
     return (
       <div className="mx-auto max-w-sm px-4 py-14 text-center">
         <h1 className="text-lg font-bold text-neutral-900">결제할 상품이 없습니다</h1>
@@ -223,7 +247,8 @@ export default async function OrderPage({ searchParams }: OrderPageProps) {
       orderUser={serializeOrderUser(orderUser)}
       sessionName={session?.user?.name ?? null}
       sessionEmail={session?.user?.email ?? null}
-      cartItems={serializeCartItems(cart.items)}
+      cartItems={serializeCartItems(orderItems)}
+      selectedSkuIds={orderItems.map((item) => item.skuId)}
       subtotal={Number(subtotal.toString())}
       shippingFee={Number(shippingFee.toString())}
       hasUnavailableItem={hasUnavailableItem}

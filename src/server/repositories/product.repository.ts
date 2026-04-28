@@ -2,6 +2,7 @@
 // 레거시 PHP: goods_list.php, goods_detail.php, _goods_detail2.php
 // N+1 금지: include/select 명시적 사용. Decimal/BigInt → string 직렬화.
 
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/server/db';
 
 // ============================================================
@@ -84,6 +85,23 @@ export interface ProductListResult {
   totalPages: number;
 }
 
+export type ProductSearchSortOption =
+  | 'relevance'
+  | 'new'
+  | 'old'
+  | 'popular'
+  | 'price_asc'
+  | 'price_desc'
+  | 'sale_count'
+  | 'review_count';
+
+export interface ProductSearchParams {
+  q: string;
+  page?: number;
+  limit?: number;
+  sort?: ProductSearchSortOption;
+}
+
 // ============================================================
 // 내부 헬퍼
 // ============================================================
@@ -100,6 +118,19 @@ const SORT_MAP: Record<SortOption, ProductOrderBy> = {
   price_asc: { price: 'asc' },
   price_desc: { price: 'desc' },
 };
+
+function searchOrderBy(
+  sort: ProductSearchSortOption,
+): Prisma.ProductOrderByWithRelationInput[] {
+  if (sort === 'new') return [{ createdAt: 'desc' }];
+  if (sort === 'old') return [{ createdAt: 'asc' }];
+  if (sort === 'popular') return [{ viewCount: 'desc' }, { soldCount: 'desc' }];
+  if (sort === 'price_asc') return [{ price: 'asc' }];
+  if (sort === 'price_desc') return [{ price: 'desc' }];
+  if (sort === 'sale_count') return [{ soldCount: 'desc' }];
+  if (sort === 'review_count') return [{ reviews: { _count: 'desc' } }];
+  return [{ soldCount: 'desc' }, { viewCount: 'desc' }, { createdAt: 'desc' }];
+}
 
 function serializeSummary(p: {
   id: bigint;
@@ -154,6 +185,63 @@ export async function getProductsByCategory(
     prisma.product.findMany({
       where,
       orderBy: SORT_MAP[sort],
+      skip,
+      take: limit,
+      select: {
+        id: true,
+        sku: true,
+        slug: true,
+        name: true,
+        summary: true,
+        price: true,
+        salePrice: true,
+        status: true,
+        thumbnail: true,
+        soldCount: true,
+        viewCount: true,
+        brand: { select: { id: true, name: true } },
+      },
+    }),
+    prisma.product.count({ where }),
+  ]);
+
+  return {
+    items: rows.map(serializeSummary),
+    total,
+    page,
+    totalPages: Math.ceil(total / limit),
+  };
+}
+
+/** Meilisearch unavailable fallback. Cached by the service layer for 30s; backed by pg_trgm indexes. */
+export async function searchProductsByKeyword(
+  params: ProductSearchParams,
+): Promise<ProductListResult> {
+  const q = params.q.trim();
+  const page = params.page ?? 1;
+  const limit = params.limit ?? 20;
+  const sort = params.sort ?? 'relevance';
+  const skip = (page - 1) * limit;
+
+  if (!q) {
+    return { items: [], total: 0, page, totalPages: 0 };
+  }
+
+  const where: Prisma.ProductWhereInput = {
+    status: 'active',
+    deletedAt: null,
+    OR: [
+      { name: { contains: q, mode: 'insensitive' } },
+      { sku: { contains: q, mode: 'insensitive' } },
+      { summary: { contains: q, mode: 'insensitive' } },
+      { brand: { name: { contains: q, mode: 'insensitive' } } },
+    ],
+  };
+
+  const [rows, total] = await prisma.$transaction([
+    prisma.product.findMany({
+      where,
+      orderBy: searchOrderBy(sort),
       skip,
       take: limit,
       select: {
@@ -263,6 +351,16 @@ export async function getProductMetadataBySlug(
       thumbnail: true,
     },
   });
+}
+
+/** Product detail view counter. Called from the no-store tracking API after Redis de-dupe. */
+export async function incrementProductViewCountBySlug(slug: string): Promise<boolean> {
+  const result = await prisma.product.updateMany({
+    where: { slug, status: 'active', deletedAt: null },
+    data: { viewCount: { increment: 1 } },
+  });
+
+  return result.count > 0;
 }
 
 /** legacy goods.idx 기준 canonical slug 조회. goods_detail.php?goodsIdx=N 301에 사용. */

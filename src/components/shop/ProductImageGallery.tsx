@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState, type PointerEvent } from 'react';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight, Package } from 'lucide-react';
 import { cn } from '@/lib/cn';
@@ -44,6 +44,7 @@ export default function ProductImageGallery({
   const [activeIndex, setActiveIndex] = useState(initialIndex);
   const activeImage = galleryImages[activeIndex];
   const hasMultipleImages = galleryImages.length > 1;
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
 
   function showPreviousImage() {
     setActiveIndex((current) =>
@@ -57,9 +58,47 @@ export default function ProductImageGallery({
     );
   }
 
+  function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (!hasMultipleImages || event.pointerType === 'mouse') return;
+    swipeStartRef.current = { x: event.clientX, y: event.clientY };
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Synthetic browser tests may not register an active pointer before dispatching.
+    }
+  }
+
+  function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+    if (!start || !hasMultipleImages || event.pointerType === 'mouse') return;
+
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+    if (Math.abs(deltaX) < 40 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) {
+      return;
+    }
+
+    if (deltaX < 0) {
+      showNextImage();
+    } else {
+      showPreviousImage();
+    }
+  }
+
   return (
     <div className="w-full shrink-0 md:w-[420px]">
-      <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-neutral-100">
+      <div
+        className="relative aspect-square w-full touch-pan-y select-none overflow-hidden rounded-2xl bg-neutral-100"
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={() => {
+          swipeStartRef.current = null;
+        }}
+        onLostPointerCapture={() => {
+          swipeStartRef.current = null;
+        }}
+      >
         {activeImage ? (
           <Image
             src={activeImage.url}
@@ -67,6 +106,7 @@ export default function ProductImageGallery({
             fill
             sizes="(max-width: 768px) 100vw, 420px"
             className="object-cover"
+            draggable={false}
             priority
           />
         ) : (

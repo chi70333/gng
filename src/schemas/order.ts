@@ -46,6 +46,7 @@ export const createOrderSchema = z.object({
       z.coerce.number().int().min(0),
     )
     .default(0),
+  selectedSkuIds: z.array(z.string().regex(/^[0-9]+$/)).min(1).optional(),
 });
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;

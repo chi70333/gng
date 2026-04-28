@@ -3,7 +3,9 @@
 import Image from 'next/image';
 import {
   Banknote,
+  CalendarDays,
   CheckCircle2,
+  ChevronDown,
   ClipboardList,
   ReceiptText,
   Search,
@@ -64,6 +66,7 @@ export type OrderPaymentFormProps = {
   sessionName: string | null;
   sessionEmail: string | null;
   cartItems: PaymentCartItem[];
+  selectedSkuIds: string[];
   subtotal: number;
   shippingFee: number;
   hasUnavailableItem: boolean;
@@ -107,10 +110,20 @@ type PostcodeWindow = Window & {
 
 const postcodeScriptId = 'daum-postcode-script';
 const postcodeScriptSrc = 'https://t1.kakaocdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js';
+const receiptStorageKey = 'gng:order:receipt';
 const fieldClass =
-  'min-h-11 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-neutral-200';
+  'min-h-11 w-full min-w-0 rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-neutral-200 disabled:border-neutral-200 disabled:bg-neutral-50 disabled:text-neutral-400';
+const selectClass = `${fieldClass} appearance-none pr-10`;
 const labelClass = 'mb-1.5 block text-xs font-bold text-neutral-700';
 const sectionClass = 'rounded-lg border border-neutral-200 bg-white p-4 shadow-sm sm:p-5';
+
+type StoredReceiptInfo = {
+  cashReceiptType?: 'none' | 'personal' | 'business';
+  cashReceiptIdentity?: string;
+  taxInvoiceRequested?: boolean;
+  taxInvoiceCompanyName?: string;
+  taxInvoiceBusinessNumber?: string;
+};
 
 function FormSection({
   icon: Icon,
@@ -205,11 +218,111 @@ function PaymentSubmitButton({ finalTotal, disabled }: { finalTotal: number; dis
   );
 }
 
+function SelectField({
+  name,
+  value,
+  onChange,
+  children,
+}: {
+  name: string;
+  value: string;
+  onChange: (value: string) => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="relative min-w-0">
+      <select
+        name={name}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className={selectClass}
+      >
+        {children}
+      </select>
+      <ChevronDown
+        aria-hidden="true"
+        size={17}
+        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500"
+      />
+    </div>
+  );
+}
+
+function SummaryRows({
+  subtotal,
+  shippingFee,
+  couponDiscount,
+  appliedPoints,
+  finalTotal,
+  compact = false,
+}: {
+  subtotal: number;
+  shippingFee: number;
+  couponDiscount: number;
+  appliedPoints: number;
+  finalTotal: number;
+  compact?: boolean;
+}) {
+  const totalBeforeDiscount = toWon(subtotal + shippingFee);
+  const totalDiscount = toWon(couponDiscount + appliedPoints);
+  const hasDiscount = totalDiscount > 0;
+
+  return (
+    <div className="space-y-2 text-sm">
+      <div className="flex items-center justify-between">
+        <span className="text-neutral-500">상품 합계</span>
+        <span className="font-bold text-neutral-900">{formatKRW(subtotal)}</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-neutral-500">배송비</span>
+        <span className="font-bold text-neutral-900">{formatKRW(shippingFee)}</span>
+      </div>
+      {couponDiscount > 0 && (
+        <div className="flex items-center justify-between">
+          <span className="text-neutral-500">쿠폰 할인</span>
+          <span className="font-bold text-blue-700">-{formatKRW(couponDiscount)}</span>
+        </div>
+      )}
+      {appliedPoints > 0 && (
+        <div className="flex items-center justify-between">
+          <span className="text-neutral-500">포인트 사용</span>
+          <span className="font-bold text-blue-700">-{formatNumber(appliedPoints)} P</span>
+        </div>
+      )}
+      {hasDiscount && (
+        <div className="rounded-md bg-blue-50 px-3 py-2 text-blue-800">
+          <div className="flex items-center justify-between">
+            <span className="font-bold">총 할인</span>
+            <span className="font-extrabold">-{formatKRW(totalDiscount)}</span>
+          </div>
+          <div className="mt-1 flex items-center justify-between text-xs">
+            <span>할인 전 금액</span>
+            <span className="line-through">{formatKRW(totalBeforeDiscount)}</span>
+          </div>
+        </div>
+      )}
+      <div className="flex items-end justify-between border-t border-neutral-100 pt-4">
+        <span className="font-bold text-neutral-900">최종 결제금액</span>
+        <span
+          className={
+            compact
+              ? 'text-2xl font-extrabold text-neutral-950'
+              : 'text-xl font-extrabold text-neutral-950'
+          }
+        >
+          {formatKRW(finalTotal)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function OrderPaymentForm({
   orderUser,
   sessionName,
   sessionEmail,
   cartItems,
+  selectedSkuIds,
   subtotal,
   shippingFee,
   hasUnavailableItem,
@@ -224,6 +337,11 @@ export function OrderPaymentForm({
   const [address2, setAddress2] = useState(defaultAddress?.address2 ?? '');
   const [couponIssueId, setCouponIssueId] = useState('');
   const [pointsToUse, setPointsToUse] = useState('');
+  const [cashReceiptType, setCashReceiptType] = useState<'none' | 'personal' | 'business'>('none');
+  const [cashReceiptIdentity, setCashReceiptIdentity] = useState('');
+  const [taxInvoiceRequested, setTaxInvoiceRequested] = useState(false);
+  const [taxInvoiceCompanyName, setTaxInvoiceCompanyName] = useState('');
+  const [taxInvoiceBusinessNumber, setTaxInvoiceBusinessNumber] = useState('');
   const [postcodeOpen, setPostcodeOpen] = useState(false);
   const [postcodeError, setPostcodeError] = useState('');
   const [postcodeLayerHeight, setPostcodeLayerHeight] = useState(480);
@@ -238,14 +356,55 @@ export function OrderPaymentForm({
   const payableBeforePoints = toWon(subtotal + shippingFee - couponDiscount);
   const maxUsablePoints = Math.min(orderUser?.pointBalance ?? 0, payableBeforePoints);
   const appliedPoints = Math.min(pointValue(pointsToUse), maxUsablePoints);
+  const remainingPoints = Math.max(0, (orderUser?.pointBalance ?? 0) - appliedPoints);
   const finalTotal = toWon(payableBeforePoints - appliedPoints);
   const bankAccountLabel = [bankInfo.bankName, bankInfo.bankAccount].filter(Boolean).join(' ');
+  const hasReceiptInfo = cashReceiptType !== 'none';
 
   useEffect(() => {
     if (pointValue(pointsToUse) > maxUsablePoints) {
       setPointsToUse(maxUsablePoints > 0 ? String(maxUsablePoints) : '');
     }
   }, [maxUsablePoints, pointsToUse]);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(receiptStorageKey);
+    if (!stored) return;
+
+    try {
+      const receipt = JSON.parse(stored) as StoredReceiptInfo;
+      if (
+        receipt.cashReceiptType === 'none' ||
+        receipt.cashReceiptType === 'personal' ||
+        receipt.cashReceiptType === 'business'
+      ) {
+        setCashReceiptType(receipt.cashReceiptType);
+      }
+      setCashReceiptIdentity(receipt.cashReceiptIdentity ?? '');
+      setTaxInvoiceRequested(Boolean(receipt.taxInvoiceRequested));
+      setTaxInvoiceCompanyName(receipt.taxInvoiceCompanyName ?? '');
+      setTaxInvoiceBusinessNumber(receipt.taxInvoiceBusinessNumber ?? '');
+    } catch {
+      window.localStorage.removeItem(receiptStorageKey);
+    }
+  }, []);
+
+  useEffect(() => {
+    const receipt: StoredReceiptInfo = {
+      cashReceiptType,
+      cashReceiptIdentity,
+      taxInvoiceRequested,
+      taxInvoiceCompanyName,
+      taxInvoiceBusinessNumber,
+    };
+    window.localStorage.setItem(receiptStorageKey, JSON.stringify(receipt));
+  }, [
+    cashReceiptIdentity,
+    cashReceiptType,
+    taxInvoiceBusinessNumber,
+    taxInvoiceCompanyName,
+    taxInvoiceRequested,
+  ]);
 
   useEffect(() => {
     if (!postcodeOpen) return;
@@ -313,7 +472,6 @@ export function OrderPaymentForm({
         <div className="mx-auto grid max-w-6xl gap-4 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-6 lg:py-8">
           <section className="min-w-0">
             <div className="mb-4">
-              <p className="text-xs font-bold text-emerald-700">무통장입금 전용 주문서</p>
               <h1 className="mt-1 text-2xl font-extrabold text-neutral-950">주문서 작성</h1>
               <p className="mt-2 text-sm leading-6 text-neutral-600">
                 배송 정보와 입금자 정보를 확인해 주세요. 주문 접수 후 관리자 입금 확인을 거쳐
@@ -332,6 +490,9 @@ export function OrderPaymentForm({
             )}
 
             <form action={createOrderAction} className="space-y-4">
+              {selectedSkuIds.map((skuId) => (
+                <input key={skuId} type="hidden" name="selectedSkuIds" value={skuId} />
+              ))}
               <FormSection
                 icon={UserRound}
                 title="구매자 정보"
@@ -512,11 +673,10 @@ export function OrderPaymentForm({
                   <div className="grid gap-3 md:grid-cols-2">
                     <label className="block">
                       <span className={labelClass}>쿠폰</span>
-                      <select
+                      <SelectField
                         name="couponIssueId"
                         value={couponIssueId}
-                        onChange={(event) => setCouponIssueId(event.target.value)}
-                        className={fieldClass}
+                        onChange={setCouponIssueId}
                       >
                         <option value="">사용 안 함</option>
                         {orderUser.coupons.map((coupon) => (
@@ -524,13 +684,28 @@ export function OrderPaymentForm({
                             {coupon.label}
                           </option>
                         ))}
-                      </select>
+                      </SelectField>
                     </label>
                     <div className="block">
-                      <span className={labelClass}>
-                        포인트 {formatNumber(orderUser.pointBalance)} P 보유
-                      </span>
-                      <div className="flex gap-2">
+                      <div className="mb-2 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs font-bold text-neutral-600">
+                            사용 가능 포인트
+                          </span>
+                          <span className="text-base font-extrabold text-neutral-950">
+                            {formatNumber(orderUser.pointBalance)} P
+                          </span>
+                        </div>
+                        {appliedPoints > 0 && (
+                          <div className="mt-1 flex items-center justify-between gap-3 text-xs">
+                            <span className="text-neutral-500">사용 후 잔여</span>
+                            <span className="font-bold text-emerald-700">
+                              {formatNumber(remainingPoints)} P
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-[minmax(0,1fr)_88px] gap-2">
                         <FormattedNumberInput
                           name="pointsToUse"
                           min={0}
@@ -604,7 +779,18 @@ export function OrderPaymentForm({
                   </label>
                   <label className="block">
                     <span className={labelClass}>입금 예정일</span>
-                    <input name="depositDueDate" type="date" className={fieldClass} />
+                    <div className="relative min-w-0">
+                      <CalendarDays
+                        aria-hidden="true"
+                        size={17}
+                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500"
+                      />
+                      <input
+                        name="depositDueDate"
+                        type="date"
+                        className={`${fieldClass} pl-10 [color-scheme:light]`}
+                      />
+                    </div>
                   </label>
                 </div>
               </FormSection>
@@ -617,32 +803,96 @@ export function OrderPaymentForm({
                 <div className="grid gap-3 md:grid-cols-2">
                   <label className="block">
                     <span className={labelClass}>현금영수증</span>
-                    <select name="cashReceiptType" className={fieldClass}>
+                    <SelectField
+                      name="cashReceiptType"
+                      value={cashReceiptType}
+                      onChange={(value) =>
+                        setCashReceiptType(
+                          value === 'personal' || value === 'business' ? value : 'none',
+                        )
+                      }
+                    >
                       <option value="none">신청 안 함</option>
                       <option value="personal">개인 소득공제</option>
                       <option value="business">사업자 지출증빙</option>
-                    </select>
+                    </SelectField>
                   </label>
                   <label className="block">
                     <span className={labelClass}>휴대폰/사업자번호</span>
-                    <input name="cashReceiptIdentity" className={fieldClass} />
+                    <input
+                      name="cashReceiptIdentity"
+                      value={cashReceiptIdentity}
+                      onChange={(event) => setCashReceiptIdentity(event.target.value.slice(0, 40))}
+                      disabled={!hasReceiptInfo}
+                      className={fieldClass}
+                      placeholder={
+                        hasReceiptInfo ? '번호를 입력해 주세요' : '신청 선택 시 입력 가능'
+                      }
+                    />
                   </label>
                   <label className="flex min-h-11 items-center gap-2 text-sm text-neutral-700 md:col-span-2">
-                    <input name="taxInvoiceRequested" type="checkbox" className="h-4 w-4" />
+                    <input
+                      name="taxInvoiceRequested"
+                      type="checkbox"
+                      checked={taxInvoiceRequested}
+                      onChange={(event) => setTaxInvoiceRequested(event.target.checked)}
+                      className="h-4 w-4"
+                    />
                     <span>세금계산서를 신청합니다.</span>
                   </label>
                   <label className="block">
                     <span className={labelClass}>상호명</span>
-                    <input name="taxInvoiceCompanyName" className={fieldClass} />
+                    <input
+                      name="taxInvoiceCompanyName"
+                      value={taxInvoiceCompanyName}
+                      onChange={(event) =>
+                        setTaxInvoiceCompanyName(event.target.value.slice(0, 100))
+                      }
+                      disabled={!taxInvoiceRequested}
+                      className={fieldClass}
+                      placeholder={
+                        taxInvoiceRequested ? '상호명을 입력해 주세요' : '신청 선택 시 입력 가능'
+                      }
+                    />
                   </label>
                   <label className="block">
                     <span className={labelClass}>사업자등록번호</span>
-                    <input name="taxInvoiceBusinessNumber" className={fieldClass} />
+                    <input
+                      name="taxInvoiceBusinessNumber"
+                      value={taxInvoiceBusinessNumber}
+                      onChange={(event) =>
+                        setTaxInvoiceBusinessNumber(event.target.value.slice(0, 20))
+                      }
+                      disabled={!taxInvoiceRequested}
+                      className={fieldClass}
+                      placeholder={
+                        taxInvoiceRequested
+                          ? '사업자등록번호를 입력해 주세요'
+                          : '신청 선택 시 입력 가능'
+                      }
+                    />
                   </label>
                 </div>
               </FormSection>
 
               <section className={sectionClass}>
+                <div className="mb-4">
+                  <h2 className="text-base font-extrabold text-neutral-950">주문상세</h2>
+                  <div className="mt-3 rounded-md border border-neutral-200 bg-neutral-50 p-3">
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="text-sm font-bold text-neutral-900">결제 정보</span>
+                      <span className="text-xs font-bold text-emerald-700">무통장입금</span>
+                    </div>
+                    <SummaryRows
+                      subtotal={subtotal}
+                      shippingFee={shippingFee}
+                      couponDiscount={couponDiscount}
+                      appliedPoints={appliedPoints}
+                      finalTotal={finalTotal}
+                      compact
+                    />
+                  </div>
+                </div>
                 <label className="block">
                   <span className={labelClass}>배송 메모</span>
                   <textarea
@@ -698,33 +948,14 @@ export function OrderPaymentForm({
                 </li>
               ))}
             </ul>
-            <div className="space-y-2 border-t border-neutral-100 pt-4 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-neutral-500">상품 합계</span>
-                <span className="font-bold text-neutral-900">{formatKRW(subtotal)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-neutral-500">배송비</span>
-                <span className="font-bold text-neutral-900">{formatKRW(shippingFee)}</span>
-              </div>
-              {couponDiscount > 0 && (
-                <div className="flex items-center justify-between">
-                  <span className="text-neutral-500">쿠폰 할인</span>
-                  <span className="font-bold text-blue-700">-{formatKRW(couponDiscount)}</span>
-                </div>
-              )}
-              {appliedPoints > 0 && (
-                <div className="flex items-center justify-between">
-                  <span className="text-neutral-500">포인트 사용</span>
-                  <span className="font-bold text-blue-700">-{formatNumber(appliedPoints)} P</span>
-                </div>
-              )}
-              <div className="flex items-end justify-between border-t border-neutral-100 pt-4">
-                <span className="font-bold text-neutral-900">최종 결제금액</span>
-                <span className="text-xl font-extrabold text-neutral-950">
-                  {formatKRW(finalTotal)}
-                </span>
-              </div>
+            <div className="border-t border-neutral-100 pt-4">
+              <SummaryRows
+                subtotal={subtotal}
+                shippingFee={shippingFee}
+                couponDiscount={couponDiscount}
+                appliedPoints={appliedPoints}
+                finalTotal={finalTotal}
+              />
             </div>
           </aside>
         </div>

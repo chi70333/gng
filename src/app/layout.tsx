@@ -10,6 +10,11 @@ export const metadata: Metadata = {
     template: '%s | GNG',
   },
   description: 'GNG 쇼핑몰에서 최신 트렌드 상품을 만나보세요.',
+  icons: {
+    icon: '/favicon.svg',
+    shortcut: '/favicon.svg',
+    apple: '/favicon.svg',
+  },
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'),
   openGraph: {
     type: 'website',

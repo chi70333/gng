@@ -4,7 +4,13 @@
 import type { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '@/server/db';
-import { clearCart, getCart, type CartIdentity } from '@/server/services/cart.service';
+import {
+  clearCart,
+  deleteCartItems,
+  getCart,
+  type CartIdentity,
+  type CartItem,
+} from '@/server/services/cart.service';
 import { calculateCouponDiscount, markCouponUsed } from '@/server/services/coupon.service';
 import { createPointLedgerEntry, getPointBalance } from '@/server/services/point-ledger.service';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '@/lib/errors';
@@ -97,6 +103,13 @@ function getRemoteAreaShippingFee(_zipCode: string): Decimal {
   // Legacy order_table_trans_chk.php looked up island/mountain fees by zipcode.
   // Until the legacy trans_add table is migrated, do not trust client-supplied fees.
   return new Decimal(0);
+}
+
+function getOrderItems(cartItems: CartItem[], selectedSkuIds?: string[]): CartItem[] {
+  if (!selectedSkuIds) return cartItems;
+
+  const selected = new Set(selectedSkuIds);
+  return cartItems.filter((item) => selected.has(item.skuId));
 }
 
 export async function releaseReservedStock(
@@ -254,11 +267,15 @@ export async function createOrderFromCart(
   input: CreateOrderInput,
 ): Promise<CreatedOrder> {
   const cart = await getCart(identity);
-  if (cart.items.length === 0) {
+  const orderItems = getOrderItems(cart.items, input.selectedSkuIds);
+  if (orderItems.length === 0) {
     throw new ValidationError('Cart is empty.');
   }
 
-  const subtotal = new Decimal(cart.subtotal);
+  const subtotal = orderItems.reduce(
+    (sum, item) => sum.plus(new Decimal(item.unitPrice).mul(item.quantity)),
+    new Decimal(0),
+  );
   const shippingBaseFee = getShippingBaseFee(subtotal);
   const shippingExtraFee = getRemoteAreaShippingFee(input.zipCode);
   const shippingFee = shippingBaseFee.plus(shippingExtraFee);
@@ -309,7 +326,7 @@ export async function createOrderFromCart(
 
     finalTotal = payableBeforePoints.minus(input.pointsToUse);
 
-    for (const item of cart.items) {
+    for (const item of orderItems) {
       // Raw SQL is used here because Prisma updateMany cannot express
       // `stock - reserved >= quantity` atomically without a read-then-write race.
       const reserved = await tx.$executeRaw`
@@ -364,7 +381,7 @@ export async function createOrderFromCart(
         },
         memo: input.memo || null,
         items: {
-          create: cart.items.map((item) => ({
+          create: orderItems.map((item) => ({
             productId: BigInt(item.productId),
             skuId: BigInt(item.skuId),
             productName: item.name,
@@ -427,7 +444,14 @@ export async function createOrderFromCart(
     }
   });
 
-  await clearCart(identity);
+  if (input.selectedSkuIds) {
+    await deleteCartItems(
+      identity,
+      orderItems.map((item) => item.skuId),
+    );
+  } else {
+    await clearCart(identity);
+  }
   return { orderNo, total: finalTotal.toString() };
 }
 

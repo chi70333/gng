@@ -11,6 +11,7 @@ const enabled = process.env.GNG_DB_INTEGRATION_TEST_ENABLED === '1';
 const describeIntegration = enabled ? describe : describe.skip;
 
 const runId = `${process.env.GNG_TEST_USER_PREFIX ?? 'gng_ext'}_${Date.now()}`;
+const runPhone = `010${String(Date.now()).slice(-8)}`;
 
 async function cleanupTestUsers() {
   const users = await prisma.user.findMany({
@@ -46,7 +47,7 @@ describeIntegration('legacy API service DB integration', () => {
       userid,
       password: 'Password123!',
       name: '통합 테스트',
-      hp: '010-1234-5678',
+      hp: runPhone.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3'),
     });
 
     expect(result).toEqual({
@@ -68,7 +69,7 @@ describeIntegration('legacy API service DB integration', () => {
 
     expect(user.loginId).toBe(userid);
     expect(user.email).toBe(`${userid}@legacy.local`);
-    expect(user.phone).toBe('01012345678');
+    expect(user.phone).toBe(runPhone);
     expect(user.name).toBe('통합 테스트');
     expect(user.passwordHash).toMatch(/^\$argon2id\$/);
     await expect(argon2.verify(user.passwordHash ?? '', 'Password123!')).resolves.toBe(true);
@@ -79,6 +80,15 @@ describeIntegration('legacy API service DB integration', () => {
         userid,
         password: 'Password123!',
         name: '중복 테스트',
+      }),
+    ).resolves.toEqual({ success: false, message: 'User already exists' });
+    await expect(
+      registerLegacyMember({
+        userid: `${runId}_same_phone`,
+        password: 'Password123!',
+        name: 'Duplicate phone',
+        email: `${runId}_same_phone@example.test`,
+        hp: runPhone,
       }),
     ).resolves.toEqual({ success: false, message: 'User already exists' });
   });

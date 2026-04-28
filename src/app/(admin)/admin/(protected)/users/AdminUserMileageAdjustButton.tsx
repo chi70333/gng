@@ -24,7 +24,8 @@ type Props = {
 };
 
 const DEFAULT_REASON = '관리자 마일리지 부여';
-const QUICK_AMOUNTS = [1000, 3000, 5000, 10000];
+const MAX_GRANT_AMOUNT = 10000000;
+const QUICK_AMOUNTS = [10000, 30000, 50000, 100000];
 
 type Message = {
   kind: 'success' | 'error';
@@ -84,6 +85,13 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
   const closeModal = useCallback(() => {
     setIsOpen(false);
     setMessage(null);
+  }, []);
+
+  const addQuickAmount = useCallback((quickAmount: number) => {
+    setAmount((currentAmount) => {
+      const current = Number(currentAmount) || 0;
+      return String(Math.min(current + quickAmount, MAX_GRANT_AMOUNT));
+    });
   }, []);
 
   useEffect(() => {
@@ -182,7 +190,6 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
         aria-label={`${userName} 마일리지 부여 및 이력 보기`}
         title="마일리지 부여 및 이력 보기"
       >
-        <span>마일리지</span>
         <span>{formatNumber(balance)} P</span>
       </button>
 
@@ -209,9 +216,7 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
                   >
                     마일리지 부여
                   </h2>
-                  <p className="mt-1 truncate text-sm font-semibold text-neutral-500">
-                    {userName}
-                  </p>
+                  <p className="mt-1 truncate text-sm font-semibold text-neutral-500">{userName}</p>
                 </div>
               </div>
               <button
@@ -250,7 +255,7 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
                     <FormattedNumberInput
                       name="amount"
                       min="1"
-                      max="10000000"
+                      max={MAX_GRANT_AMOUNT}
                       value={amount}
                       onValueChange={setAmount}
                       placeholder="예: 1,000"
@@ -275,10 +280,10 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
                     <button
                       key={quickAmount}
                       type="button"
-                      onClick={() => setAmount(String(quickAmount))}
+                      onClick={() => addQuickAmount(quickAmount)}
                       className="min-h-9 rounded-md border border-neutral-200 bg-white px-2 text-xs font-extrabold text-neutral-700 transition hover:border-neutral-400 hover:bg-neutral-100"
                     >
-                      {formatNumber(quickAmount)}
+                      +{formatNumber(quickAmount)}
                     </button>
                   ))}
                 </div>

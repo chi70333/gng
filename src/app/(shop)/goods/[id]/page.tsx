@@ -9,6 +9,7 @@ import BreadcrumbNav from '@/components/shop/BreadcrumbNav';
 import AddToCartPanel from '@/components/shop/AddToCartPanel';
 import ProductQnaForm from '@/components/shop/ProductQnaForm';
 import ProductImageGallery from '@/components/shop/ProductImageGallery';
+import ProductViewTracker from '@/components/shop/ProductViewTracker';
 import {
   getCachedProductBySlug,
   getCachedProductMetadataBySlug,
@@ -161,6 +162,7 @@ export default async function GoodsDetailPage({ params }: { params: { id: string
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
+      <ProductViewTracker slug={product.slug} />
 
       <BreadcrumbNav items={breadcrumbs} />
 
@@ -223,20 +225,20 @@ export default async function GoodsDetailPage({ params }: { params: { id: string
           ) : null}
 
           {!canShowPrice && (
-          <div className="space-y-3 pt-2">
-            <Link
-              href="/login"
-              className="flex h-12 w-full items-center justify-center rounded-xl bg-neutral-900 font-semibold text-white transition-colors hover:bg-neutral-700"
-            >
-              로그인하고 구매하기
-            </Link>
-            <button
-              disabled
-              className="flex h-12 w-full cursor-not-allowed items-center justify-center rounded-xl border border-neutral-300 bg-neutral-50 font-semibold text-neutral-500"
-            >
-              장바구니 열기 (로그인 필요)
-            </button>
-          </div>
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                disabled
+                className="flex h-12 cursor-not-allowed items-center justify-center rounded-xl border border-neutral-300 bg-neutral-50 text-sm font-semibold text-neutral-500"
+              >
+                장바구니
+              </button>
+              <Link
+                href="/login"
+                className="flex h-12 items-center justify-center rounded-xl bg-neutral-900 text-sm font-semibold text-white transition-colors hover:bg-neutral-700"
+              >
+                구매하기
+              </Link>
+            </div>
           )}
 
           <ul className="space-y-1 border-t border-neutral-100 pt-2 text-xs text-neutral-500">

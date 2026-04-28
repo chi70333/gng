@@ -11,6 +11,7 @@ import {
   getProductBySlug,
   getProductMetadataBySlug,
   getProductRouteByLegacyId,
+  incrementProductViewCountBySlug,
   getBestProducts,
   getNewProducts,
   getProductSkusByProductId,
@@ -23,6 +24,8 @@ import {
   type ProductSummary,
   type ProductSku,
 } from '@/server/repositories/product.repository';
+
+const PRODUCT_VIEW_DEDUPE_SECONDS = 60 * 30;
 
 async function readThroughRedis<T>(
   key: string,
@@ -80,6 +83,34 @@ export function getCachedProductBySlug(slug: string): Promise<ProductDetail | nu
       tags: [TAGS.product(slug)],
     },
   )();
+}
+
+/** Product view counter: no-store API mutation, Redis de-duped per visitor for 30m. */
+export async function countProductView(
+  slug: string,
+  visitorId: string,
+): Promise<{ counted: boolean; found: boolean }> {
+  const dedupeKey = keys.productView(slug, visitorId);
+
+  try {
+    const reserved = await redis.set(dedupeKey, '1', {
+      ex: PRODUCT_VIEW_DEDUPE_SECONDS,
+      nx: true,
+    });
+    if (reserved !== 'OK') return { counted: false, found: true };
+  } catch (err) {
+    logger.warn({ err, slug }, 'product view Redis set failed, counting without de-dupe');
+  }
+
+  const found = await incrementProductViewCountBySlug(slug);
+  if (!found) {
+    redis
+      .del(dedupeKey)
+      .catch((err: unknown) => logger.warn({ err, slug }, 'product view Redis cleanup failed'));
+    return { counted: false, found: false };
+  }
+
+  return { counted: true, found: true };
 }
 
 /** 베스트 상품 (ISR 5m). */

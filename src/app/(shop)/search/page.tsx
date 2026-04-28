@@ -3,6 +3,7 @@
 // Compatibility: preserves searchstring, sortStr, detail, name, sty_num while normalizing q/sort.
 
 import type { Metadata } from 'next';
+import { Search } from 'lucide-react';
 import ProductGrid from '@/components/shop/ProductGrid';
 import Pagination from '@/components/shop/Pagination';
 import { formatNumber } from '@/lib/format';
@@ -39,7 +40,40 @@ function buildSearchBaseHref(searchParams: SearchPageProps['searchParams']) {
     const first = firstParam(value);
     if (first) params.set(key, first);
   });
-  return `/search?${params.toString()}`;
+  const query = params.toString();
+  return query ? `/search?${query}` : '/search';
+}
+
+function searchKeywordFromParams(searchParams: SearchPageProps['searchParams']): string {
+  return (
+    firstParam(searchParams.q) ??
+    firstParam(searchParams.searchstring) ??
+    firstParam(searchParams.name) ??
+    ''
+  );
+}
+
+function SearchPageForm({ defaultValue = '' }: { defaultValue?: string }) {
+  return (
+    <form action="/search" method="GET" className="mt-5 flex gap-2">
+      <input
+        name="q"
+        type="search"
+        inputMode="search"
+        defaultValue={defaultValue}
+        aria-label="상품 검색어"
+        placeholder="상품명을 입력하세요"
+        className="min-h-11 flex-1 rounded-lg border border-neutral-200 bg-white px-3 text-sm outline-none placeholder:text-neutral-400 focus:border-neutral-400 focus:ring-2 focus:ring-neutral-200"
+      />
+      <button
+        type="submit"
+        aria-label="검색"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-neutral-900 text-white transition-colors hover:bg-neutral-700 active:bg-neutral-800"
+      >
+        <Search aria-hidden="true" size={18} />
+      </button>
+    </form>
+  );
 }
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
@@ -53,6 +87,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     return (
       <div className="mx-auto max-w-screen-xl px-4 py-8">
         <h1 className="text-xl font-bold text-neutral-900">검색</h1>
+        <SearchPageForm defaultValue={searchKeywordFromParams(searchParams)} />
         <p className="mt-8 text-center text-sm text-neutral-400">
           상품을 찾으려면 검색어를 입력해 주세요.
         </p>
@@ -71,6 +106,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     <div className="mx-auto max-w-screen-xl px-4 py-4">
       <div className="mb-5">
         <h1 className="text-xl font-bold text-neutral-900">검색</h1>
+        <SearchPageForm defaultValue={parsed.data.q} />
         <p className="mt-1 text-sm text-neutral-500">
           &quot;{parsed.data.q}&quot; 검색 결과 {formatNumber(result.total)}개
         </p>

@@ -48,7 +48,14 @@ export default function MobileMenuDrawer({
         aria-label="모바일 메뉴"
       >
         <div className="flex h-14 shrink-0 items-center justify-between border-b px-4">
-          <span className="text-lg font-bold">GNG</span>
+          <Link
+            href="/"
+            onClick={() => setOpen(false)}
+            className="flex h-11 items-center text-lg font-bold text-neutral-900"
+            aria-label="홈으로 이동"
+          >
+            GNG
+          </Link>
           <button
             onClick={() => setOpen(false)}
             className="flex h-11 w-11 items-center justify-center rounded-lg text-neutral-700 transition-colors hover:bg-neutral-100 active:bg-neutral-200"
