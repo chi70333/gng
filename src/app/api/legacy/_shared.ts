@@ -29,7 +29,9 @@ export function legacyJson(body: unknown, status = 200): NextResponse {
 }
 
 function isSuccessfulResponse(status: number, body: unknown): boolean {
-  void body;
+  if (body && typeof body === 'object' && !Array.isArray(body) && 'success' in body) {
+    return status >= 200 && status < 400 && (body as { success: unknown }).success !== false;
+  }
   return status >= 200 && status < 400;
 }
 

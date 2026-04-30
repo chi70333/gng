@@ -115,10 +115,22 @@ function buildWhere(query: ReturnType<typeof parseQuery>) {
   const conditions: Prisma.Sql[] = [];
   if (query.service) conditions.push(Prisma.sql`"service" = ${query.service}`);
   if (query.result === 'success') {
-    conditions.push(Prisma.sql`"statusCode" >= 200 AND "statusCode" < 400`);
+    conditions.push(Prisma.sql`(
+      "statusCode" >= 200
+      AND "statusCode" < 400
+      AND "success" = true
+      AND "errorMessage" IS NULL
+      AND COALESCE("responsePayload"->>'success', 'true') <> 'false'
+    )`);
   }
   if (query.result === 'failed') {
-    conditions.push(Prisma.sql`("statusCode" < 200 OR "statusCode" >= 400)`);
+    conditions.push(Prisma.sql`(
+      "statusCode" < 200
+      OR "statusCode" >= 400
+      OR "success" = false
+      OR "errorMessage" IS NOT NULL
+      OR "responsePayload"->>'success' = 'false'
+    )`);
   }
   if (query.action) conditions.push(Prisma.sql`"action" ILIKE ${`%${query.action}%`}`);
   if (query.q) {
@@ -184,6 +196,30 @@ function actionLabel(row: Pick<ApiLogRow, 'action' | 'method' | 'service'>): str
   return '-';
 }
 
+function readPayloadMessage(value: string | null): string | null {
+  if (!value || value === 'null') return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const record = parsed as Record<string, unknown>;
+    if (record.success !== false || typeof record.message !== 'string') return null;
+    return record.message;
+  } catch {
+    return null;
+  }
+}
+
+function errorReason(row: Pick<ApiLogRow, 'errorMessage' | 'responsePayload'>): string | null {
+  return row.errorMessage || readPayloadMessage(row.responsePayload);
+}
+
+function isSuccessfulLog(
+  row: Pick<ApiLogRow, 'statusCode' | 'success' | 'errorMessage' | 'responsePayload'>,
+  reason = errorReason(row),
+): boolean {
+  return row.statusCode >= 200 && row.statusCode < 400 && row.success && !reason;
+}
+
 function successRate(summary: ServiceSummaryRow | undefined): string {
   if (!summary || summary.total === 0) return '-';
   return `${Math.round((summary.successful / summary.total) * 100)}%`;
@@ -224,8 +260,22 @@ async function loadApiLogs(query: ReturnType<typeof parseQuery>): Promise<QueryR
         SELECT
           "service",
           COUNT(*)::int AS "total",
-          SUM(CASE WHEN "statusCode" >= 200 AND "statusCode" < 400 THEN 1 ELSE 0 END)::int AS "successful",
-          SUM(CASE WHEN "statusCode" >= 200 AND "statusCode" < 400 THEN 0 ELSE 1 END)::int AS "failed",
+          SUM(CASE
+            WHEN "statusCode" >= 200
+              AND "statusCode" < 400
+              AND "success" = true
+              AND "errorMessage" IS NULL
+              AND COALESCE("responsePayload"->>'success', 'true') <> 'false'
+            THEN 1 ELSE 0
+          END)::int AS "successful",
+          SUM(CASE
+            WHEN "statusCode" < 200
+              OR "statusCode" >= 400
+              OR "success" = false
+              OR "errorMessage" IS NOT NULL
+              OR "responsePayload"->>'success' = 'false'
+            THEN 1 ELSE 0
+          END)::int AS "failed",
           ROUND(AVG("durationMs"))::int AS "avgDurationMs",
           MAX("createdAt") AS "latestAt"
         FROM "ApiCommunicationLog"
@@ -355,7 +405,7 @@ export default async function AdminApiMonitorPage({
             <input
               name="q"
               defaultValue={query.q}
-              placeholder="아이디, IP, 오류 메시지"
+              placeholder="아이디, IP, 오류 원인"
               className={`${adminFieldClass} h-11`}
             />
           </label>
@@ -375,11 +425,12 @@ export default async function AdminApiMonitorPage({
         <AdminDataGrid
           columns={[
             { key: 'no', label: 'No', align: 'right', widthClassName: 'w-16' },
-            { key: 'createdAt', label: '시간', widthClassName: 'w-36' },
+            { key: 'createdAt', label: '시간', widthClassName: 'w-44' },
             { key: 'service', label: 'API', widthClassName: 'w-28' },
             { key: 'action', label: '액션', widthClassName: 'w-36' },
             { key: 'method', label: 'Method', widthClassName: 'w-20' },
             { key: 'status', label: '상태', widthClassName: 'w-24' },
+            { key: 'error', label: '오류 원인', widthClassName: 'w-56' },
             { key: 'duration', label: '응답', align: 'right', widthClassName: 'w-24' },
             { key: 'ip', label: 'IP', widthClassName: 'w-36' },
             { key: 'detail', label: '상세' },
@@ -401,93 +452,118 @@ export default async function AdminApiMonitorPage({
               ariaLabel="통신 이력 표시 개수"
             />
           }
-          renderRow={(row, index) => (
-            <tr key={row.id} className="hover:bg-neutral-50">
-              <td className={`${adminGridCellClass} text-right text-neutral-500`}>
-                {formatNumber(data.total - index)}
-              </td>
-              <td className={`${adminGridStickyCellClass} font-semibold text-neutral-800`}>
-                {formatDateTime(row.createdAt)}
-              </td>
-              <td className={adminGridCellClass}>{serviceLabel(row.service)}</td>
-              <td className={adminGridCellClass}>{actionLabel(row)}</td>
-              <td className={`${adminGridCellClass} font-mono`}>{row.method}</td>
-              <td className={adminGridCellClass}>
-                <div className="flex items-center gap-2">
-                  <AdminStatusBadge
-                    status={row.statusCode >= 200 && row.statusCode < 400 ? 'success' : 'failed'}
-                  />
-                  <span className="font-mono text-[11px] text-neutral-500">{row.statusCode}</span>
+          renderRow={(row, index) => {
+            const reason = errorReason(row);
+            const isSuccess = isSuccessfulLog(row, reason);
+
+            return (
+              <tr key={row.id} className="hover:bg-neutral-50">
+                <td className={`${adminGridCellClass} text-right text-neutral-500`}>
+                  {formatNumber(data.total - index)}
+                </td>
+                <td className={`${adminGridStickyCellClass} font-semibold text-neutral-800`}>
+                  {formatDateTime(row.createdAt)}
+                </td>
+                <td className={adminGridCellClass}>{serviceLabel(row.service)}</td>
+                <td className={adminGridCellClass}>{actionLabel(row)}</td>
+                <td className={`${adminGridCellClass} font-mono`}>{row.method}</td>
+                <td className={adminGridCellClass}>
+                  <div className="grid gap-1">
+                    <div className="flex items-center gap-2">
+                      <AdminStatusBadge status={isSuccess ? 'success' : 'failed'} />
+                      <span className="font-mono text-[11px] text-neutral-500">
+                        {row.statusCode}
+                      </span>
+                    </div>
+                    {reason ? (
+                      <span className="line-clamp-2 text-[11px] font-semibold text-rose-700">
+                        {reason}
+                      </span>
+                    ) : null}
+                  </div>
+                </td>
+                <td className={adminGridCellClass}>
+                  {reason ? (
+                    <span className="line-clamp-3 text-xs font-semibold text-rose-700">
+                      {reason}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-neutral-400">-</span>
+                  )}
+                </td>
+                <td className={`${adminGridCellClass} text-right font-mono`}>
+                  {row.durationMs === null ? '-' : `${formatNumber(row.durationMs)}ms`}
+                </td>
+                <td className={`${adminGridCellClass} font-mono`}>{row.ip ?? '-'}</td>
+                <td className={adminGridCellClass}>
+                  <details className="group">
+                    <summary className="cursor-pointer text-xs font-bold text-neutral-700 underline-offset-2 hover:underline">
+                      요청/응답
+                    </summary>
+                    <div className="mt-2 grid gap-2 rounded-md bg-neutral-50 p-3">
+                      {row.errorMessage ? (
+                        <p className="rounded border border-rose-100 bg-rose-50 px-2 py-1 text-xs font-bold text-rose-700">
+                          {row.errorMessage}
+                        </p>
+                      ) : null}
+                      <div>
+                        <p className="mb-1 text-[11px] font-extrabold text-neutral-500">요청</p>
+                        <pre className="max-h-44 overflow-auto rounded bg-white p-2 font-mono text-[11px] leading-4 text-neutral-700 ring-1 ring-neutral-200">
+                          {formatPayload(row.requestPayload)}
+                        </pre>
+                      </div>
+                      <div>
+                        <p className="mb-1 text-[11px] font-extrabold text-neutral-500">응답</p>
+                        <pre className="max-h-44 overflow-auto rounded bg-white p-2 font-mono text-[11px] leading-4 text-neutral-700 ring-1 ring-neutral-200">
+                          {formatPayload(row.responsePayload)}
+                        </pre>
+                      </div>
+                    </div>
+                  </details>
+                </td>
+              </tr>
+            );
+          }}
+          renderMobileCard={(row) => {
+            const reason = errorReason(row);
+            const isSuccess = isSuccessfulLog(row, reason);
+
+            return (
+              <AdminMobileCard>
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-extrabold text-neutral-950">
+                      {serviceLabel(row.service)}
+                    </p>
+                    <p className="mt-1 text-xs font-medium text-neutral-500">
+                      {formatDateTime(row.createdAt)}
+                    </p>
+                  </div>
+                  <AdminStatusBadge status={isSuccess ? 'success' : 'failed'} />
                 </div>
-              </td>
-              <td className={`${adminGridCellClass} text-right font-mono`}>
-                {row.durationMs === null ? '-' : `${formatNumber(row.durationMs)}ms`}
-              </td>
-              <td className={`${adminGridCellClass} font-mono`}>{row.ip ?? '-'}</td>
-              <td className={adminGridCellClass}>
-                <details className="group">
-                  <summary className="cursor-pointer text-xs font-bold text-neutral-700 underline-offset-2 hover:underline">
+                <dl className="grid grid-cols-2 gap-2">
+                  <AdminMobileField label="액션">{actionLabel(row)}</AdminMobileField>
+                  <AdminMobileField label="상태">{row.statusCode}</AdminMobileField>
+                  <AdminMobileField label="오류 원인">{reason ?? '-'}</AdminMobileField>
+                  <AdminMobileField label="응답" align="right">
+                    {row.durationMs === null ? '-' : `${formatNumber(row.durationMs)}ms`}
+                  </AdminMobileField>
+                  <AdminMobileField label="IP">{row.ip ?? '-'}</AdminMobileField>
+                </dl>
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-sm font-bold text-neutral-700">
                     요청/응답
                   </summary>
-                  <div className="mt-2 grid gap-2 rounded-md bg-neutral-50 p-3">
-                    {row.errorMessage ? (
-                      <p className="rounded border border-rose-100 bg-rose-50 px-2 py-1 text-xs font-bold text-rose-700">
-                        {row.errorMessage}
-                      </p>
-                    ) : null}
-                    <div>
-                      <p className="mb-1 text-[11px] font-extrabold text-neutral-500">요청</p>
-                      <pre className="max-h-44 overflow-auto rounded bg-white p-2 font-mono text-[11px] leading-4 text-neutral-700 ring-1 ring-neutral-200">
-                        {formatPayload(row.requestPayload)}
-                      </pre>
-                    </div>
-                    <div>
-                      <p className="mb-1 text-[11px] font-extrabold text-neutral-500">응답</p>
-                      <pre className="max-h-44 overflow-auto rounded bg-white p-2 font-mono text-[11px] leading-4 text-neutral-700 ring-1 ring-neutral-200">
-                        {formatPayload(row.responsePayload)}
-                      </pre>
-                    </div>
-                  </div>
+                  <pre className="mt-2 max-h-56 overflow-auto rounded bg-neutral-50 p-3 font-mono text-[11px] leading-4 text-neutral-700 ring-1 ring-neutral-200">
+                    {formatPayload(row.requestPayload)}
+                  </pre>
+                  <pre className="mt-2 max-h-56 overflow-auto rounded bg-neutral-50 p-3 font-mono text-[11px] leading-4 text-neutral-700 ring-1 ring-neutral-200">
+                    {formatPayload(row.responsePayload)}
+                  </pre>
                 </details>
-              </td>
-            </tr>
-          )}
-          renderMobileCard={(row) => (
-            <AdminMobileCard>
-              <div className="mb-3 flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-extrabold text-neutral-950">
-                    {serviceLabel(row.service)}
-                  </p>
-                  <p className="mt-1 text-xs font-medium text-neutral-500">
-                    {formatDateTime(row.createdAt)}
-                  </p>
-                </div>
-                <AdminStatusBadge
-                  status={row.statusCode >= 200 && row.statusCode < 400 ? 'success' : 'failed'}
-                />
-              </div>
-              <dl className="grid grid-cols-2 gap-2">
-                <AdminMobileField label="액션">{actionLabel(row)}</AdminMobileField>
-                <AdminMobileField label="상태">{row.statusCode}</AdminMobileField>
-                <AdminMobileField label="응답" align="right">
-                  {row.durationMs === null ? '-' : `${formatNumber(row.durationMs)}ms`}
-                </AdminMobileField>
-                <AdminMobileField label="IP">{row.ip ?? '-'}</AdminMobileField>
-              </dl>
-              <details className="mt-3">
-                <summary className="cursor-pointer text-sm font-bold text-neutral-700">
-                  요청/응답
-                </summary>
-                <pre className="mt-2 max-h-56 overflow-auto rounded bg-neutral-50 p-3 font-mono text-[11px] leading-4 text-neutral-700 ring-1 ring-neutral-200">
-                  {formatPayload(row.requestPayload)}
-                </pre>
-                <pre className="mt-2 max-h-56 overflow-auto rounded bg-neutral-50 p-3 font-mono text-[11px] leading-4 text-neutral-700 ring-1 ring-neutral-200">
-                  {formatPayload(row.responsePayload)}
-                </pre>
-              </details>
-            </AdminMobileCard>
-          )}
+              </AdminMobileCard>
+            );
+          }}
         />
       </AdminSection>
     </div>
