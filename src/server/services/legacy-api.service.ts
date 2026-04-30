@@ -68,23 +68,26 @@ export async function listLegacyMembers(params: {
 
   if (params.search) {
     and.push({
-        OR: [
-          { loginId: { contains: params.search, mode: 'insensitive' as const } },
-          { email: { contains: params.search, mode: 'insensitive' as const } },
-          { name: { contains: params.search, mode: 'insensitive' as const } },
-          { phone: { contains: params.search } },
-        ],
+      OR: [
+        { loginId: { contains: params.search, mode: 'insensitive' as const } },
+        { email: { contains: params.search, mode: 'insensitive' as const } },
+        { name: { contains: params.search, mode: 'insensitive' as const } },
+        { phone: { contains: params.search } },
+      ],
     });
   }
 
-  const userid = params.filters?.userid ?? params.filters?.loginId;
-  if (userid) {
+  if (params.filters?.userid) {
     and.push({
       OR: [
-        { loginId: { contains: userid, mode: 'insensitive' as const } },
-        { email: { contains: userid, mode: 'insensitive' as const } },
+        { loginId: { contains: params.filters.userid, mode: 'insensitive' as const } },
+        { email: { contains: params.filters.userid, mode: 'insensitive' as const } },
       ],
     });
+  }
+
+  if (params.filters?.loginId) {
+    and.push({ loginId: { contains: params.filters.loginId, mode: 'insensitive' as const } });
   }
 
   if (params.filters?.name) {
