@@ -170,29 +170,39 @@ export function AdminUserPointsClient({ userId, initialBalance, initialPoints }:
         </button>
       </form>
 
-      <ul className="divide-y divide-neutral-100 border-t border-neutral-100">
+      <div className="max-h-[420px] overflow-auto border-t border-neutral-100">
         {points.length === 0 ? (
-          <li className="p-4 text-sm text-neutral-500">마일리지 내역이 없습니다.</li>
+          <p className="p-4 text-sm text-neutral-500">마일리지 내역이 없습니다.</p>
         ) : (
-          points.map((point) => (
-            <li
-              key={point.id}
-              className="grid gap-2 p-4 text-sm sm:grid-cols-[1fr_120px_150px] sm:items-center"
-            >
-              <div className="min-w-0">
-                <p className="break-words font-extrabold text-neutral-950">{point.reason}</p>
-                <p className="mt-1 text-xs text-neutral-500">{formatDateTime(point.createdAt)}</p>
+          <div className="min-w-[680px] text-[13px]">
+            <div className="sticky top-0 z-10 grid grid-cols-[150px_minmax(240px,1fr)_130px_150px] border-b border-neutral-200 bg-neutral-50 px-4 py-2 text-xs font-extrabold text-neutral-500">
+              <span>일시</span>
+              <span>사유</span>
+              <span className="text-right">변동</span>
+              <span className="text-right">잔액</span>
+            </div>
+            {points.map((point) => (
+              <div
+                key={point.id}
+                className="grid grid-cols-[150px_minmax(240px,1fr)_130px_150px] items-center border-b border-neutral-100 px-4 py-2.5 last:border-b-0"
+              >
+                <span className="font-mono text-xs font-semibold text-neutral-500">
+                  {formatDateTime(point.createdAt)}
+                </span>
+                <span className="min-w-0 break-words font-extrabold text-neutral-950">
+                  {point.reason}
+                </span>
+                <span className={`text-right font-extrabold ${deltaClassName(point.delta)}`}>
+                  {formatSignedNumber(point.delta)} P
+                </span>
+                <span className="text-right text-xs font-bold text-neutral-500">
+                  {formatNumber(point.balance)} P
+                </span>
               </div>
-              <p className={`font-extrabold sm:text-right ${deltaClassName(point.delta)}`}>
-                {formatSignedNumber(point.delta)}
-              </p>
-              <p className="text-xs font-bold text-neutral-500 sm:text-right">
-                잔액 {formatNumber(point.balance)} P
-              </p>
-            </li>
-          ))
+            ))}
+          </div>
         )}
-      </ul>
+      </div>
     </AdminSection>
   );
 }

@@ -215,43 +215,45 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
             if (event.target === event.currentTarget) closeModal();
           }}
         >
-          <div className="flex max-h-[calc(100dvh-0.75rem)] w-full max-w-2xl flex-col overflow-hidden rounded-t-lg bg-white text-left shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg">
-            <div className="flex items-start justify-between gap-3 border-b border-neutral-200 bg-neutral-50 px-4 py-4 sm:px-5">
-              <div className="flex min-w-0 items-start gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-800 shadow-sm">
-                  <Coins size={20} />
+          <div className="flex max-h-[calc(100dvh-0.75rem)] w-full max-w-xl flex-col overflow-hidden rounded-t-lg bg-white text-left shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg">
+            <div className="flex items-start justify-between gap-3 border-b border-neutral-200 bg-neutral-50 px-3 py-3 sm:px-4">
+              <div className="flex min-w-0 items-start gap-2.5">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-800 shadow-sm">
+                  <Coins size={16} />
                 </span>
                 <div className="min-w-0">
                   <h2
                     id={`mileage-title-${userId}`}
-                    className="text-base font-extrabold text-neutral-950"
+                    className="text-sm font-extrabold text-neutral-950"
                   >
                     마일리지 부여
                   </h2>
-                  <p className="mt-1 truncate text-sm font-semibold text-neutral-500">{userName}</p>
+                  <p className="mt-0.5 truncate text-xs font-semibold text-neutral-500">
+                    {userName}
+                  </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={closeModal}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100"
                 aria-label="마일리지 팝업 닫기"
               >
-                <X size={18} />
+                <X size={16} />
               </button>
             </div>
 
-            <div className="grid gap-4 overflow-y-auto px-4 py-4 sm:px-5">
-              <div className="grid grid-cols-2 gap-2 rounded-lg border border-neutral-200 bg-white p-3">
+            <div className="grid gap-3 overflow-y-auto px-3 py-3 sm:px-4">
+              <div className="grid grid-cols-2 gap-2 rounded-md border border-neutral-200 bg-white p-2.5">
                 <div>
                   <p className="text-xs font-bold text-neutral-500">현재 잔액</p>
-                  <p className="mt-1 text-xl font-extrabold text-neutral-950">
+                  <p className="mt-0.5 text-lg font-extrabold text-neutral-950">
                     {formatNumber(balance)} P
                   </p>
                 </div>
-                <div className="border-l border-neutral-100 pl-3">
+                <div className="border-l border-neutral-100 pl-2.5">
                   <p className="text-xs font-bold text-neutral-500">적용 후</p>
-                  <p className="mt-1 text-xl font-extrabold text-blue-700">
+                  <p className="mt-0.5 text-lg font-extrabold text-blue-700">
                     {formatNumber(nextBalance)} P
                   </p>
                 </div>
@@ -259,10 +261,10 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
 
               <form
                 onSubmit={onSubmit}
-                className="grid gap-4 rounded-lg border border-neutral-200 bg-neutral-50 p-3"
+                className="grid gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-3"
               >
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)]">
-                  <label className="grid gap-1.5 text-sm font-bold text-neutral-700">
+                <div className="grid gap-2.5 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)]">
+                  <label className="grid gap-1 text-xs font-bold text-neutral-700">
                     부여 마일리지
                     <FormattedNumberInput
                       name="amount"
@@ -271,17 +273,17 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
                       value={amount}
                       onValueChange={setAmount}
                       placeholder="예: 1,000"
-                      className="min-h-11 rounded-md border border-neutral-300 bg-white px-3 text-base font-extrabold text-neutral-950 outline-none transition placeholder:text-sm placeholder:font-medium placeholder:text-neutral-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      className="h-9 rounded border border-neutral-300 bg-white px-2.5 text-[13px] font-bold text-neutral-950 outline-none transition placeholder:text-[13px] placeholder:font-medium placeholder:text-neutral-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       required
                     />
                   </label>
-                  <label className="grid gap-1.5 text-sm font-bold text-neutral-700">
+                  <label className="grid gap-1 text-xs font-bold text-neutral-700">
                     부여 사유
                     <input
                       name="reason"
                       value={reason}
                       onChange={(event) => setReason(event.target.value)}
-                      className="min-h-11 rounded-md border border-neutral-300 bg-white px-3 font-medium text-neutral-950 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      className="h-9 rounded border border-neutral-300 bg-white px-2.5 text-[13px] font-medium text-neutral-950 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       required
                     />
                   </label>
@@ -293,23 +295,23 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
                       key={quickAmount}
                       type="button"
                       onClick={() => addQuickAmount(quickAmount)}
-                      className="min-h-9 rounded-md border border-neutral-200 bg-white px-2 text-xs font-extrabold text-neutral-700 transition hover:border-neutral-400 hover:bg-neutral-100"
+                      className="h-8 rounded border border-neutral-200 bg-white px-2 text-xs font-bold text-neutral-700 transition hover:border-neutral-400 hover:bg-neutral-100"
                     >
                       +{formatNumber(quickAmount)}
                     </button>
                   ))}
                 </div>
 
-                <div className="flex flex-col gap-3 border-t border-neutral-200 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-2 border-t border-neutral-200 pt-2.5 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-h-5">
                     {message ? (
                       <p
-                        className={`flex items-center gap-1.5 text-sm font-bold ${messageClassName(
+                        className={`flex items-center gap-1.5 text-xs font-bold ${messageClassName(
                           message.kind,
                         )}`}
                         role="status"
                       >
-                        {message.kind === 'success' ? <CheckCircle2 size={16} /> : null}
+                        {message.kind === 'success' ? <CheckCircle2 size={14} /> : null}
                         {message.text}
                       </p>
                     ) : null}
@@ -317,9 +319,9 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
                   <button
                     type="submit"
                     disabled={isSaving}
-                    className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-neutral-900 px-4 text-sm font-bold text-white transition hover:bg-neutral-800 disabled:cursor-wait disabled:opacity-60 sm:w-auto"
+                    className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded bg-neutral-900 px-3 text-[13px] font-bold text-white transition hover:bg-neutral-800 disabled:cursor-wait disabled:opacity-60 sm:w-auto"
                   >
-                    {isSaving ? <Loader2 size={17} className="animate-spin" /> : <Plus size={17} />}
+                    {isSaving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
                     {isSaving ? '저장 중' : '마일리지 부여'}
                   </button>
                 </div>
@@ -327,14 +329,14 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
 
               <section>
                 <div className="flex items-center justify-between gap-3">
-                  <h3 className="flex items-center gap-2 text-sm font-extrabold text-neutral-950">
-                    <History size={16} className="text-neutral-500" />
+                  <h3 className="flex items-center gap-1.5 text-sm font-extrabold text-neutral-950">
+                    <History size={15} className="text-neutral-500" />
                     최근 마일리지 이력
                   </h3>
                   <span className="text-xs font-semibold text-neutral-500">최대 20건</span>
                 </div>
 
-                <div className="mt-2 overflow-hidden rounded-lg border border-neutral-200 bg-white">
+                <div className="mt-2 max-h-64 overflow-auto rounded-md border border-neutral-200 bg-white">
                   {isLoadingHistory ? (
                     <p className="px-4 py-6 text-center text-sm font-semibold text-neutral-500">
                       이력을 불러오는 중입니다.
@@ -348,11 +350,17 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
                       마일리지 이력이 없습니다.
                     </p>
                   ) : (
-                    <div className="divide-y divide-neutral-100">
+                    <div className="min-w-[560px] text-[13px]">
+                      <div className="sticky top-0 z-10 grid grid-cols-[132px_minmax(0,1fr)_112px_112px] border-b border-neutral-200 bg-neutral-50 px-3 py-2 text-xs font-extrabold text-neutral-500">
+                        <span>일시</span>
+                        <span>사유</span>
+                        <span className="text-right">변동</span>
+                        <span className="text-right">잔액</span>
+                      </div>
                       {history.map((item) => (
                         <div
                           key={item.id}
-                          className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[120px_minmax(0,1fr)_auto] sm:items-center"
+                          className="grid grid-cols-[132px_minmax(0,1fr)_112px_112px] items-center border-b border-neutral-100 px-3 py-2.5 last:border-b-0"
                         >
                           <span className="font-mono text-xs font-semibold text-neutral-500">
                             {formatDateTime(item.createdAt)}
@@ -366,6 +374,9 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
                             )}`}
                           >
                             {formatSignedNumber(item.delta)} P
+                          </span>
+                          <span className="text-right text-xs font-bold text-neutral-500">
+                            {formatNumber(item.balance)} P
                           </span>
                         </div>
                       ))}
