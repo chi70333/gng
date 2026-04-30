@@ -2,11 +2,19 @@ import { z } from 'zod';
 
 export const adminUserStatusSchema = z.enum(['active', 'dormant', 'withdrawn', 'blocked']);
 
+const emptyStringToUndefined = (value: unknown) => (value === '' ? undefined : value);
+
 export const adminUserListQuerySchema = z.object({
   q: z.string().trim().max(100).optional().default(''),
-  status: adminUserStatusSchema.optional(),
-  page: z.coerce.number().int().min(1).max(1000).optional().default(1),
-  pageSize: z.coerce.number().int().min(10).max(200).optional().default(30),
+  status: z.preprocess(emptyStringToUndefined, adminUserStatusSchema.optional()),
+  page: z.preprocess(
+    emptyStringToUndefined,
+    z.coerce.number().int().min(1).max(1000).optional().default(1),
+  ),
+  pageSize: z.preprocess(
+    emptyStringToUndefined,
+    z.coerce.number().int().min(10).max(200).optional().default(30),
+  ),
 });
 
 export const adminUserStatusFormSchema = z.object({

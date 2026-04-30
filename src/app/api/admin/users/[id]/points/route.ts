@@ -46,7 +46,6 @@ export async function GET(request: Request, { params }: { params: { id: string }
     const points = await prisma.userPointHistory.findMany({
       where: {
         userId: parsed.userId,
-        delta: { gt: 0 },
       },
       orderBy: { createdAt: 'desc' },
       take: parsed.limit,

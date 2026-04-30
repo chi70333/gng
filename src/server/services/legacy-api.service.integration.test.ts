@@ -153,6 +153,48 @@ describeIntegration('legacy API service DB integration', () => {
     ]);
   });
 
+  it('syncs points for social login ids backed by UserSocialAccount', async () => {
+    const providerUid = `${runId}_social_points`;
+    const loginId = `kakao-${providerUid}`;
+    const user = await prisma.user.create({
+      data: {
+        email: `${providerUid}@example.test`,
+        name: '소셜 포인트 테스트',
+        socialAccounts: {
+          create: {
+            provider: 'kakao',
+            providerUid,
+          },
+        },
+      },
+      select: { id: true },
+    });
+
+    await expect(
+      syncLegacyPoint({
+        userid: loginId,
+        amount: -1401300,
+        new_balance: 0,
+        reason: 'GNG 전체 마일리지 회수',
+      }),
+    ).resolves.toEqual({
+      success: true,
+      message: 'Point Synchronized Successfully',
+    });
+
+    const point = await prisma.userPointHistory.findFirstOrThrow({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+      select: { delta: true, balance: true, reason: true },
+    });
+
+    expect(point).toEqual({
+      delta: -1401300,
+      balance: 0,
+      reason: 'GNG 전체 마일리지 회수',
+    });
+  });
+
   it('rejects point sync for a missing member without creating ledger rows', async () => {
     await expect(
       syncLegacyPoint({

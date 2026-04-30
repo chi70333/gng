@@ -34,6 +34,20 @@ function normalizeLegacyPhone(phone?: string): string | null {
   return normalized || null;
 }
 
+function legacySocialUseridWhere(userid: string): Prisma.UserWhereInput | null {
+  const match = userid.match(/^(kakao|naver|google|apple)-(.+)$/);
+  if (!match) return null;
+
+  return {
+    socialAccounts: {
+      some: {
+        provider: match[1],
+        providerUid: match[2],
+      },
+    },
+  };
+}
+
 export async function listLegacyMembers(params: {
   page: number;
   limit: number;
@@ -124,14 +138,16 @@ export async function registerLegacyMember(
 export async function syncLegacyPoint(
   input: LegacyPointSyncInput,
 ): Promise<{ success: boolean; message: string }> {
+  const socialWhere = legacySocialUseridWhere(input.userid);
+  const userWhere: Prisma.UserWhereInput[] = [
+    { loginId: input.userid },
+    { email: input.userid },
+    { email: `${input.userid}@legacy.local` },
+  ];
+  if (socialWhere) userWhere.push(socialWhere);
+
   const user = await prisma.user.findFirst({
-    where: {
-      OR: [
-        { loginId: input.userid },
-        { email: input.userid },
-        { email: `${input.userid}@legacy.local` },
-      ],
-    },
+    where: { OR: userWhere },
     select: { id: true },
   });
 

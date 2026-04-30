@@ -67,6 +67,18 @@ function messageClassName(kind: Message['kind']): string {
   return kind === 'success' ? 'text-blue-700' : 'text-red-700';
 }
 
+function formatSignedNumber(value: number): string {
+  if (value > 0) return `+${formatNumber(value)}`;
+  if (value < 0) return `-${formatNumber(Math.abs(value))}`;
+  return '0';
+}
+
+function deltaClassName(value: number): string {
+  if (value > 0) return 'text-blue-700';
+  if (value < 0) return 'text-rose-700';
+  return 'text-neutral-700';
+}
+
 export function AdminUserMileageAdjustButton({ userId, userName, initialBalance }: Props) {
   const [balance, setBalance] = useState(initialBalance);
   const [isOpen, setIsOpen] = useState(false);
@@ -107,14 +119,14 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
         const data: unknown = await response.json();
 
         if (!response.ok || !isPointHistoryResponse(data)) {
-          throw new Error(responseMessage(data) ?? '마일리지 부여 이력을 불러오지 못했습니다.');
+          throw new Error(responseMessage(data) ?? '마일리지 이력을 불러오지 못했습니다.');
         }
 
         if (!ignore) setHistory(data.items);
       } catch (error) {
         if (!ignore) {
           setHistoryError(
-            error instanceof Error ? error.message : '마일리지 부여 이력을 불러오지 못했습니다.',
+            error instanceof Error ? error.message : '마일리지 이력을 불러오지 못했습니다.',
           );
         }
       } finally {
@@ -187,8 +199,8 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
           setMessage(null);
         }}
         className="group inline-flex min-h-9 items-center justify-end gap-1.5 rounded-md border border-transparent bg-transparent px-1 text-right font-bold text-blue-700 underline decoration-blue-300 decoration-2 underline-offset-4 transition hover:border-blue-100 hover:bg-blue-50 hover:decoration-blue-700"
-        aria-label={`${userName} 마일리지 부여 및 이력 보기`}
-        title="마일리지 부여 및 이력 보기"
+        aria-label={`${userName} 마일리지 부여 및 전체 이력 보기`}
+        title="마일리지 부여 및 전체 이력 보기"
       >
         <span>{formatNumber(balance)} P</span>
       </button>
@@ -317,7 +329,7 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="flex items-center gap-2 text-sm font-extrabold text-neutral-950">
                     <History size={16} className="text-neutral-500" />
-                    최근 부여 이력
+                    최근 마일리지 이력
                   </h3>
                   <span className="text-xs font-semibold text-neutral-500">최대 20건</span>
                 </div>
@@ -333,7 +345,7 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
                     </p>
                   ) : history.length === 0 ? (
                     <p className="px-4 py-6 text-center text-sm font-semibold text-neutral-500">
-                      부여된 마일리지 이력이 없습니다.
+                      마일리지 이력이 없습니다.
                     </p>
                   ) : (
                     <div className="divide-y divide-neutral-100">
@@ -348,8 +360,12 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
                           <span className="min-w-0 break-words font-semibold text-neutral-800">
                             {item.reason}
                           </span>
-                          <span className="text-left font-extrabold text-blue-700 sm:text-right">
-                            +{formatNumber(item.delta)} P
+                          <span
+                            className={`text-left font-extrabold sm:text-right ${deltaClassName(
+                              item.delta,
+                            )}`}
+                          >
+                            {formatSignedNumber(item.delta)} P
                           </span>
                         </div>
                       ))}

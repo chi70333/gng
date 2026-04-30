@@ -5,6 +5,7 @@ import { adminProductFormSchema, adminProductListQuerySchema } from './admin-pro
 import { adminOrderStatusFormSchema } from './admin-order';
 import {
   adminUserBulkDeleteFormSchema,
+  adminUserListQuerySchema,
   adminUserMessageFormSchema,
   adminUserPointFormSchema,
 } from './admin-user';
@@ -69,6 +70,17 @@ describe('admin schemas', () => {
     });
 
     expect(parsed).toEqual({ q: '', page: 1, pageSize: 30 });
+  });
+
+  it('treats blank member list filters as unset', () => {
+    const parsed = adminUserListQuerySchema.parse({
+      q: '  홍길동  ',
+      status: '',
+      page: '',
+      pageSize: '',
+    });
+
+    expect(parsed).toEqual({ q: '홍길동', status: undefined, page: 1, pageSize: 30 });
   });
 
   it('rejects product form without categories', () => {
