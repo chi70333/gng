@@ -25,6 +25,15 @@ export type LegacyMemberListResult = {
   }>;
 };
 
+export type LegacyMemberListFilters = {
+  userid?: string;
+  loginId?: string;
+  name?: string;
+  email?: string;
+  hp?: string;
+  phone?: string;
+};
+
 function useridToEmail(userid: string, email?: string): string {
   return email ?? `${userid}@legacy.local`;
 }
@@ -52,18 +61,46 @@ export async function listLegacyMembers(params: {
   page: number;
   limit: number;
   search: string;
+  filters?: LegacyMemberListFilters;
 }): Promise<LegacyMemberListResult> {
   const skip = (params.page - 1) * params.limit;
-  const where = params.search
-    ? {
+  const and: Prisma.UserWhereInput[] = [];
+
+  if (params.search) {
+    and.push({
         OR: [
           { loginId: { contains: params.search, mode: 'insensitive' as const } },
           { email: { contains: params.search, mode: 'insensitive' as const } },
           { name: { contains: params.search, mode: 'insensitive' as const } },
           { phone: { contains: params.search } },
         ],
-      }
-    : {};
+    });
+  }
+
+  const userid = params.filters?.userid ?? params.filters?.loginId;
+  if (userid) {
+    and.push({
+      OR: [
+        { loginId: { contains: userid, mode: 'insensitive' as const } },
+        { email: { contains: userid, mode: 'insensitive' as const } },
+      ],
+    });
+  }
+
+  if (params.filters?.name) {
+    and.push({ name: { contains: params.filters.name, mode: 'insensitive' as const } });
+  }
+
+  if (params.filters?.email) {
+    and.push({ email: { contains: params.filters.email, mode: 'insensitive' as const } });
+  }
+
+  const phone = normalizeLegacyPhone(params.filters?.hp ?? params.filters?.phone);
+  if (phone) {
+    and.push({ phone: { contains: phone } });
+  }
+
+  const where: Prisma.UserWhereInput = and.length > 0 ? { AND: and } : {};
 
   const [users, total] = await prisma.$transaction([
     prisma.user.findMany({

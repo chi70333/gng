@@ -111,7 +111,19 @@ describe('legacy API route compatibility', () => {
         },
       ],
     });
-    expect(listLegacyMembers).toHaveBeenCalledWith({ page: 1, limit: 50, search: '' });
+    expect(listLegacyMembers).toHaveBeenCalledWith({
+      page: 1,
+      limit: 50,
+      search: '',
+      filters: {
+        userid: undefined,
+        loginId: undefined,
+        name: undefined,
+        email: undefined,
+        hp: undefined,
+        phone: undefined,
+      },
+    });
 
     const noAuth = await gnpRoute.GET(request('/api/legacy/gnp-api?action=list_members'));
     expect(noAuth.status).toBe(200);
@@ -152,6 +164,14 @@ describe('legacy API route compatibility', () => {
       page: 1,
       limit: 200,
       search: 'hong',
+      filters: {
+        userid: undefined,
+        loginId: undefined,
+        name: undefined,
+        email: undefined,
+        hp: undefined,
+        phone: undefined,
+      },
     });
 
     const pointSync = await pointSyncRoute.GET(
@@ -164,6 +184,65 @@ describe('legacy API route compatibility', () => {
       page: 1,
       limit: 1,
       search: '',
+      filters: {
+        userid: undefined,
+        loginId: undefined,
+        name: undefined,
+        email: undefined,
+        hp: undefined,
+        phone: undefined,
+      },
+    });
+  });
+
+  it('passes member request parameters into list_members filters for both endpoints', async () => {
+    vi.mocked(listLegacyMembers).mockResolvedValue({
+      success: true,
+      total: 0,
+      page: 1,
+      limit: 50,
+      members: [],
+    });
+
+    await gnpRoute.GET(
+      request(
+        '/api/legacy/gnp-api?action=list_members&userid=hong01&name=%20%ED%99%8D%EA%B8%B8%EB%8F%99%20&email=hong%40example.com&hp=010-1234-5678',
+        {
+          headers: { 'x-api-key': token },
+        },
+      ),
+    );
+    expect(listLegacyMembers).toHaveBeenLastCalledWith({
+      page: 1,
+      limit: 50,
+      search: '',
+      filters: {
+        userid: 'hong01',
+        loginId: undefined,
+        name: '홍길동',
+        email: 'hong@example.com',
+        hp: '010-1234-5678',
+        phone: undefined,
+      },
+    });
+
+    await pointSyncRoute.GET(
+      request('/api/legacy/point-sync?action=list_members&loginId=kim01&phone=01099998888', {
+        headers: { 'x-api-key': token },
+      }),
+    );
+    expect(listLegacyMembers).toHaveBeenLastCalledWith({
+      page: 1,
+      limit: 50,
+      search: '',
+      filters: {
+        userid: undefined,
+        loginId: 'kim01',
+        name: undefined,
+        email: undefined,
+        hp: undefined,
+        phone: '01099998888',
+      },
     });
   });
 

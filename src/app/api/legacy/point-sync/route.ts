@@ -9,6 +9,7 @@ import {
   readJsonBody,
 } from '@/app/api/legacy/_shared';
 import {
+  type LegacyMemberListFilters,
   listLegacyMembers,
   registerLegacyMember,
   syncLegacyPoint,
@@ -20,6 +21,17 @@ export const dynamic = 'force-dynamic';
 
 export function OPTIONS() {
   return legacyOptions();
+}
+
+function readMemberFilters(searchParams: URLSearchParams): LegacyMemberListFilters {
+  return {
+    userid: searchParams.get('userid')?.trim() || undefined,
+    loginId: searchParams.get('loginId')?.trim() || undefined,
+    name: searchParams.get('name')?.trim() || undefined,
+    email: searchParams.get('email')?.trim() || undefined,
+    hp: searchParams.get('hp')?.trim() || undefined,
+    phone: searchParams.get('phone')?.trim() || undefined,
+  };
 }
 
 function readBodyAction(body: unknown): string | null {
@@ -59,9 +71,10 @@ export async function GET(req: NextRequest) {
     Math.max(1, Number(req.nextUrl.searchParams.get('limit') ?? 50) || 50),
   );
   const search = req.nextUrl.searchParams.get('search')?.trim() ?? '';
+  const filters = readMemberFilters(req.nextUrl.searchParams);
 
   try {
-    const result = await listLegacyMembers({ page, limit, search });
+    const result = await listLegacyMembers({ page, limit, search, filters });
     return legacyLoggedJson(req, {
       service: 'point-sync',
       startedAt,
