@@ -196,28 +196,40 @@ function actionLabel(row: Pick<ApiLogRow, 'action' | 'method' | 'service'>): str
   return '-';
 }
 
-function readPayloadMessage(value: string | null): string | null {
+function readPayloadErrorMessage(value: string | null): string | null {
   if (!value || value === 'null') return null;
   try {
     const parsed: unknown = JSON.parse(value);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
     const record = parsed as Record<string, unknown>;
-    if (record.success !== false || typeof record.message !== 'string') return null;
-    return record.message;
+    if (record.success !== false) return null;
+
+    for (const key of ['message', 'errorMessage', 'error', 'detail']) {
+      const message = record[key];
+      if (typeof message === 'string' && message.trim()) return message;
+    }
+
+    return '실패 응답';
   } catch {
     return null;
   }
 }
 
-function errorReason(row: Pick<ApiLogRow, 'errorMessage' | 'responsePayload'>): string | null {
-  return row.errorMessage || readPayloadMessage(row.responsePayload);
+function errorMessage(
+  row: Pick<ApiLogRow, 'success' | 'errorMessage' | 'responsePayload'>,
+): string | null {
+  return (
+    row.errorMessage ||
+    readPayloadErrorMessage(row.responsePayload) ||
+    (!row.success ? '실패 응답' : null)
+  );
 }
 
 function isSuccessfulLog(
   row: Pick<ApiLogRow, 'statusCode' | 'success' | 'errorMessage' | 'responsePayload'>,
-  reason = errorReason(row),
+  message = errorMessage(row),
 ): boolean {
-  return row.statusCode >= 200 && row.statusCode < 400 && row.success && !reason;
+  return row.statusCode >= 200 && row.statusCode < 400 && row.success && !message;
 }
 
 function successRate(summary: ServiceSummaryRow | undefined): string {
@@ -405,7 +417,7 @@ export default async function AdminApiMonitorPage({
             <input
               name="q"
               defaultValue={query.q}
-              placeholder="아이디, IP, 오류 원인"
+              placeholder="아이디, IP, 오류 메시지"
               className={`${adminFieldClass} h-11`}
             />
           </label>
@@ -430,7 +442,7 @@ export default async function AdminApiMonitorPage({
             { key: 'action', label: '액션', widthClassName: 'w-36' },
             { key: 'method', label: 'Method', widthClassName: 'w-20' },
             { key: 'status', label: '상태', widthClassName: 'w-24' },
-            { key: 'error', label: '오류 원인', widthClassName: 'w-56' },
+            { key: 'error', label: '오류 메시지', widthClassName: 'w-56' },
             { key: 'duration', label: '응답', align: 'right', widthClassName: 'w-24' },
             { key: 'ip', label: 'IP', widthClassName: 'w-36' },
             { key: 'detail', label: '상세' },
@@ -453,8 +465,8 @@ export default async function AdminApiMonitorPage({
             />
           }
           renderRow={(row, index) => {
-            const reason = errorReason(row);
-            const isSuccess = isSuccessfulLog(row, reason);
+            const message = errorMessage(row);
+            const isSuccess = isSuccessfulLog(row, message);
 
             return (
               <tr key={row.id} className="hover:bg-neutral-50">
@@ -475,17 +487,12 @@ export default async function AdminApiMonitorPage({
                         {row.statusCode}
                       </span>
                     </div>
-                    {reason ? (
-                      <span className="line-clamp-2 text-[11px] font-semibold text-rose-700">
-                        {reason}
-                      </span>
-                    ) : null}
                   </div>
                 </td>
                 <td className={adminGridCellClass}>
-                  {reason ? (
+                  {message ? (
                     <span className="line-clamp-3 text-xs font-semibold text-rose-700">
-                      {reason}
+                      {message}
                     </span>
                   ) : (
                     <span className="text-xs text-neutral-400">-</span>
@@ -525,8 +532,8 @@ export default async function AdminApiMonitorPage({
             );
           }}
           renderMobileCard={(row) => {
-            const reason = errorReason(row);
-            const isSuccess = isSuccessfulLog(row, reason);
+            const message = errorMessage(row);
+            const isSuccess = isSuccessfulLog(row, message);
 
             return (
               <AdminMobileCard>
@@ -544,7 +551,7 @@ export default async function AdminApiMonitorPage({
                 <dl className="grid grid-cols-2 gap-2">
                   <AdminMobileField label="액션">{actionLabel(row)}</AdminMobileField>
                   <AdminMobileField label="상태">{row.statusCode}</AdminMobileField>
-                  <AdminMobileField label="오류 원인">{reason ?? '-'}</AdminMobileField>
+                  <AdminMobileField label="오류 메시지">{message ?? '-'}</AdminMobileField>
                   <AdminMobileField label="응답" align="right">
                     {row.durationMs === null ? '-' : `${formatNumber(row.durationMs)}ms`}
                   </AdminMobileField>
