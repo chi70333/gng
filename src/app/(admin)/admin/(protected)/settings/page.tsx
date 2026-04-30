@@ -51,6 +51,7 @@ const ADMIN_PERMISSIONS = [
   { value: 'coupon.write', label: '쿠폰 수정' },
   { value: 'content.read', label: '게시판 조회' },
   { value: 'content.write', label: '게시판 수정' },
+  { value: 'api.read', label: 'API 조회' },
   { value: 'settings.read', label: '설정 조회' },
   { value: 'settings.write', label: '설정 수정' },
   { value: 'admin.manage', label: '관리자 관리' },

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as gnpRoute from './legacy/gnp-api/route';
 import * as pointSyncRoute from './legacy/point-sync/route';
 import * as versionRoute from './legacy/version/route';
+import { recordApiCommunicationLog } from '@/server/services/api-communication-log.service';
 import {
   listLegacyMembers,
   registerLegacyMember,
@@ -20,6 +21,10 @@ vi.mock('@/lib/logger', () => ({
   logger: {
     error: vi.fn(),
   },
+}));
+
+vi.mock('@/server/services/api-communication-log.service', () => ({
+  recordApiCommunicationLog: vi.fn(),
 }));
 
 const token = 'test-token-from-env';
@@ -56,6 +61,7 @@ describe('legacy API route compatibility', () => {
     vi.mocked(listLegacyMembers).mockReset();
     vi.mocked(registerLegacyMember).mockReset();
     vi.mocked(syncLegacyPoint).mockReset();
+    vi.mocked(recordApiCommunicationLog).mockReset();
   });
 
   it('keeps gnp-api list_members response shape, status, CORS, and temporary no-auth handling', async () => {
@@ -239,6 +245,12 @@ describe('legacy API route compatibility', () => {
       message: 'No valid action or data provided.',
     });
     expect(registerLegacyMember).not.toHaveBeenCalled();
+    expect(recordApiCommunicationLog).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        service: 'point-sync',
+        action: 'register_member',
+      }),
+    );
   });
 
   it('handles malformed JSON like an empty legacy request', async () => {

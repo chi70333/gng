@@ -5,6 +5,7 @@ import {
   FileText,
   Gauge,
   LogOut,
+  PlugZap,
   Settings,
   TicketPercent,
   Tags,
@@ -21,6 +22,7 @@ const navItems = [
   { href: '/admin/categories', label: '카테고리', icon: Tags },
   { href: '/admin/coupons', label: '쿠폰', icon: TicketPercent },
   { href: '/admin/boards', label: '게시판', icon: FileText },
+  { href: '/admin/api-monitor', label: 'API', icon: PlugZap },
   { href: '/admin/settings', label: '설정', icon: Settings },
 ];
 
@@ -84,10 +86,13 @@ export function AdminShell({
             </div>
           </div>
         </header>
-        <main className="max-w-screen-2xl mx-auto px-4 py-5 pb-24 lg:px-6">{children}</main>
+        <main className="max-w-screen-2xl mx-auto px-4 py-5 pb-36 lg:px-6 lg:pb-5">{children}</main>
       </div>
-      <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-neutral-200 bg-white/95 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] backdrop-blur lg:hidden">
-        {navItems.slice(0, 5).map((item) => {
+      <nav
+        className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-neutral-200 bg-white/95 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] backdrop-blur lg:hidden"
+        aria-label="관리자 모바일 메뉴"
+      >
+        {navItems.map((item) => {
           const Icon = item.icon;
           return (
             <Link

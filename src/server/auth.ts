@@ -45,6 +45,23 @@ function asOptionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' ? value : undefined;
 }
 
+function canonicalSiteOrigin(): string | null {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  if (!siteUrl) return null;
+
+  try {
+    const url = new URL(siteUrl);
+    return url.origin;
+  } catch {
+    logger.warn({ siteUrl }, 'Invalid NEXT_PUBLIC_SITE_URL for auth redirect');
+    return null;
+  }
+}
+
+function isSafeRelativePath(value: string): boolean {
+  return value.startsWith('/') && !value.startsWith('//');
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: 'jwt' },
   pages: {
@@ -128,6 +145,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       : []),
   ],
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      const siteOrigin = canonicalSiteOrigin() ?? baseUrl;
+
+      if (isSafeRelativePath(url)) {
+        return `${siteOrigin}${url}`;
+      }
+
+      try {
+        const parsedUrl = new URL(url);
+        const baseOrigin = new URL(baseUrl).origin;
+        if (parsedUrl.origin === baseOrigin || parsedUrl.origin === siteOrigin) {
+          return `${siteOrigin}${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`;
+        }
+      } catch {
+        return siteOrigin;
+      }
+
+      return siteOrigin;
+    },
     async signIn({ user, account }) {
       if (!account || !isSocialProvider(account.provider)) return true;
 

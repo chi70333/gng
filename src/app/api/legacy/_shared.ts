@@ -1,5 +1,9 @@
 import iconv from 'iconv-lite';
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  type ApiCommunicationService,
+  recordApiCommunicationLog,
+} from '@/server/services/api-communication-log.service';
 
 export function corsHeaders(): Record<string, string> {
   return {
@@ -22,6 +26,49 @@ export function legacyJson(body: unknown, status = 200): NextResponse {
       'Content-Type': 'application/json; charset=utf-8',
     },
   });
+}
+
+function isSuccessfulResponse(status: number, body: unknown): boolean {
+  void body;
+  return status >= 200 && status < 400;
+}
+
+function readClientIp(req: NextRequest): string | null {
+  const forwarded = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+  return forwarded || req.headers.get('x-real-ip') || null;
+}
+
+export async function legacyLoggedJson(
+  req: NextRequest,
+  input: {
+    service: ApiCommunicationService;
+    startedAt: number;
+    action?: string | null;
+    requestPayload?: unknown;
+    responsePayload: unknown;
+    status?: number;
+    errorMessage?: string | null;
+  },
+): Promise<NextResponse> {
+  const status = input.status ?? 200;
+  const response = legacyJson(input.responsePayload, status);
+
+  await recordApiCommunicationLog({
+    service: input.service,
+    endpoint: req.nextUrl.pathname,
+    method: req.method,
+    action: input.action,
+    statusCode: status,
+    success: isSuccessfulResponse(status, input.responsePayload),
+    durationMs: Date.now() - input.startedAt,
+    requestPayload: input.requestPayload,
+    responsePayload: input.responsePayload,
+    errorMessage: input.errorMessage,
+    ip: readClientIp(req),
+    userAgent: req.headers.get('user-agent'),
+  });
+
+  return response;
 }
 
 export function isLegacyAuthorized(req: NextRequest): boolean {

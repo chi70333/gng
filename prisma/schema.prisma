@@ -686,6 +686,27 @@ model AuditLog {
   @@index([createdAt])
 }
 
+model ApiCommunicationLog {
+  id              BigInt   @id @default(autoincrement())
+  service         String // gng-api|point-sync
+  endpoint        String
+  method          String
+  action          String?
+  statusCode      Int
+  success         Boolean
+  durationMs      Int?
+  requestPayload  Json?    @db.JsonB
+  responsePayload Json?    @db.JsonB
+  errorMessage    String?
+  ip              String?
+  userAgent       String?
+  createdAt       DateTime @default(now())
+
+  @@index([service, createdAt(sort: Desc)])
+  @@index([success, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+}
+
 model FileObject {
   id        BigInt   @id @default(autoincrement())
   key       String   @unique

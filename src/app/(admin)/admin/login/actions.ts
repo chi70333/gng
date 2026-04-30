@@ -33,6 +33,7 @@ export async function adminLoginAction(
     await signIn('admin-credentials', {
       loginId: parsed.data.loginId,
       password: parsed.data.password,
+      redirect: false,
       redirectTo: safeCallback,
     });
   } catch (err) {

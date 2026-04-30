@@ -28,6 +28,8 @@ type AdminDataGridProps<T> = {
   density?: 'compact' | 'normal';
   minWidthClassName?: string;
   className?: string;
+  scrollAreaClassName?: string;
+  mobileScrollAreaClassName?: string;
   currentSortKey?: string;
   currentSortDirection?: AdminSortDirection;
   getSortHref?: (sortKey: string, direction: AdminSortDirection) => string;
@@ -104,6 +106,8 @@ export function AdminDataGrid<T>({
   density = 'normal',
   minWidthClassName = 'min-w-[920px]',
   className,
+  scrollAreaClassName,
+  mobileScrollAreaClassName,
   currentSortKey,
   currentSortDirection = 'desc',
   getSortHref,
@@ -119,7 +123,13 @@ export function AdminDataGrid<T>({
           {toolbarEnd}
         </div>
       ) : null}
-      <div className={cn(renderMobileCard ? 'hidden md:block' : 'block', 'overflow-x-auto')}>
+      <div
+        className={cn(
+          renderMobileCard ? 'hidden md:block' : 'block',
+          scrollAreaClassName ? 'overflow-auto' : 'overflow-x-auto',
+          scrollAreaClassName,
+        )}
+      >
         <table className={cn('w-full border-separate border-spacing-0', minWidthClassName)}>
           {caption ? <caption className="sr-only">{caption}</caption> : null}
           <thead>
@@ -187,7 +197,7 @@ export function AdminDataGrid<T>({
         </table>
       </div>
       {renderMobileCard ? (
-        <div className="grid gap-3 bg-white p-3 md:hidden">
+        <div className={cn('grid gap-3 bg-white p-3 md:hidden', mobileScrollAreaClassName)}>
           {rows.length === 0 ? (
             <div className="rounded-lg border border-dashed border-neutral-200 bg-white px-4 py-10 text-center text-sm font-medium text-neutral-500">
               {emptyText}

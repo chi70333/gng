@@ -642,6 +642,7 @@ async function main() {
         'coupon.write',
         'content.read',
         'content.write',
+        'api.read',
         'settings.read',
         'settings.write',
       ],

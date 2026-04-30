@@ -4,7 +4,7 @@
 import { NextRequest } from 'next/server';
 import {
   isLegacyAuthorized,
-  legacyJson,
+  legacyLoggedJson,
   legacyOptions,
   readJsonBody,
 } from '@/app/api/legacy/_shared';
@@ -13,10 +13,7 @@ import {
   registerLegacyMember,
   syncLegacyPoint,
 } from '@/server/services/legacy-api.service';
-import {
-  legacyPointSyncSchema,
-  legacyRegisterMemberSchema,
-} from '@/schemas/legacy-api';
+import { legacyPointSyncSchema, legacyRegisterMemberSchema } from '@/schemas/legacy-api';
 import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
@@ -25,13 +22,35 @@ export function OPTIONS() {
   return legacyOptions();
 }
 
+function readBodyAction(body: unknown): string | null {
+  if (!body || typeof body !== 'object' || !('action' in body)) return null;
+  const action = String((body as { action: unknown }).action).trim();
+  return action || null;
+}
+
 export async function GET(req: NextRequest) {
+  const startedAt = Date.now();
   if (!isLegacyAuthorized(req)) {
-    return legacyJson({ success: false, message: 'Unauthorized Access: Key Mismatch' }, 401);
+    return legacyLoggedJson(req, {
+      service: 'point-sync',
+      startedAt,
+      requestPayload: Object.fromEntries(req.nextUrl.searchParams.entries()),
+      responsePayload: { success: false, message: 'Unauthorized Access: Key Mismatch' },
+      status: 401,
+      errorMessage: 'Unauthorized Access: Key Mismatch',
+    });
   }
 
-  if (req.nextUrl.searchParams.get('action') !== 'list_members') {
-    return legacyJson({ success: false, message: 'No valid action or data provided.' });
+  const action = req.nextUrl.searchParams.get('action') ?? '';
+  if (action !== 'list_members') {
+    return legacyLoggedJson(req, {
+      service: 'point-sync',
+      startedAt,
+      action,
+      requestPayload: Object.fromEntries(req.nextUrl.searchParams.entries()),
+      responsePayload: { success: false, message: 'No valid action or data provided.' },
+      errorMessage: 'No valid action or data provided.',
+    });
   }
 
   const page = Math.max(1, Number(req.nextUrl.searchParams.get('page') ?? 1) || 1);
@@ -42,38 +61,103 @@ export async function GET(req: NextRequest) {
   const search = req.nextUrl.searchParams.get('search')?.trim() ?? '';
 
   try {
-    return legacyJson(await listLegacyMembers({ page, limit, search }));
+    const result = await listLegacyMembers({ page, limit, search });
+    return legacyLoggedJson(req, {
+      service: 'point-sync',
+      startedAt,
+      action,
+      requestPayload: Object.fromEntries(req.nextUrl.searchParams.entries()),
+      responsePayload: result,
+    });
   } catch (err) {
     logger.error({ err }, 'legacy point-sync list_members failed');
-    return legacyJson({ success: false, message: 'Database error' }, 500);
+    return legacyLoggedJson(req, {
+      service: 'point-sync',
+      startedAt,
+      action,
+      requestPayload: Object.fromEntries(req.nextUrl.searchParams.entries()),
+      responsePayload: { success: false, message: 'Database error' },
+      status: 500,
+      errorMessage: 'Database error',
+    });
   }
 }
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now();
   if (!isLegacyAuthorized(req)) {
-    return legacyJson({ success: false, message: 'Unauthorized Access: Key Mismatch' }, 401);
+    return legacyLoggedJson(req, {
+      service: 'point-sync',
+      startedAt,
+      responsePayload: { success: false, message: 'Unauthorized Access: Key Mismatch' },
+      status: 401,
+      errorMessage: 'Unauthorized Access: Key Mismatch',
+    });
   }
 
   const body = await readJsonBody(req);
-  const action = req.nextUrl.searchParams.get('action') ?? '';
+  const queryAction = req.nextUrl.searchParams.get('action');
+  const action = queryAction ?? '';
+  const loggedAction = queryAction?.trim() || readBodyAction(body) || '';
 
   try {
     if (action === 'register_member') {
       const parsed = legacyRegisterMemberSchema.safeParse(body);
       if (!parsed.success) {
-        return legacyJson({ success: false, message: 'Missing required fields (userid, password)' });
+        return legacyLoggedJson(req, {
+          service: 'point-sync',
+          startedAt,
+          action,
+          requestPayload: body,
+          responsePayload: {
+            success: false,
+            message: 'Missing required fields (userid, password)',
+          },
+          errorMessage: 'Missing required fields (userid, password)',
+        });
       }
-      return legacyJson(await registerLegacyMember(parsed.data));
+      const result = await registerLegacyMember(parsed.data);
+      return legacyLoggedJson(req, {
+        service: 'point-sync',
+        startedAt,
+        action,
+        requestPayload: body,
+        responsePayload: result,
+        errorMessage: result.success ? null : result.message,
+      });
     }
 
     const point = legacyPointSyncSchema.safeParse(body);
     if (point.success) {
-      return legacyJson(await syncLegacyPoint(point.data));
+      const result = await syncLegacyPoint(point.data);
+      return legacyLoggedJson(req, {
+        service: 'point-sync',
+        startedAt,
+        action: 'point_sync',
+        requestPayload: body,
+        responsePayload: result,
+        errorMessage: result.success ? null : result.message,
+      });
     }
 
-    return legacyJson({ success: false, message: 'No valid action or data provided.' });
+    return legacyLoggedJson(req, {
+      service: 'point-sync',
+      startedAt,
+      action: loggedAction,
+      requestPayload: body,
+      responsePayload: { success: false, message: 'No valid action or data provided.' },
+      errorMessage: 'No valid action or data provided.',
+    });
   } catch (err) {
     logger.error({ err }, 'legacy point-sync POST failed');
-    return legacyJson({ success: false, message: 'Database error' }, 500);
+    return legacyLoggedJson(req, {
+      service: 'point-sync',
+      startedAt,
+      action: loggedAction,
+      requestPayload: body,
+      responsePayload: { success: false, message: 'Database error' },
+      status: 500,
+      errorMessage: 'Database error',
+    });
   }
 }

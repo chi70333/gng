@@ -8,6 +8,8 @@ type AdminPageSizeSelectProps = {
   value: number;
   options: number[];
   hiddenFields?: Array<{ name: string; value: string }>;
+  label?: string;
+  ariaLabel?: string;
 };
 
 export function AdminPageSizeSelect({
@@ -16,6 +18,8 @@ export function AdminPageSizeSelect({
   value,
   options,
   hiddenFields = [],
+  label = '페이지당',
+  ariaLabel = '페이지당 표시 개수',
 }: AdminPageSizeSelectProps) {
   return (
     <form action={action} method="get" className="flex items-center gap-1.5">
@@ -25,14 +29,14 @@ export function AdminPageSizeSelect({
           <input key={`${field.name}-${index}`} type="hidden" name={field.name} value={field.value} />
         ))}
       <label className="text-xs font-medium text-neutral-600" htmlFor={`${name}-page-size`}>
-        페이지당
+        {label}
       </label>
       <select
         id={`${name}-page-size`}
         name={name}
         value={value}
         className={`${adminGridInputClass} w-24`}
-        aria-label="페이지당 표시 개수"
+        aria-label={ariaLabel}
         onChange={(event) => event.currentTarget.form?.requestSubmit()}
       >
         {options.map((option) => (
