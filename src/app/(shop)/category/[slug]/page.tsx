@@ -4,8 +4,10 @@
 // 캐시: unstable_cache 120s (product-list:<slug> 태그)
 
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
+import { ChevronRight } from 'lucide-react';
 import BreadcrumbNav from '@/components/shop/BreadcrumbNav';
 import CategoryNav from '@/components/shop/CategoryNav';
 import ProductGrid from '@/components/shop/ProductGrid';
@@ -109,6 +111,7 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
     ...ancestors.map((a) => ({ label: a.name, href: `/category/${a.slug}` })),
     { label: category.name },
   ];
+  const parentCategory = ancestors[ancestors.length - 1];
 
   // URL base (sort 파라미터 없이 페이지네이션 href 구성)
   const baseHref = `/category/${params.slug}?sort=${sort}`;
@@ -143,10 +146,34 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
         {/* 메인 콘텐츠 */}
         <div className="min-w-0 flex-1">
           {/* 헤더 */}
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-neutral-900">{category.name}</h1>
-              <p className="mt-0.5 text-sm text-neutral-400">{formatNumber(result.total)}개 상품</p>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              {parentCategory && (
+                <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2 text-sm">
+                  <Link
+                    href={`/category/${parentCategory.slug}`}
+                    aria-label={`${parentCategory.name} 상위 카테고리로 이동`}
+                    className="inline-flex min-h-11 max-w-full items-center rounded-lg border border-neutral-200 bg-white px-3 font-medium text-neutral-700 transition-colors hover:border-neutral-400 hover:text-neutral-950"
+                  >
+                    <span className="truncate">{parentCategory.name}</span>
+                  </Link>
+                  <ChevronRight
+                    size={16}
+                    className="shrink-0 text-neutral-300"
+                    aria-hidden="true"
+                  />
+                  <span className="inline-flex min-h-8 items-center rounded-full bg-neutral-900 px-3 text-xs font-semibold text-white">
+                    하위 카테고리
+                  </span>
+                </div>
+              )}
+              <h1 className="truncate text-2xl font-bold text-neutral-950 md:text-3xl">
+                {category.name}
+              </h1>
+              <p className="mt-1 text-sm text-neutral-500">
+                {parentCategory ? `${parentCategory.name} 하위 카테고리 · ` : ''}
+                {formatNumber(result.total)}개 상품
+              </p>
             </div>
             <Suspense fallback={null}>
               <SortSelect currentSort={sort} />

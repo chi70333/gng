@@ -17,6 +17,10 @@ const styles: Record<string, string> = {
   ready: 'bg-neutral-100 text-neutral-700 ring-neutral-200',
   success: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
   failed: 'bg-rose-50 text-rose-700 ring-rose-200',
+  open: 'bg-amber-50 text-amber-700 ring-amber-200',
+  answered: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  closed: 'bg-neutral-100 text-neutral-700 ring-neutral-200',
+  unanswered: 'bg-amber-50 text-amber-700 ring-amber-200',
 };
 
 const labels: Record<string, string> = {
@@ -38,6 +42,10 @@ const labels: Record<string, string> = {
   ready: '배송대기',
   success: '정상',
   failed: '오류',
+  open: '미답변',
+  answered: '답변완료',
+  closed: '종료',
+  unanswered: '미답변',
 };
 
 export function AdminStatusBadge({ status }: { status: string }) {

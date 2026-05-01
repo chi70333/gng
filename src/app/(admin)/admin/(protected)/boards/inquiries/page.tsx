@@ -255,9 +255,7 @@ export default async function AdminInquiriesPage({
                           required
                         />
                         <div className="flex justify-end">
-                          <button className={`${adminGridButtonClass} h-10 px-4`}>
-                            답변 저장
-                          </button>
+                          <button className={`${adminGridButtonClass} h-10 px-4`}>답변 저장</button>
                         </div>
                       </form>
                     </div>
