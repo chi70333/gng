@@ -15,14 +15,6 @@ export const metadata: Metadata = {
 
 const socialProviders = [
   {
-    id: 'naver',
-    label: '네이버로 로그인',
-    ariaLabel: '네이버로 로그인',
-    mark: 'N',
-    className: 'bg-[#03C75A] text-white hover:opacity-90',
-    markClassName: 'bg-white/15',
-  },
-  {
     id: 'kakao',
     label: '카카오로 로그인',
     ariaLabel: '카카오로 로그인',
@@ -57,6 +49,8 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
             ? '소셜 로그인에 실패했습니다. 다시 시도해 주세요.'
             : searchParams.error === 'oauth_config'
               ? '소셜 로그인이 아직 설정되지 않았습니다.'
+              : searchParams.error === 'Configuration'
+                ? '간편 로그인 설정을 확인하는 중입니다. 잠시 후 다시 시도해 주세요.'
               : searchParams.error === 'social_expired'
                 ? '간편 회원가입 시간이 만료되었습니다. 다시 로그인해 주세요.'
                 : searchParams.error === 'AccessDenied'

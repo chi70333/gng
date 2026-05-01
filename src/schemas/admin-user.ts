@@ -54,6 +54,23 @@ export const adminUserPointFormSchema = z.object({
   reason: z.string().trim().min(1).max(200),
 });
 
+export const adminUserPointResetFormSchema = z.object({
+  userId: z.coerce.bigint(),
+  intent: z.literal('reset'),
+  reason: z.string().trim().min(1).max(200),
+  confirm: z
+    .string()
+    .trim()
+    .refine((value) => value === '초기화', {
+      message: '초기화하려면 확인란에 초기화를 입력해주세요.',
+    }),
+});
+
+export const adminUserPointDeleteSchema = z.object({
+  userId: z.coerce.bigint(),
+  pointId: z.coerce.bigint(),
+});
+
 export const adminUserPointHistoryQuerySchema = z.object({
   userId: z.coerce.bigint(),
   limit: z.coerce.number().int().min(1).max(50).optional().default(20),

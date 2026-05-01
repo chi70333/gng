@@ -32,4 +32,7 @@ next-env.d.ts
 
 # legacy reference (read-only, do not commit)
 /legacy/
+/legacy-member-backups/
+gng_member_backup_*.sql
 .vercel
+.env*.local

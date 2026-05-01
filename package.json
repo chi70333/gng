@@ -21,6 +21,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "node prisma/seed.mjs",
     "legacy:migrate-products": "node scripts/migrate-legacy-products.mjs",
+    "legacy:migrate-members": "node scripts/migrate-legacy-members.mjs",
     "search:index": "node scripts/index-meili-products.mjs",
     "db:studio": "prisma studio",
     "format": "prettier --write .",

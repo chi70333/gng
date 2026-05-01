@@ -198,15 +198,15 @@ export default async function AdminOrderDetailPage({ params }: { params: { order
         <AdminSection title="주문 상태 변경">
           <form action={updateAdminOrderStatus} className="mt-3 space-y-3">
             <input type="hidden" name="orderNo" value={order.orderNo} />
-            <select name="status" defaultValue={order.status} className={`${adminFieldClass} h-11`}>
+            <select name="status" defaultValue={order.status} className={adminFieldClass}>
               {STATUS_OPTIONS.map((status) => (
                 <option key={status.value} value={status.value}>
                   {status.label}
                 </option>
               ))}
             </select>
-            <input name="reason" placeholder="변경 사유" className={`${adminFieldClass} h-11`} />
-            <button className={`${adminPrimaryButtonClass} h-11 w-full`}>상태 저장</button>
+            <input name="reason" placeholder="변경 사유" className={adminFieldClass} />
+            <button className={`${adminPrimaryButtonClass} w-full`}>상태 저장</button>
           </form>
         </AdminSection>
 
@@ -220,24 +220,24 @@ export default async function AdminOrderDetailPage({ params }: { params: { order
               name="carrier"
               defaultValue={shipment?.carrier ?? ''}
               placeholder="택배사"
-              className={`${adminFieldClass} h-11`}
+              className={adminFieldClass}
             />
             <input
               name="trackingNo"
               defaultValue={shipment?.trackingNo ?? ''}
               placeholder="송장번호"
-              className={`${adminFieldClass} h-11`}
+              className={adminFieldClass}
             />
             <select
               name="status"
               defaultValue={shipment?.status ?? 'ready'}
-              className={`${adminFieldClass} h-11`}
+              className={adminFieldClass}
             >
               <option value="ready">배송대기</option>
               <option value="shipping">배송중</option>
               <option value="delivered">배송완료</option>
             </select>
-            <button className={`${adminPrimaryButtonClass} h-11 w-full`}>배송 저장</button>
+            <button className={`${adminPrimaryButtonClass} w-full`}>배송 저장</button>
           </form>
         </AdminSection>
       </aside>

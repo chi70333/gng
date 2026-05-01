@@ -162,6 +162,37 @@ function serializeSummary(p: {
   };
 }
 
+async function getActiveCategoryAndDescendantIds(
+  categorySlug: string,
+): Promise<bigint[]> {
+  const categories = await prisma.category.findMany({
+    where: { isActive: true },
+    select: { id: true, parentId: true, slug: true },
+  });
+  const target = categories.find((category) => category.slug === categorySlug);
+  if (!target) return [];
+
+  const childrenByParent = new Map<string, typeof categories>();
+  for (const category of categories) {
+    const parentKey = category.parentId?.toString();
+    if (!parentKey) continue;
+    const children = childrenByParent.get(parentKey) ?? [];
+    children.push(category);
+    childrenByParent.set(parentKey, children);
+  }
+
+  const ids: bigint[] = [];
+  const stack = [target];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) continue;
+    ids.push(current.id);
+    stack.push(...(childrenByParent.get(current.id.toString()) ?? []));
+  }
+
+  return ids;
+}
+
 // ============================================================
 // 쿼리 함수
 // ============================================================
@@ -174,11 +205,16 @@ export async function getProductsByCategory(
   const limit = params.limit ?? 20;
   const sort = params.sort ?? 'new';
   const skip = (page - 1) * limit;
+  const categoryIds = await getActiveCategoryAndDescendantIds(params.categorySlug);
 
-  const where = {
+  if (categoryIds.length === 0) {
+    return { items: [], total: 0, page, totalPages: 0 };
+  }
+
+  const where: Prisma.ProductWhereInput = {
     status: 'active' as const,
     deletedAt: null as null,
-    categories: { some: { category: { slug: params.categorySlug } } },
+    categories: { some: { categoryId: { in: categoryIds } } },
   };
 
   const [rows, total] = await prisma.$transaction([
@@ -440,10 +476,19 @@ export async function getProductSkusByProductId(productId: string): Promise<Prod
 
 /** 카테고리 필터 패싯 (브랜드 목록 + 가격 범위). */
 export async function getFilterFacets(categorySlug: string) {
-  const where = {
+  const categoryIds = await getActiveCategoryAndDescendantIds(categorySlug);
+
+  if (categoryIds.length === 0) {
+    return {
+      brands: [],
+      priceRange: { min: '0', max: '0' },
+    };
+  }
+
+  const where: Prisma.ProductWhereInput = {
     status: 'active' as const,
     deletedAt: null as null,
-    categories: { some: { category: { slug: categorySlug } } },
+    categories: { some: { categoryId: { in: categoryIds } } },
   };
 
   const [brands, priceAgg] = await prisma.$transaction([

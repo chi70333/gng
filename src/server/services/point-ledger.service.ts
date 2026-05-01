@@ -5,13 +5,10 @@ import type { Prisma } from '@prisma/client';
 
 type PointLedgerTx = Prisma.TransactionClient;
 
-export async function getPointBalance(
-  tx: PointLedgerTx,
-  userId: bigint,
-): Promise<number> {
+export async function getPointBalance(tx: PointLedgerTx, userId: bigint): Promise<number> {
   const latest = await tx.userPointHistory.findFirst({
     where: { userId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     select: { balance: true },
   });
 
@@ -74,4 +71,37 @@ export async function createPointLedgerBalanceEntry(
       expireAt: input.expireAt ?? null,
     },
   });
+}
+
+export async function deletePointLedgerEntry(
+  tx: PointLedgerTx,
+  input: {
+    userId: bigint;
+    pointId: bigint;
+  },
+) {
+  const target = await tx.userPointHistory.findFirst({
+    where: {
+      id: input.pointId,
+      userId: input.userId,
+    },
+    select: {
+      id: true,
+      delta: true,
+      reason: true,
+    },
+  });
+
+  if (!target) return null;
+
+  await tx.userPointHistory.delete({
+    where: { id: target.id },
+  });
+
+  return {
+    deletedId: target.id,
+    delta: target.delta,
+    balance: await getPointBalance(tx, input.userId),
+    reason: target.reason,
+  };
 }

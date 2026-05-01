@@ -124,6 +124,40 @@ function defaultDateParts() {
   };
 }
 
+type DateParts = {
+  year: number;
+  month: number;
+  day: number;
+};
+
+function datePartsFrom(date: Date): DateParts {
+  return {
+    year: date.getFullYear(),
+    month: date.getMonth() + 1,
+    day: date.getDate(),
+  };
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function addMonths(date: Date, months: number): Date {
+  const next = new Date(date);
+  const targetDate = next.getDate();
+  next.setDate(1);
+  next.setMonth(next.getMonth() + months);
+  const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+  next.setDate(Math.min(targetDate, lastDay));
+  return next;
+}
+
+function sameDateParts(a: DateParts, b: DateParts): boolean {
+  return a.year === b.year && a.month === b.month && a.day === b.day;
+}
+
 function getDateRange(query: ReturnType<typeof adminOrderListQuerySchema.parse>) {
   const defaults = defaultDateParts();
   const startParts = {
@@ -322,6 +356,28 @@ export default async function AdminOrdersPage({
     const nextQuery = nextParams.toString();
     return nextQuery ? `/admin/orders?${nextQuery}` : '/admin/orders';
   };
+  const today = new Date();
+  const todayParts = datePartsFrom(today);
+  const periodShortcuts = [
+    { label: '오늘', start: todayParts, end: todayParts },
+    { label: '7일', start: datePartsFrom(addDays(today, -6)), end: todayParts },
+    { label: '15일', start: datePartsFrom(addDays(today, -14)), end: todayParts },
+    { label: '1개월', start: datePartsFrom(addMonths(today, -1)), end: todayParts },
+    { label: '3개월', start: datePartsFrom(addMonths(today, -3)), end: todayParts },
+    { label: '이번달', start: { ...todayParts, day: 1 }, end: todayParts },
+  ];
+  const getPeriodHref = (start: DateParts, end: DateParts) => {
+    const nextParams = new URLSearchParams(params);
+    nextParams.set('year', String(start.year));
+    nextParams.set('month', pad2(start.month));
+    nextParams.set('day', pad2(start.day));
+    nextParams.set('year2', String(end.year));
+    nextParams.set('month2', pad2(end.month));
+    nextParams.set('day2', pad2(end.day));
+    nextParams.set('serhs', '1');
+    nextParams.delete('page');
+    return `/admin/orders?${nextParams.toString()}`;
+  };
   const defaultParts = defaultDateParts();
   const hasFilters =
     query.card !== '0' ||
@@ -361,10 +417,10 @@ export default async function AdminOrdersPage({
         <input type="hidden" name="serhs" value="1" />
         <input type="hidden" name="fis" value="2" />
 
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-[140px_150px_150px_150px_minmax(240px,1fr)]">
+        <div className="grid grid-cols-2 gap-2.5 xl:grid-cols-[130px_140px_140px_140px_minmax(220px,1fr)]">
           <label className="grid gap-1 text-xs font-bold text-neutral-600">
             결제구분
-            <select name="card" defaultValue={query.card} className={`${adminFieldClass} h-11`}>
+            <select name="card" defaultValue={query.card} className={adminFieldClass}>
               <option value="0">전체 결제</option>
               <option value="2">일반결제</option>
               <option value="1">간편결제</option>
@@ -372,7 +428,7 @@ export default async function AdminOrdersPage({
           </label>
           <label className="grid gap-1 text-xs font-bold text-neutral-600">
             결제방법
-            <select name="paym" defaultValue={query.paym} className={`${adminFieldClass} h-11`}>
+            <select name="paym" defaultValue={query.paym} className={adminFieldClass}>
               <option value="0">전체 방법</option>
               <option value="card">카드결제</option>
               <option value="hand">휴대폰</option>
@@ -383,7 +439,7 @@ export default async function AdminOrdersPage({
           </label>
           <label className="grid gap-1 text-xs font-bold text-neutral-600">
             주문상태
-            <select name="status" defaultValue={query.status} className={`${adminFieldClass} h-11`}>
+            <select name="status" defaultValue={query.status} className={adminFieldClass}>
               <option value="-">전체 상태</option>
               <option value="11">주문통합</option>
               {STATUS_OPTIONS.map((status) => (
@@ -395,7 +451,7 @@ export default async function AdminOrdersPage({
           </label>
           <label className="grid gap-1 text-xs font-bold text-neutral-600">
             검색대상
-            <select name="search" defaultValue={query.search} className={`${adminFieldClass} h-11`}>
+            <select name="search" defaultValue={query.search} className={adminFieldClass}>
               <option value="total">통합검색</option>
               <option value="t.name">주문자명</option>
               <option value="t.ceo_name">회사명</option>
@@ -411,12 +467,12 @@ export default async function AdminOrdersPage({
               name="searchstring"
               defaultValue={query.searchstring}
               placeholder="주문번호, 이름, 아이디, 상품명"
-              className={`${adminFieldClass} h-11`}
+              className={adminFieldClass}
             />
           </label>
         </div>
 
-        <div className="mt-4 grid gap-3 border-t border-neutral-100 pt-4 xl:grid-cols-[minmax(260px,1fr)_minmax(260px,1fr)_150px_auto] xl:items-end">
+        <div className="mt-3 grid gap-2.5 border-t border-neutral-100 pt-3 xl:grid-cols-[minmax(260px,1fr)_minmax(260px,1fr)_130px_auto] xl:items-end">
           <fieldset className="min-w-0">
             <legend className="mb-1 text-xs font-bold text-neutral-600">조회 시작일</legend>
             <div className="grid grid-cols-[minmax(78px,1fr)_auto_minmax(54px,0.75fr)_auto_minmax(54px,0.75fr)_auto] items-center gap-1.5">
@@ -424,7 +480,7 @@ export default async function AdminOrdersPage({
                 name="year"
                 defaultValue={startParts.year}
                 aria-label="조회 시작 연도"
-                className={`${adminFieldClass} h-11`}
+                className={adminFieldClass}
               >
                 {Array.from(
                   { length: new Date().getFullYear() - 2017 },
@@ -440,7 +496,7 @@ export default async function AdminOrdersPage({
                 name="month"
                 defaultValue={startParts.month}
                 aria-label="조회 시작 월"
-                className={`${adminFieldClass} h-11`}
+                className={adminFieldClass}
               >
                 {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
                   <option key={month} value={month}>
@@ -453,7 +509,7 @@ export default async function AdminOrdersPage({
                 name="day"
                 defaultValue={startParts.day}
                 aria-label="조회 시작 일"
-                className={`${adminFieldClass} h-11`}
+                className={adminFieldClass}
               >
                 {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
                   <option key={day} value={day}>
@@ -472,7 +528,7 @@ export default async function AdminOrdersPage({
                 name="year2"
                 defaultValue={endParts.year}
                 aria-label="조회 종료 연도"
-                className={`${adminFieldClass} h-11`}
+                className={adminFieldClass}
               >
                 {Array.from(
                   { length: new Date().getFullYear() - 2017 },
@@ -488,7 +544,7 @@ export default async function AdminOrdersPage({
                 name="month2"
                 defaultValue={endParts.month}
                 aria-label="조회 종료 월"
-                className={`${adminFieldClass} h-11`}
+                className={adminFieldClass}
               >
                 {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
                   <option key={month} value={month}>
@@ -501,7 +557,7 @@ export default async function AdminOrdersPage({
                 name="day2"
                 defaultValue={endParts.day}
                 aria-label="조회 종료 일"
-                className={`${adminFieldClass} h-11`}
+                className={adminFieldClass}
               >
                 {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
                   <option key={day} value={day}>
@@ -515,11 +571,7 @@ export default async function AdminOrdersPage({
 
           <label className="grid gap-1 text-xs font-bold text-neutral-600">
             표시 개수
-            <select
-              name="trade_list_cnt"
-              defaultValue={pageSize}
-              className={`${adminFieldClass} h-11`}
-            >
+            <select name="trade_list_cnt" defaultValue={pageSize} className={adminFieldClass}>
               {LIST_COUNTS.map((count) => (
                 <option key={count} value={count}>
                   목록 {count}개씩
@@ -529,20 +581,42 @@ export default async function AdminOrdersPage({
           </label>
 
           <div className="flex flex-wrap gap-2 xl:justify-end">
-            <button className={`${adminPrimaryButtonClass} h-11 flex-1 xl:flex-none`}>
+            <button className={`${adminPrimaryButtonClass} flex-1 xl:flex-none`}>
               <Search size={17} />
               검색
             </button>
             {hasFilters ? (
               <Link
                 href="/admin/orders"
-                className={`${adminSecondaryButtonClass} h-11 flex-1 xl:flex-none`}
+                className={`${adminSecondaryButtonClass} flex-1 xl:flex-none`}
               >
                 <RotateCcw size={16} />
                 초기화
               </Link>
             ) : null}
           </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-neutral-100 pt-3">
+          <span className="mr-1 text-xs font-bold text-neutral-600">조회기간</span>
+          {periodShortcuts.map((shortcut) => {
+            const isActive =
+              sameDateParts(startParts, shortcut.start) && sameDateParts(endParts, shortcut.end);
+            return (
+              <Link
+                key={shortcut.label}
+                href={getPeriodHref(shortcut.start, shortcut.end)}
+                aria-label={`${shortcut.label} 주문 조회기간 적용`}
+                className={`inline-flex h-8 items-center justify-center rounded border px-2.5 text-xs font-bold transition ${
+                  isActive
+                    ? 'border-neutral-900 bg-neutral-900 text-white'
+                    : 'border-neutral-300 bg-white text-neutral-700 hover:border-neutral-500 hover:bg-neutral-50'
+                }`}
+              >
+                {shortcut.label}
+              </Link>
+            );
+          })}
         </div>
       </form>
 
@@ -854,7 +928,7 @@ export default async function AdminOrdersPage({
                   <select
                     name="status"
                     defaultValue={order.status}
-                    className={`${adminFieldClass} h-11 min-w-0 flex-1`}
+                    className={`${adminFieldClass} min-w-0 flex-1`}
                   >
                     {STATUS_OPTIONS.map((status) => (
                       <option key={status.value} value={status.value}>
@@ -862,7 +936,7 @@ export default async function AdminOrdersPage({
                       </option>
                     ))}
                   </select>
-                  <button className={`${adminSecondaryButtonClass} h-11`}>저장</button>
+                  <button className={adminSecondaryButtonClass}>저장</button>
                 </form>
               </AdminMobileCard>
             );

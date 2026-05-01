@@ -4,6 +4,7 @@ import type { Prisma } from '@prisma/client';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/server/db';
+import { keys, redis } from '@/server/redis';
 import { requireAdmin } from '@/server/admin/auth';
 import { writeAdminAuditLog } from '@/server/admin/audit';
 import { TAGS } from '@/lib/cache';
@@ -200,13 +201,107 @@ function buildProductAttributes(
   } as Prisma.InputJsonObject;
 }
 
-async function revalidateProduct(product: { slug: string; categories: { category: { slug: string } }[] }) {
+type ProductCategoryForRevalidation = {
+  category: { id: bigint; parentId: bigint | null; slug: string };
+};
+
+function collectCategoryAncestorSlugs(
+  categories: { id: bigint; parentId: bigint | null; slug: string }[],
+  categoryIds: bigint[],
+): Set<string> {
+  const byId = new Map(categories.map((category) => [category.id.toString(), category]));
+  const slugs = new Set<string>();
+
+  for (const categoryId of categoryIds) {
+    let current = byId.get(categoryId.toString());
+    while (current) {
+      slugs.add(current.slug);
+      current = current.parentId ? byId.get(current.parentId.toString()) : undefined;
+    }
+  }
+
+  return slugs;
+}
+
+function collectCategoryDescendantIds(
+  categories: { id: bigint; parentId: bigint | null }[],
+  categoryId: bigint,
+): Set<string> {
+  const childrenByParent = new Map<string, { id: bigint; parentId: bigint | null }[]>();
+  for (const category of categories) {
+    const parentKey = category.parentId?.toString();
+    if (!parentKey) continue;
+    const children = childrenByParent.get(parentKey) ?? [];
+    children.push(category);
+    childrenByParent.set(parentKey, children);
+  }
+
+  const descendants = new Set<string>();
+  const stack = [...(childrenByParent.get(categoryId.toString()) ?? [])];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) continue;
+    const key = current.id.toString();
+    descendants.add(key);
+    stack.push(...(childrenByParent.get(key) ?? []));
+  }
+  return descendants;
+}
+
+function buildDepthUpdates(
+  categories: { id: bigint; parentId: bigint | null }[],
+  rootId: bigint,
+  rootDepth: number,
+): { id: bigint; depth: number }[] {
+  const childrenByParent = new Map<string, { id: bigint; parentId: bigint | null }[]>();
+  for (const category of categories) {
+    const parentKey = category.parentId?.toString();
+    if (!parentKey) continue;
+    const children = childrenByParent.get(parentKey) ?? [];
+    children.push(category);
+    childrenByParent.set(parentKey, children);
+  }
+
+  const updates: { id: bigint; depth: number }[] = [];
+  const visit = (parentId: bigint, depth: number) => {
+    for (const child of childrenByParent.get(parentId.toString()) ?? []) {
+      updates.push({ id: child.id, depth });
+      visit(child.id, depth + 1);
+    }
+  };
+
+  visit(rootId, rootDepth + 1);
+  return updates;
+}
+
+async function revalidateAllCategorySurfaces() {
+  const categories = await prisma.category.findMany({ select: { slug: true } });
+  revalidateTag(TAGS.categoryTree);
+  for (const category of categories) {
+    revalidateTag(TAGS.productList(category.slug));
+    revalidateTag(TAGS.filterFacets(category.slug));
+  }
+  await redis.del(keys.categoryTree()).catch(() => undefined);
+}
+
+async function revalidateProduct(product: {
+  slug: string;
+  categories: ProductCategoryForRevalidation[];
+}) {
   revalidateTag(TAGS.product(product.slug));
   revalidateTag(TAGS.bestProducts);
   revalidateTag(TAGS.newProducts);
-  for (const relation of product.categories) {
-    revalidateTag(TAGS.productList(relation.category.slug));
-    revalidateTag(TAGS.filterFacets(relation.category.slug));
+  const categories = await prisma.category.findMany({
+    select: { id: true, parentId: true, slug: true },
+  });
+  const slugs = collectCategoryAncestorSlugs(
+    categories,
+    product.categories.map((relation) => relation.category.id),
+  );
+
+  for (const slug of slugs) {
+    revalidateTag(TAGS.productList(slug));
+    revalidateTag(TAGS.filterFacets(slug));
   }
 }
 
@@ -371,7 +466,9 @@ export async function saveAdminProduct(formData: FormData) {
       select: {
         id: true,
         slug: true,
-        categories: { select: { category: { select: { slug: true } } } },
+        categories: {
+          select: { category: { select: { id: true, parentId: true, slug: true } } },
+        },
       },
     });
   });
@@ -1140,37 +1237,86 @@ export async function saveAdminCategory(formData: FormData) {
     code: formString(formData, 'code'),
     name: formString(formData, 'name'),
     slug: formString(formData, 'slug'),
-    depth: formString(formData, 'depth'),
     sortOrder: formString(formData, 'sortOrder'),
     isActive: formData.get('isActive') === 'on',
   });
 
-  const category = parsed.id
-    ? await prisma.category.update({
-        where: { id: parsed.id },
-        data: {
-          parentId: parsed.parentId ?? null,
-          code: parsed.code,
-          name: parsed.name,
-          slug: parsed.slug,
-          depth: parsed.depth,
-          sortOrder: parsed.sortOrder,
-          isActive: parsed.isActive,
-        },
-        select: { id: true, slug: true },
-      })
-    : await prisma.category.create({
-        data: {
-          parentId: parsed.parentId ?? null,
-          code: parsed.code,
-          name: parsed.name,
-          slug: parsed.slug,
-          depth: parsed.depth,
-          sortOrder: parsed.sortOrder,
-          isActive: parsed.isActive,
-        },
-        select: { id: true, slug: true },
+  const category = await prisma.$transaction(async (tx) => {
+    const parent = parsed.parentId
+      ? await tx.category.findUnique({
+          where: { id: parsed.parentId },
+          select: { id: true, depth: true },
+        })
+      : null;
+
+    if (parsed.parentId && !parent) {
+      throw new Error('상위 카테고리를 찾을 수 없습니다.');
+    }
+
+    if (parsed.id && parsed.parentId === parsed.id) {
+      throw new Error('자기 자신을 상위 카테고리로 지정할 수 없습니다.');
+    }
+
+    if (parsed.id && parsed.parentId) {
+      const categories = await tx.category.findMany({
+        select: { id: true, parentId: true },
       });
+      const descendants = collectCategoryDescendantIds(categories, parsed.id);
+      if (descendants.has(parsed.parentId.toString())) {
+        throw new Error('하위 카테고리를 상위 카테고리로 지정할 수 없습니다.');
+      }
+    }
+
+    const depth = parent ? parent.depth + 1 : 0;
+    if (depth > 5) {
+      throw new Error('카테고리는 최대 6단계까지만 만들 수 있습니다.');
+    }
+
+    const saved = parsed.id
+      ? await tx.category.update({
+          where: { id: parsed.id },
+          data: {
+            parentId: parsed.parentId ?? null,
+            code: parsed.code,
+            name: parsed.name,
+            slug: parsed.slug,
+            depth,
+            sortOrder: parsed.sortOrder,
+            isActive: parsed.isActive,
+          },
+          select: { id: true, slug: true },
+        })
+      : await tx.category.create({
+          data: {
+            parentId: parsed.parentId ?? null,
+            code: parsed.code,
+            name: parsed.name,
+            slug: parsed.slug,
+            depth,
+            sortOrder: parsed.sortOrder,
+            isActive: parsed.isActive,
+          },
+          select: { id: true, slug: true },
+        });
+
+    if (parsed.id) {
+      const categories = await tx.category.findMany({
+        select: { id: true, parentId: true },
+      });
+      const updates = buildDepthUpdates(categories, saved.id, depth);
+      if (updates.some((update) => update.depth > 5)) {
+        throw new Error('하위 카테고리를 포함해 최대 6단계를 초과할 수 없습니다.');
+      }
+      for (const update of updates) {
+        await tx.category.update({
+          where: { id: update.id },
+          data: { depth: update.depth },
+        });
+      }
+    }
+
+    return saved;
+  });
 
   await writeAdminAuditLog({
     admin,
@@ -1179,7 +1325,7 @@ export async function saveAdminCategory(formData: FormData) {
     entityId: category.id.toString(),
     payload: { slug: category.slug, isActive: parsed.isActive },
   });
-  revalidateTag(TAGS.productList(category.slug));
+  await revalidateAllCategorySurfaces();
   revalidatePath('/admin/categories');
   redirect('/admin/categories');
 }

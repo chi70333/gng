@@ -21,6 +21,7 @@ import { auth } from '@/server/auth';
 import { canViewMemberPrice } from '@/server/auth-utils';
 import { formatNumber } from '@/lib/format';
 import type { SortOption } from '@/server/repositories/product.repository';
+import type { SerializedCategory } from '@/server/repositories/category.repository';
 
 export const revalidate = 120; // ISR 120s
 
@@ -58,13 +59,28 @@ interface PageProps {
   searchParams: { page?: string; sort?: string };
 }
 
+function findCategoryInTree(
+  categories: SerializedCategory[],
+  categoryId: string | null,
+): SerializedCategory | null {
+  if (!categoryId) return null;
+
+  for (const category of categories) {
+    if (category.id === categoryId) return category;
+    const child = findCategoryInTree(category.children, categoryId);
+    if (child) return child;
+  }
+
+  return null;
+}
+
 export default async function CategoryPage({ params, searchParams }: PageProps) {
   const page = Math.max(1, parseInt(searchParams.page ?? '1', 10) || 1);
-  const sort = (['new', 'popular', 'price_asc', 'price_desc'].includes(
-    searchParams.sort ?? '',
-  )
-    ? searchParams.sort
-    : 'new') as SortOption;
+  const sort = (
+    ['new', 'popular', 'price_asc', 'price_desc'].includes(searchParams.sort ?? '')
+      ? searchParams.sort
+      : 'new'
+  ) as SortOption;
 
   const [session, category, result, categoryTree, ancestors] = await Promise.all([
     auth(),
@@ -74,16 +90,19 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
     getCachedCategoryAncestors(params.slug),
   ]);
 
-  if (!category) notFound();
+  if (!category || !category.isActive) notFound();
   const canShowPrice = canViewMemberPrice(session);
 
   // 같은 부모를 가진 형제 카테고리 (사이드 네비용)
-  const parentId = category.parentId;
-  const siblings = parentId
-    ? categoryTree
-        .flatMap((c) => (c.id === parentId ? c.children : []))
-        .filter((c) => c.isActive)
+  const currentTreeCategory = findCategoryInTree(categoryTree, category.id);
+  const parentTreeCategory = findCategoryInTree(categoryTree, category.parentId);
+  const siblings = parentTreeCategory
+    ? parentTreeCategory.children.filter((c) => c.isActive)
     : categoryTree.filter((c) => c.depth === 0 && c.isActive);
+  const mobileCategories =
+    currentTreeCategory && currentTreeCategory.children.length > 0
+      ? currentTreeCategory.children.filter((c) => c.isActive)
+      : siblings;
 
   // breadcrumb
   const breadcrumbs = [
@@ -95,15 +114,19 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
   const baseHref = `/category/${params.slug}?sort=${sort}`;
 
   return (
-    <div className="max-w-screen-xl mx-auto px-4 py-4">
+    <div className="mx-auto max-w-screen-xl px-4 py-4">
       <BreadcrumbNav items={breadcrumbs} />
 
       {/* 모바일: 카테고리 탭 */}
       <div className="mb-4 md:hidden">
         <CategoryNav
-          categories={siblings}
+          categories={mobileCategories}
           activeSlug={params.slug}
-          parentName={ancestors[ancestors.length - 1]?.name}
+          parentName={
+            currentTreeCategory?.children.length
+              ? category.name
+              : ancestors[ancestors.length - 1]?.name
+          }
         />
       </div>
 
@@ -118,14 +141,12 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
         </div>
 
         {/* 메인 콘텐츠 */}
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 flex-1">
           {/* 헤더 */}
-          <div className="flex items-center justify-between mb-4">
+          <div className="mb-4 flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold text-neutral-900">{category.name}</h1>
-              <p className="text-sm text-neutral-400 mt-0.5">
-                {formatNumber(result.total)}개 상품
-              </p>
+              <p className="mt-0.5 text-sm text-neutral-400">{formatNumber(result.total)}개 상품</p>
             </div>
             <Suspense fallback={null}>
               <SortSelect currentSort={sort} />
@@ -133,11 +154,7 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
           </div>
 
           {/* 상품 그리드 */}
-          <ProductGrid
-            products={result.items}
-            priorityCount={4}
-            canShowPrice={canShowPrice}
-          />
+          <ProductGrid products={result.items} priorityCount={4} canShowPrice={canShowPrice} />
 
           {/* 페이지네이션 */}
           <Pagination

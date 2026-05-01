@@ -6,8 +6,17 @@ import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
-import { createPointLedgerEntry } from '@/server/services/point-ledger.service';
-import { adminUserPointFormSchema, adminUserPointHistoryQuerySchema } from '@/schemas/admin-user';
+import {
+  createPointLedgerBalanceEntry,
+  createPointLedgerEntry,
+  deletePointLedgerEntry,
+} from '@/server/services/point-ledger.service';
+import {
+  adminUserPointDeleteSchema,
+  adminUserPointFormSchema,
+  adminUserPointHistoryQuerySchema,
+  adminUserPointResetFormSchema,
+} from '@/schemas/admin-user';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,7 +56,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
       where: {
         userId: parsed.userId,
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: parsed.limit,
       select: {
         id: true,
@@ -76,11 +85,42 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const admin = await requireAdmin('user.write');
     const body = (await request.json()) as unknown;
     const input = typeof body === 'object' && body !== null ? body : {};
+    const ip = clientIp();
+
+    if ('intent' in input && input.intent === 'reset') {
+      const parsed = adminUserPointResetFormSchema.parse({
+        ...input,
+        userId: params.id,
+      });
+
+      const point = await prisma.$transaction(async (tx) => {
+        const created = await createPointLedgerBalanceEntry(tx, {
+          userId: parsed.userId,
+          targetBalance: 0,
+          reason: parsed.reason,
+        });
+
+        await tx.auditLog.create({
+          data: {
+            actorId: `admin:${admin.id.toString()}`,
+            action: 'user.points.reset',
+            entity: 'User',
+            entityId: parsed.userId.toString(),
+            payload: { reason: parsed.reason },
+            ip,
+          },
+        });
+
+        return created;
+      });
+
+      return NextResponse.json(pointJson(point));
+    }
+
     const parsed = adminUserPointFormSchema.parse({
       ...input,
       userId: params.id,
     });
-    const ip = clientIp();
 
     const point = await prisma.$transaction(async (tx) => {
       const created = await createPointLedgerEntry(tx, {
@@ -120,5 +160,64 @@ export async function POST(request: Request, { params }: { params: { id: string 
     }
 
     return NextResponse.json({ message: '포인트 저장에 실패했습니다.' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+  try {
+    const admin = await requireAdmin('user.write');
+    const searchParams = new URL(request.url).searchParams;
+    const parsed = adminUserPointDeleteSchema.parse({
+      userId: params.id,
+      pointId: searchParams.get('pointId') ?? undefined,
+    });
+    const ip = clientIp();
+
+    const deleted = await prisma.$transaction(async (tx) => {
+      const result = await deletePointLedgerEntry(tx, {
+        userId: parsed.userId,
+        pointId: parsed.pointId,
+      });
+
+      if (!result) return null;
+
+      await tx.auditLog.create({
+        data: {
+          actorId: `admin:${admin.id.toString()}`,
+          action: 'user.points.delete',
+          entity: 'User',
+          entityId: parsed.userId.toString(),
+          payload: {
+            pointId: result.deletedId.toString(),
+            delta: result.delta,
+            reason: result.reason,
+          },
+          ip,
+        },
+      });
+
+      return result;
+    });
+
+    if (!deleted) {
+      return NextResponse.json(
+        { message: '삭제할 마일리지 이력을 찾지 못했습니다.' },
+        { status: 404 },
+      );
+    }
+
+    return NextResponse.json({
+      deletedId: deleted.deletedId.toString(),
+      balance: deleted.balance,
+    });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        { message: error.issues[0]?.message ?? '입력값을 확인해주세요.' },
+        { status: 400 },
+      );
+    }
+
+    return NextResponse.json({ message: '마일리지 이력 삭제에 실패했습니다.' }, { status: 500 });
   }
 }

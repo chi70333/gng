@@ -48,6 +48,85 @@ type CategorySearchParams = {
   dir?: string;
 };
 
+type AdminCategory = {
+  id: bigint;
+  parentId: bigint | null;
+  code: string;
+  name: string;
+  slug: string;
+  depth: number;
+  sortOrder: number;
+  isActive: boolean;
+  _count: { products: number };
+};
+
+type CategoryTreeItem = {
+  category: AdminCategory;
+  path: string;
+  level: number;
+};
+
+function categoryId(category: Pick<AdminCategory, 'id'>): string {
+  return category.id.toString();
+}
+
+function buildCategoryTreeItems(categories: AdminCategory[]): CategoryTreeItem[] {
+  const byId = new Map(categories.map((category) => [categoryId(category), category]));
+  const childrenByParent = new Map<string, AdminCategory[]>();
+  const roots: AdminCategory[] = [];
+
+  for (const category of categories) {
+    const parentKey = category.parentId?.toString() ?? '';
+    if (!category.parentId || !byId.has(parentKey)) {
+      roots.push(category);
+      continue;
+    }
+    const children = childrenByParent.get(parentKey) ?? [];
+    children.push(category);
+    childrenByParent.set(parentKey, children);
+  }
+
+  const sortCategories = (items: AdminCategory[]) =>
+    items.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'ko'));
+
+  sortCategories(roots);
+  for (const children of childrenByParent.values()) sortCategories(children);
+
+  const result: CategoryTreeItem[] = [];
+  const visit = (category: AdminCategory, parentPath: string, level: number) => {
+    const path = parentPath ? `${parentPath} > ${category.name}` : category.name;
+    result.push({ category, path, level });
+    for (const child of childrenByParent.get(categoryId(category)) ?? []) {
+      visit(child, path, level + 1);
+    }
+  };
+
+  for (const root of roots) visit(root, '', 0);
+  return result;
+}
+
+function getDescendantIdSet(categories: AdminCategory[], rootId: bigint): Set<string> {
+  const childrenByParent = new Map<string, AdminCategory[]>();
+  for (const category of categories) {
+    const parentKey = category.parentId?.toString();
+    if (!parentKey) continue;
+    const children = childrenByParent.get(parentKey) ?? [];
+    children.push(category);
+    childrenByParent.set(parentKey, children);
+  }
+
+  const descendants = new Set<string>();
+  const stack = [...(childrenByParent.get(rootId.toString()) ?? [])];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) continue;
+    const key = categoryId(current);
+    descendants.add(key);
+    stack.push(...(childrenByParent.get(key) ?? []));
+  }
+  return descendants;
+}
+
 export default async function AdminCategoriesPage({
   searchParams,
 }: {
@@ -68,19 +147,30 @@ export default async function AdminCategoriesPage({
       _count: { select: { products: true } },
     },
   });
+  const treeItems = buildCategoryTreeItems(categories);
+  const treeItemById = new Map(treeItems.map((item) => [categoryId(item.category), item]));
+  const descendantsById = new Map(
+    categories.map((category) => [
+      categoryId(category),
+      getDescendantIdSet(categories, category.id),
+    ]),
+  );
   const sortState = parseAdminSort(searchParams, CATEGORY_SORT_KEYS);
-  const effectiveSort = sortState.sort ?? 'no';
-  const sortedCategories = [...categories].sort((a, b) => {
-    if (effectiveSort === 'no') return compareAdminValues(a.sortOrder, b.sortOrder, sortState.dir);
-    if (effectiveSort === 'name') return compareAdminValues(a.name, b.name, sortState.dir);
-    if (effectiveSort === 'code') return compareAdminValues(a.code, b.code, sortState.dir);
-    if (effectiveSort === 'slug') return compareAdminValues(a.slug, b.slug, sortState.dir);
-    if (effectiveSort === 'sortOrder')
-      return compareAdminValues(a.sortOrder, b.sortOrder, sortState.dir);
-    if (effectiveSort === 'isActive')
-      return compareAdminValues(Number(a.isActive), Number(b.isActive), sortState.dir);
-    return compareAdminValues(a._count.products, b._count.products, sortState.dir);
-  });
+  const sortedCategories = sortState.sort
+    ? [...categories].sort((a, b) => {
+        const effectiveSort = sortState.sort;
+        if (effectiveSort === 'no')
+          return compareAdminValues(a.sortOrder, b.sortOrder, sortState.dir);
+        if (effectiveSort === 'name') return compareAdminValues(a.name, b.name, sortState.dir);
+        if (effectiveSort === 'code') return compareAdminValues(a.code, b.code, sortState.dir);
+        if (effectiveSort === 'slug') return compareAdminValues(a.slug, b.slug, sortState.dir);
+        if (effectiveSort === 'sortOrder')
+          return compareAdminValues(a.sortOrder, b.sortOrder, sortState.dir);
+        if (effectiveSort === 'isActive')
+          return compareAdminValues(Number(a.isActive), Number(b.isActive), sortState.dir);
+        return compareAdminValues(a._count.products, b._count.products, sortState.dir);
+      })
+    : treeItems.map((item) => item.category);
   const params = new URLSearchParams();
   if (sortState.sort) {
     params.set('sort', sortState.sort);
@@ -91,17 +181,18 @@ export default async function AdminCategoriesPage({
     <div className="space-y-5">
       <AdminPageHeader
         title="카테고리 관리"
-        description="카테고리를 상단에서 등록하고 목록 행에서 바로 수정합니다."
+        description="부모 카테고리를 선택하면 깊이는 자동 계산됩니다. 목록에서는 전체 경로를 보고 바로 수정할 수 있습니다."
       />
 
       <AdminSection title="카테고리 등록" description="상위 분류와 노출 상태를 함께 입력합니다.">
         <form action={saveAdminCategory}>
-          <div className="mt-4 grid gap-3 md:grid-cols-[160px_1fr_1fr_90px_90px_100px_auto]">
+          <div className="mt-4 grid gap-3 md:grid-cols-[minmax(220px,1.2fr)_1fr_1fr_1fr_110px_100px]">
             <select name="parentId" className={`${adminFieldClass} h-11`}>
               <option value="">상위 없음</option>
-              {categories.map((category) => (
-                <option key={category.id.toString()} value={category.id.toString()}>
-                  {'-'.repeat(category.depth)} {category.name}
+              {treeItems.map(({ category, path, level }) => (
+                <option key={categoryId(category)} value={categoryId(category)}>
+                  {'\u00a0'.repeat(level * 2)}
+                  {path}
                 </option>
               ))}
             </select>
@@ -119,13 +210,6 @@ export default async function AdminCategoriesPage({
             />
             <input name="slug" placeholder="slug" className={`${adminFieldClass} h-11`} required />
             <input
-              name="depth"
-              type="number"
-              min={0}
-              defaultValue={0}
-              className={`${adminFieldClass} h-11`}
-            />
-            <input
               name="sortOrder"
               type="number"
               min={0}
@@ -137,6 +221,9 @@ export default async function AdminCategoriesPage({
               사용
             </label>
           </div>
+          <p className="mt-2 text-xs font-medium text-neutral-500">
+            상위 카테고리를 옮기면 하위 카테고리 깊이도 함께 보정됩니다.
+          </p>
           <div className="mt-3 flex justify-end">
             <button className={`${adminPrimaryButtonClass} h-11`}>등록</button>
           </div>
@@ -185,7 +272,7 @@ export default async function AdminCategoriesPage({
             { key: 'save', label: '수정', align: 'right', widthClassName: 'w-28' },
           ]}
           rows={sortedCategories}
-          rowKey={(category) => category.id.toString()}
+          rowKey={categoryId}
           emptyText="등록된 카테고리가 없습니다."
           minWidthClassName="min-w-[980px]"
           currentSortKey={sortState.sort}
@@ -193,7 +280,7 @@ export default async function AdminCategoriesPage({
           getSortHref={createAdminSortHref('/admin/categories', params)}
           renderRow={(category, index) => (
             <tr
-              key={category.id.toString()}
+              key={categoryId(category)}
               className="bg-white align-top transition hover:bg-neutral-50"
             >
               <td className={`${adminGridCellClass} text-right font-bold text-neutral-500`}>
@@ -201,26 +288,39 @@ export default async function AdminCategoriesPage({
               </td>
               <td className={adminGridStickyCellClass}>
                 <form
-                  id={`category-${category.id.toString()}`}
+                  id={`category-${categoryId(category)}`}
                   action={saveAdminCategory}
                   className="grid gap-2"
                 >
-                  <input type="hidden" name="id" value={category.id.toString()} />
-                  <input type="hidden" name="depth" value={category.depth} />
+                  <input type="hidden" name="id" value={categoryId(category)} />
                   <select
                     name="parentId"
                     defaultValue={category.parentId?.toString() ?? ''}
                     className={adminGridInputClass}
+                    aria-label="상위 카테고리"
                   >
                     <option value="">상위 없음</option>
-                    {categories
-                      .filter((item) => item.id !== category.id)
-                      .map((item) => (
-                        <option key={item.id.toString()} value={item.id.toString()}>
-                          {'-'.repeat(item.depth)} {item.name}
+                    {treeItems
+                      .filter((item) => {
+                        const descendants = descendantsById.get(categoryId(category)) ?? new Set();
+                        const key = categoryId(item.category);
+                        return key !== categoryId(category) && !descendants.has(key);
+                      })
+                      .map(({ category: item, path, level }) => (
+                        <option key={categoryId(item)} value={categoryId(item)}>
+                          {'\u00a0'.repeat(level * 2)}
+                          {path}
                         </option>
                       ))}
                   </select>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] font-bold text-neutral-500">
+                      {treeItemById.get(categoryId(category))?.level ?? category.depth}단계
+                    </span>
+                    <span className="truncate text-xs font-medium text-neutral-500">
+                      {treeItemById.get(categoryId(category))?.path ?? category.name}
+                    </span>
+                  </div>
                   <input
                     name="name"
                     defaultValue={category.name}
@@ -230,7 +330,7 @@ export default async function AdminCategoriesPage({
               </td>
               <td className={adminGridCellClass}>
                 <input
-                  form={`category-${category.id.toString()}`}
+                  form={`category-${categoryId(category)}`}
                   name="code"
                   defaultValue={category.code}
                   className={adminGridInputClass}
@@ -238,7 +338,7 @@ export default async function AdminCategoriesPage({
               </td>
               <td className={adminGridCellClass}>
                 <input
-                  form={`category-${category.id.toString()}`}
+                  form={`category-${categoryId(category)}`}
                   name="slug"
                   defaultValue={category.slug}
                   className={adminGridInputClass}
@@ -246,7 +346,7 @@ export default async function AdminCategoriesPage({
               </td>
               <td className={`${adminGridCellClass} text-right`}>
                 <input
-                  form={`category-${category.id.toString()}`}
+                  form={`category-${categoryId(category)}`}
                   name="sortOrder"
                   type="number"
                   min={0}
@@ -259,7 +359,7 @@ export default async function AdminCategoriesPage({
                   <AdminStatusBadge status={category.isActive ? 'active' : 'hidden'} />
                   <label className="text-xs font-bold text-neutral-500">
                     <input
-                      form={`category-${category.id.toString()}`}
+                      form={`category-${categoryId(category)}`}
                       type="checkbox"
                       name="isActive"
                       defaultChecked={category.isActive}
@@ -273,10 +373,7 @@ export default async function AdminCategoriesPage({
                 {category._count.products}
               </td>
               <td className={`${adminGridCellClass} text-right`}>
-                <button
-                  form={`category-${category.id.toString()}`}
-                  className={adminGridButtonClass}
-                >
+                <button form={`category-${categoryId(category)}`} className={adminGridButtonClass}>
                   저장
                 </button>
               </td>
@@ -285,26 +382,39 @@ export default async function AdminCategoriesPage({
           renderMobileCard={(category) => (
             <AdminMobileCard>
               <form
-                id={`category-mobile-${category.id.toString()}`}
+                id={`category-mobile-${categoryId(category)}`}
                 action={saveAdminCategory}
                 className="grid gap-3"
               >
-                <input type="hidden" name="id" value={category.id.toString()} />
-                <input type="hidden" name="depth" value={category.depth} />
+                <input type="hidden" name="id" value={categoryId(category)} />
                 <select
                   name="parentId"
                   defaultValue={category.parentId?.toString() ?? ''}
                   className={adminGridInputClass}
+                  aria-label="상위 카테고리"
                 >
                   <option value="">상위 없음</option>
-                  {categories
-                    .filter((item) => item.id !== category.id)
-                    .map((item) => (
-                      <option key={item.id.toString()} value={item.id.toString()}>
-                        {'-'.repeat(item.depth)} {item.name}
+                  {treeItems
+                    .filter((item) => {
+                      const descendants = descendantsById.get(categoryId(category)) ?? new Set();
+                      const key = categoryId(item.category);
+                      return key !== categoryId(category) && !descendants.has(key);
+                    })
+                    .map(({ category: item, path, level }) => (
+                      <option key={categoryId(item)} value={categoryId(item)}>
+                        {'\u00a0'.repeat(level * 2)}
+                        {path}
                       </option>
                     ))}
                 </select>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] font-bold text-neutral-500">
+                    {treeItemById.get(categoryId(category))?.level ?? category.depth}단계
+                  </span>
+                  <span className="text-xs font-medium text-neutral-500">
+                    {treeItemById.get(categoryId(category))?.path ?? category.name}
+                  </span>
+                </div>
                 <input
                   name="name"
                   defaultValue={category.name}

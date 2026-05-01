@@ -7,7 +7,9 @@ import {
   adminUserBulkDeleteFormSchema,
   adminUserListQuerySchema,
   adminUserMessageFormSchema,
+  adminUserPointDeleteSchema,
   adminUserPointFormSchema,
+  adminUserPointResetFormSchema,
 } from './admin-user';
 
 describe('admin schemas', () => {
@@ -40,9 +42,9 @@ describe('admin schemas', () => {
   };
 
   it('validates admin login input', () => {
-    expect(
-      adminLoginSchema.safeParse({ loginId: 'admin', password: 'Admin1234!' }).success,
-    ).toBe(true);
+    expect(adminLoginSchema.safeParse({ loginId: 'admin', password: 'Admin1234!' }).success).toBe(
+      true,
+    );
   });
 
   it('rejects unknown permissions', () => {
@@ -160,6 +162,34 @@ describe('admin schemas', () => {
         reason: 'manual correction',
       }).success,
     ).toBe(true);
+  });
+
+  it('requires explicit confirmation for point reset', () => {
+    expect(
+      adminUserPointResetFormSchema.safeParse({
+        userId: '1',
+        intent: 'reset',
+        reason: '관리자 마일리지 초기화',
+        confirm: '초기화',
+      }).success,
+    ).toBe(true);
+    expect(
+      adminUserPointResetFormSchema.safeParse({
+        userId: '1',
+        intent: 'reset',
+        reason: '관리자 마일리지 초기화',
+        confirm: '',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('validates point history deletion parameters', () => {
+    const parsed = adminUserPointDeleteSchema.parse({
+      userId: '1',
+      pointId: '2',
+    });
+
+    expect(parsed).toEqual({ userId: 1n, pointId: 2n });
   });
 
   it('requires at least one member for bulk deletion', () => {
