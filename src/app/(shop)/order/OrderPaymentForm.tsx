@@ -215,16 +215,30 @@ function calculateCouponDiscount(coupon: PaymentCoupon | undefined, subtotal: nu
   return Math.min(toWon(capped), subtotal);
 }
 
-function PaymentSubmitButton({ finalTotal, disabled }: { finalTotal: number; disabled: boolean }) {
+function PaymentSubmitButton({
+  finalTotal,
+  payableBeforePoints,
+  disabled,
+}: {
+  finalTotal: number;
+  payableBeforePoints: number;
+  disabled: boolean;
+}) {
   const { pending } = useFormStatus();
+  const showOriginalPrice = !pending && finalTotal === 0 && payableBeforePoints > 0;
 
   return (
     <button
       type="submit"
       disabled={disabled || pending}
-      className="flex min-h-12 w-full items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500"
+      className="flex min-h-12 w-full items-center justify-center gap-2 rounded-md bg-neutral-900 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500"
     >
-      {pending ? '처리 중' : `${formatKRW(finalTotal)} 구매하기`}
+      {showOriginalPrice && (
+        <span className="shrink-0 text-xs font-semibold text-neutral-300 line-through">
+          {formatKRW(payableBeforePoints)}
+        </span>
+      )}
+      <span>{pending ? '처리 중' : `${formatKRW(finalTotal)} 구매하기`}</span>
     </button>
   );
 }
@@ -859,7 +873,7 @@ export function OrderPaymentForm({
                 description="현금영수증 또는 세금계산서가 필요하면 정보를 입력해 주세요."
               >
                 <div className="grid gap-3 md:grid-cols-2">
-                  <label className="block">
+                  <label className={`block ${hasReceiptInfo ? '' : 'md:col-span-2'}`}>
                     <span className={labelClass}>현금영수증</span>
                     <SelectField
                       name="cashReceiptType"
@@ -875,19 +889,20 @@ export function OrderPaymentForm({
                       <option value="business">사업자 지출증빙</option>
                     </SelectField>
                   </label>
-                  <label className="block">
-                    <span className={labelClass}>휴대폰/사업자번호</span>
-                    <input
-                      name="cashReceiptIdentity"
-                      value={cashReceiptIdentity}
-                      onChange={(event) => setCashReceiptIdentity(event.target.value.slice(0, 40))}
-                      disabled={!hasReceiptInfo}
-                      className={fieldClass}
-                      placeholder={
-                        hasReceiptInfo ? '번호를 입력해 주세요' : '신청 선택 시 입력 가능'
-                      }
-                    />
-                  </label>
+                  {hasReceiptInfo ? (
+                    <label className="block">
+                      <span className={labelClass}>휴대폰/사업자번호</span>
+                      <input
+                        name="cashReceiptIdentity"
+                        value={cashReceiptIdentity}
+                        onChange={(event) =>
+                          setCashReceiptIdentity(event.target.value.slice(0, 40))
+                        }
+                        className={fieldClass}
+                        placeholder="번호를 입력해 주세요"
+                      />
+                    </label>
+                  ) : null}
                   <label className="flex min-h-11 items-center gap-2 text-sm text-neutral-700 md:col-span-2">
                     <input
                       name="taxInvoiceRequested"
@@ -898,38 +913,34 @@ export function OrderPaymentForm({
                     />
                     <span>세금계산서를 신청합니다.</span>
                   </label>
-                  <label className="block">
-                    <span className={labelClass}>상호명</span>
-                    <input
-                      name="taxInvoiceCompanyName"
-                      value={taxInvoiceCompanyName}
-                      onChange={(event) =>
-                        setTaxInvoiceCompanyName(event.target.value.slice(0, 100))
-                      }
-                      disabled={!taxInvoiceRequested}
-                      className={fieldClass}
-                      placeholder={
-                        taxInvoiceRequested ? '상호명을 입력해 주세요' : '신청 선택 시 입력 가능'
-                      }
-                    />
-                  </label>
-                  <label className="block">
-                    <span className={labelClass}>사업자등록번호</span>
-                    <input
-                      name="taxInvoiceBusinessNumber"
-                      value={taxInvoiceBusinessNumber}
-                      onChange={(event) =>
-                        setTaxInvoiceBusinessNumber(event.target.value.slice(0, 20))
-                      }
-                      disabled={!taxInvoiceRequested}
-                      className={fieldClass}
-                      placeholder={
-                        taxInvoiceRequested
-                          ? '사업자등록번호를 입력해 주세요'
-                          : '신청 선택 시 입력 가능'
-                      }
-                    />
-                  </label>
+                  {taxInvoiceRequested ? (
+                    <>
+                      <label className="block">
+                        <span className={labelClass}>상호명</span>
+                        <input
+                          name="taxInvoiceCompanyName"
+                          value={taxInvoiceCompanyName}
+                          onChange={(event) =>
+                            setTaxInvoiceCompanyName(event.target.value.slice(0, 100))
+                          }
+                          className={fieldClass}
+                          placeholder="상호명을 입력해 주세요"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className={labelClass}>사업자등록번호</span>
+                        <input
+                          name="taxInvoiceBusinessNumber"
+                          value={taxInvoiceBusinessNumber}
+                          onChange={(event) =>
+                            setTaxInvoiceBusinessNumber(event.target.value.slice(0, 20))
+                          }
+                          className={fieldClass}
+                          placeholder="사업자등록번호를 입력해 주세요"
+                        />
+                      </label>
+                    </>
+                  ) : null}
                 </div>
               </FormSection>
 
@@ -968,6 +979,7 @@ export function OrderPaymentForm({
 
               <PaymentSubmitButton
                 finalTotal={finalTotal}
+                payableBeforePoints={payableBeforePoints}
                 disabled={
                   hasUnavailableItem || Boolean(deletingSkuId) || visibleCartItems.length === 0
                 }
