@@ -6,8 +6,12 @@ import {
   adminPostFormSchema,
   adminProductQnaAnswerSchema,
 } from './admin-board';
-import { adminProductBulkDeleteFormSchema, adminProductFormSchema, adminProductListQuerySchema } from './admin-product';
-import { adminOrderStatusFormSchema } from './admin-order';
+import {
+  adminProductBulkDeleteFormSchema,
+  adminProductFormSchema,
+  adminProductListQuerySchema,
+} from './admin-product';
+import { adminOrderListQuerySchema, adminOrderStatusFormSchema } from './admin-order';
 import {
   adminUserBulkDeleteFormSchema,
   adminUserListQuerySchema,
@@ -157,6 +161,16 @@ describe('admin schemas', () => {
         reason: '송장 입력',
       }).success,
     ).toBe(true);
+  });
+
+  it('parses mileage range filters for order lists', () => {
+    const parsed = adminOrderListQuerySchema.parse({
+      point_min: '1000',
+      point_max: '',
+    });
+
+    expect(parsed.point_min).toBe(1000);
+    expect(parsed.point_max).toBeUndefined();
   });
 
   it('allows positive and negative point adjustments', () => {

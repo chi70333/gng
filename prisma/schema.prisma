@@ -153,6 +153,7 @@ model UserPointHistory {
   createdAt DateTime  @default(now())
 
   @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, id(sort: Desc)])
 }
 
 model UserLoginLog {

@@ -80,6 +80,8 @@ type OrderSearchParams = {
   day2?: string;
   serhs?: string;
   fis?: string;
+  point_min?: string;
+  point_max?: string;
   trade_list_cnt?: string;
   page?: string;
   sort?: string;
@@ -227,6 +229,19 @@ function buildSimplePayWhere(card: string): Prisma.OrderWhereInput | null {
   };
 }
 
+function buildPointsUsedWhere(
+  min: number | undefined,
+  max: number | undefined,
+): Prisma.OrderWhereInput | null {
+  if (min == null && max == null) return null;
+  return {
+    pointsUsed: {
+      ...(min == null ? {} : { gte: min }),
+      ...(max == null ? {} : { lte: max }),
+    },
+  };
+}
+
 function readJsonString(value: unknown, keys: string[]): string {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
   const record = value as Record<string, unknown>;
@@ -277,6 +292,9 @@ export default async function AdminOrdersPage({
 
   const simplePayWhere = buildSimplePayWhere(query.card);
   if (simplePayWhere) and.push(simplePayWhere);
+
+  const pointsUsedWhere = buildPointsUsedWhere(query.point_min, query.point_max);
+  if (pointsUsedWhere) and.push(pointsUsedWhere);
 
   const where: Prisma.OrderWhereInput = { AND: and };
   const pageSize = query.trade_list_cnt;
@@ -338,6 +356,8 @@ export default async function AdminOrdersPage({
   params.set('day2', pad2(endParts.day));
   params.set('serhs', String(query.serhs));
   params.set('fis', query.fis);
+  appendParams(params, 'point_min', query.point_min);
+  appendParams(params, 'point_max', query.point_max);
   params.set('trade_list_cnt', String(pageSize));
   if (sortState.sort) {
     params.set('sort', sortState.sort);
@@ -389,7 +409,8 @@ export default async function AdminOrdersPage({
     query.status !== '-' ||
     query.search !== 'total' ||
     query.searchstring !== '' ||
-    query.trade_list_cnt !== 30 ||
+    query.point_min != null ||
+    query.point_max != null ||
     startParts.year !== defaultParts.year ||
     startParts.month !== defaultParts.month ||
     startParts.day !== defaultParts.day ||
@@ -401,13 +422,13 @@ export default async function AdminOrdersPage({
     query.paym !== '0',
     query.status !== '-',
     query.search !== 'total' || query.searchstring !== '',
+    query.point_min != null || query.point_max != null,
     startParts.year !== defaultParts.year ||
       startParts.month !== defaultParts.month ||
       startParts.day !== defaultParts.day ||
       endParts.year !== defaultParts.year2 ||
       endParts.month !== defaultParts.month2 ||
       endParts.day !== defaultParts.day2,
-    query.trade_list_cnt !== 30,
   ].filter(Boolean).length;
 
   return (
@@ -440,6 +461,7 @@ export default async function AdminOrdersPage({
         <form className="p-3 sm:p-4" method="get">
           <input type="hidden" name="serhs" value="1" />
           <input type="hidden" name="fis" value="2" />
+          <input type="hidden" name="trade_list_cnt" value={pageSize} />
 
           <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)]">
             <div className="grid gap-3 sm:grid-cols-3">
@@ -501,7 +523,7 @@ export default async function AdminOrdersPage({
             </div>
           </div>
 
-          <div className="mt-4 grid gap-3 border-t border-neutral-100 pt-4 xl:grid-cols-[minmax(0,1fr)_160px_auto] xl:items-end">
+          <div className="mt-4 grid gap-3 border-t border-neutral-100 pt-4 xl:grid-cols-[minmax(0,760px)_minmax(220px,280px)_auto] xl:items-end">
             <fieldset className="min-w-0 rounded-md border border-neutral-200 bg-neutral-50/70 p-3">
               <legend className="sr-only">조회기간</legend>
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -535,7 +557,7 @@ export default async function AdminOrdersPage({
               <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] lg:items-end">
                 <div className="grid gap-1.5">
                   <span className="text-[11px] font-bold text-neutral-500">시작일</span>
-                  <div className="grid grid-cols-[minmax(74px,1fr)_auto_minmax(52px,0.7fr)_auto_minmax(52px,0.7fr)_auto] items-center gap-1.5">
+                  <div className="grid grid-cols-[minmax(84px,96px)_auto_minmax(58px,68px)_auto_minmax(58px,68px)_auto] items-center gap-1.5">
                     <select
                       name="year"
                       defaultValue={startParts.year}
@@ -587,7 +609,7 @@ export default async function AdminOrdersPage({
 
                 <div className="grid gap-1.5">
                   <span className="text-[11px] font-bold text-neutral-500">종료일</span>
-                  <div className="grid grid-cols-[minmax(74px,1fr)_auto_minmax(52px,0.7fr)_auto_minmax(52px,0.7fr)_auto] items-center gap-1.5">
+                  <div className="grid grid-cols-[minmax(84px,96px)_auto_minmax(58px,68px)_auto_minmax(58px,68px)_auto] items-center gap-1.5">
                     <select
                       name="year2"
                       defaultValue={endParts.year}
@@ -635,20 +657,34 @@ export default async function AdminOrdersPage({
               </div>
             </fieldset>
 
-            <label className={orderFilterLabelClass}>
-              표시 개수
-              <select
-                name="trade_list_cnt"
-                defaultValue={pageSize}
-                className={orderFilterFieldClass}
-              >
-                {LIST_COUNTS.map((count) => (
-                  <option key={count} value={count}>
-                    목록 {count}개씩
-                  </option>
-                ))}
-              </select>
-            </label>
+            <fieldset className="grid min-w-0 gap-1.5">
+              <legend className="text-xs font-extrabold text-neutral-600">마일리지 사용량</legend>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                <input
+                  type="number"
+                  name="point_min"
+                  min={0}
+                  step={1}
+                  inputMode="numeric"
+                  defaultValue={query.point_min ?? ''}
+                  placeholder="최소"
+                  aria-label="마일리지 최소 사용량"
+                  className={orderFilterFieldClass}
+                />
+                <span className="text-xs font-extrabold text-neutral-400">~</span>
+                <input
+                  type="number"
+                  name="point_max"
+                  min={0}
+                  step={1}
+                  inputMode="numeric"
+                  defaultValue={query.point_max ?? ''}
+                  placeholder="최대"
+                  aria-label="마일리지 최대 사용량"
+                  className={orderFilterFieldClass}
+                />
+              </div>
+            </fieldset>
 
             <div
               className={
@@ -690,6 +726,12 @@ export default async function AdminOrdersPage({
         <input type="hidden" name="day2" value={pad2(endParts.day)} />
         <input type="hidden" name="serhs" value={query.serhs} />
         <input type="hidden" name="fis" value={query.fis} />
+        {query.point_min != null ? (
+          <input type="hidden" name="point_min" value={query.point_min} />
+        ) : null}
+        {query.point_max != null ? (
+          <input type="hidden" name="point_max" value={query.point_max} />
+        ) : null}
         <input type="hidden" name="trade_list_cnt" value={pageSize} />
         <span className="font-bold text-neutral-700">선택 주문</span>
         <select name="bulkStatus" defaultValue="paid" className={adminFieldClass}>

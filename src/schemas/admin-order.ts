@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+const optionalMileageAmountSchema = z.preprocess(
+  (value) => (value === '' || value == null ? undefined : value),
+  z.coerce.number().int().min(0).max(999_999_999).optional(),
+);
+
 export const adminOrderStatusSchema = z.enum([
   'pending',
   'paid',
@@ -30,6 +35,8 @@ export const adminOrderListQuerySchema = z.object({
   day2: z.coerce.number().int().min(1).max(31).optional(),
   serhs: z.coerce.number().int().min(0).max(1).optional().default(1),
   fis: z.enum(['1', '2']).optional().default('2'),
+  point_min: optionalMileageAmountSchema,
+  point_max: optionalMileageAmountSchema,
   trade_list_cnt: z.coerce.number().int().min(20).max(1000).optional().default(30),
   page: z.coerce.number().int().min(1).max(1000).optional().default(1),
 });

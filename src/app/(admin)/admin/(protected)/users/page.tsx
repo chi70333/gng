@@ -9,8 +9,14 @@ import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
 import { formatNumber, formatPhone } from '@/lib/format';
 import {
+  adminUserOrderBy,
+  buildAdminUserSortHref,
+  parseAdminUserSort,
+  type AdminUserSortDirection,
+  type AdminUserSortKey,
+} from '@/lib/admin-user-sort';
+import {
   AdminDataGrid,
-  type AdminSortDirection,
   AdminMobileCard,
   AdminMobileField,
   adminGridCellClass,
@@ -56,43 +62,6 @@ type AdminUsersSearchParams = {
   pageSize?: string;
 };
 
-const USER_SORT_KEYS = [
-  'no',
-  'name',
-  'loginId',
-  'email',
-  'status',
-  'loginCount',
-  'lastLoginAt',
-  'createdAt',
-] as const;
-type UserSortKey = (typeof USER_SORT_KEYS)[number];
-
-function parseUserSort(searchParams: AdminUsersSearchParams): {
-  sort?: UserSortKey;
-  dir: AdminSortDirection;
-} {
-  const sort = USER_SORT_KEYS.includes(searchParams.sort as UserSortKey)
-    ? (searchParams.sort as UserSortKey)
-    : undefined;
-  const dir = searchParams.dir === 'asc' ? 'asc' : 'desc';
-  return { sort, dir };
-}
-
-function userOrderBy(
-  sort: UserSortKey,
-  dir: AdminSortDirection,
-): Prisma.UserOrderByWithRelationInput {
-  if (sort === 'no' || sort === 'createdAt') return { createdAt: dir };
-  if (sort === 'name') return { name: dir };
-  if (sort === 'loginId') return { loginId: dir };
-  if (sort === 'email') return { email: dir };
-  if (sort === 'status') return { status: dir };
-  if (sort === 'loginCount') return { loginCount: dir };
-  if (sort === 'lastLoginAt') return { lastLoginAt: dir };
-  return { createdAt: dir };
-}
-
 function statusLabel(status: string): string {
   const labels: Record<string, string> = {
     active: '정상',
@@ -103,6 +72,65 @@ function statusLabel(status: string): string {
   return labels[status] ?? status;
 }
 
+function adminUserSearchWhereSql(
+  query: ReturnType<typeof adminUserListQuerySchema.parse>,
+): Prisma.Sql {
+  const filters: Prisma.Sql[] = [Prisma.sql`u."deletedAt" IS NULL`];
+
+  if (query.status) {
+    filters.push(Prisma.sql`u."status" = ${query.status}`);
+  }
+
+  if (query.q) {
+    const pattern = `%${query.q}%`;
+    filters.push(Prisma.sql`(
+      u."loginId" ILIKE ${pattern}
+      OR u."email" ILIKE ${pattern}
+      OR u."name" ILIKE ${pattern}
+      OR u."phone" LIKE ${pattern}
+    )`);
+  }
+
+  return Prisma.sql`WHERE ${Prisma.join(filters, ' AND ')}`;
+}
+
+async function findMileageSortedUserIds({
+  query,
+  pageSize,
+  dir,
+}: {
+  query: ReturnType<typeof adminUserListQuerySchema.parse>;
+  pageSize: number;
+  dir: AdminUserSortDirection;
+}): Promise<bigint[]> {
+  const whereSql = adminUserSearchWhereSql(query);
+  const offset = (query.page - 1) * pageSize;
+  const orderSql =
+    dir === 'asc'
+      ? Prisma.sql`ORDER BY COALESCE(latest."balance", 0) ASC, u."createdAt" DESC, u."id" DESC`
+      : Prisma.sql`ORDER BY COALESCE(latest."balance", 0) DESC, u."createdAt" DESC, u."id" DESC`;
+
+  // Raw SQL is used only for latest-ledger-balance sorting; Prisma orderBy cannot sort
+  // users by the balance of their most recent UserPointHistory row.
+  const rows = await prisma.$queryRaw<{ id: bigint }[]>(Prisma.sql`
+    SELECT u."id"
+    FROM "User" u
+    LEFT JOIN LATERAL (
+      SELECT h."balance"
+      FROM "UserPointHistory" h
+      WHERE h."userId" = u."id"
+      ORDER BY h."id" DESC
+      LIMIT 1
+    ) latest ON TRUE
+    ${whereSql}
+    ${orderSql}
+    OFFSET ${offset}
+    LIMIT ${pageSize}
+  `);
+
+  return rows.map((row) => row.id);
+}
+
 export default async function AdminUsersPage({
   searchParams,
 }: {
@@ -111,7 +139,7 @@ export default async function AdminUsersPage({
   await requireAdmin('user.read');
   const query = adminUserListQuerySchema.parse(searchParams);
   const pageSize = PAGE_SIZE_OPTIONS.includes(query.pageSize) ? query.pageSize : DEFAULT_PAGE_SIZE;
-  const sortState = parseUserSort(searchParams);
+  const sortState = parseAdminUserSort(searchParams);
   const where: Prisma.UserWhereInput = {
     deletedAt: null,
     ...(query.status ? { status: query.status } : {}),
@@ -127,33 +155,58 @@ export default async function AdminUsersPage({
       : {}),
   };
 
-  const [users, total] = await prisma.$transaction([
-    prisma.user.findMany({
-      where,
-      orderBy: userOrderBy(sortState.sort ?? 'no', sortState.dir),
-      skip: (query.page - 1) * pageSize,
-      take: pageSize,
-      select: {
-        id: true,
-        loginId: true,
-        email: true,
-        name: true,
-        phone: true,
-        status: true,
-        createdAt: true,
-        lastLoginAt: true,
-        loginCount: true,
-        grade: { select: { name: true } },
-        pointHistories: {
-          orderBy: { id: 'desc' },
-          take: 1,
-          select: { balance: true },
-        },
-        _count: { select: { orders: true } },
-      },
-    }),
-    prisma.user.count({ where }),
-  ]);
+  const userSelect = {
+    id: true,
+    loginId: true,
+    email: true,
+    name: true,
+    phone: true,
+    status: true,
+    createdAt: true,
+    lastLoginAt: true,
+    loginCount: true,
+    grade: { select: { name: true } },
+    pointHistories: {
+      orderBy: { id: 'desc' },
+      take: 1,
+      select: { balance: true },
+    },
+    _count: { select: { orders: true } },
+  } satisfies Prisma.UserSelect;
+
+  const [users, total] =
+    sortState.sort === 'mileage'
+      ? await (async () => {
+          const [pageIds, userTotal] = await Promise.all([
+            findMileageSortedUserIds({ query, pageSize, dir: sortState.dir }),
+            prisma.user.count({ where }),
+          ]);
+          const order = new Map(pageIds.map((id, index) => [id.toString(), index]));
+          const pageUsers =
+            pageIds.length > 0
+              ? await prisma.user.findMany({
+                  where: { ...where, id: { in: pageIds } },
+                  select: userSelect,
+                })
+              : [];
+
+          pageUsers.sort(
+            (left, right) =>
+              (order.get(left.id.toString()) ?? 0) - (order.get(right.id.toString()) ?? 0),
+          );
+
+          return [pageUsers, userTotal] as const;
+        })()
+      : await prisma.$transaction([
+          prisma.user.findMany({
+            where,
+            orderBy: adminUserOrderBy(sortState.sort ?? 'no', sortState.dir),
+            skip: (query.page - 1) * pageSize,
+            take: pageSize,
+            select: userSelect,
+          }),
+          prisma.user.count({ where }),
+        ]);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const hasNext = query.page < totalPages;
 
@@ -175,19 +228,8 @@ export default async function AdminUsersPage({
   const mileageSkipped = Number(searchParams.mileageSkipped ?? 0) || 0;
   const deleted = Number(searchParams.deleted ?? 0) || 0;
   const bulkError = searchParams.bulkError?.trim() ?? '';
-  const getSortHref = (sort: string, dir: AdminSortDirection) => {
-    const nextParams = new URLSearchParams(params);
-    if (nextParams.get('sort') === sort) {
-      nextParams.delete('sort');
-      nextParams.delete('dir');
-    } else {
-      nextParams.set('sort', sort);
-      nextParams.set('dir', dir);
-    }
-    nextParams.delete('page');
-    const nextQuery = nextParams.toString();
-    return nextQuery ? `/admin/users?${nextQuery}` : '/admin/users';
-  };
+  const getSortHref = (sort: string, dir: AdminUserSortDirection) =>
+    buildAdminUserSortHref('/admin/users', params, sort as AdminUserSortKey, dir);
 
   return (
     <div className="w-full space-y-4">
@@ -334,7 +376,13 @@ export default async function AdminUsersPage({
             { key: 'phone', label: '휴대전화', widthClassName: 'w-40' },
             { key: 'status', label: '상태', widthClassName: 'w-28', sortKey: 'status' },
             { key: 'grade', label: '등급', widthClassName: 'w-32' },
-            { key: 'mileage', label: '마일리지', align: 'right', widthClassName: 'w-48' },
+            {
+              key: 'mileage',
+              label: '마일리지',
+              align: 'right',
+              widthClassName: 'w-48',
+              sortKey: 'mileage',
+            },
             { key: 'orders', label: '주문', align: 'right', widthClassName: 'w-24' },
             {
               key: 'loginCount',

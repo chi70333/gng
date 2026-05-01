@@ -38,7 +38,9 @@ const LEGACY_ORDER_CSV_COLUMNS = [
 ];
 
 function csvCell(value: string | number | null | undefined): string {
-  const text = String(value ?? '').replace(/\r?\n/g, ' ').replace(/"/g, '""');
+  const text = String(value ?? '')
+    .replace(/\r?\n/g, ' ')
+    .replace(/"/g, '""');
   return `"${text}"`;
 }
 
@@ -62,7 +64,7 @@ function paymentLabel(method: string | undefined): string {
     vbank: '가상계좌',
     point: '적립금',
   };
-  return method ? labels[method] ?? method : '미결제';
+  return method ? (labels[method] ?? method) : '미결제';
 }
 
 function statusLabel(status: string): string {
@@ -80,7 +82,11 @@ function statusLabel(status: string): string {
 
 function getDateRange(query: ReturnType<typeof adminOrderListQuerySchema.parse>) {
   const now = new Date();
-  const start = new Date(query.year ?? now.getFullYear(), (query.month ?? now.getMonth() + 1) - 1, query.day ?? 1);
+  const start = new Date(
+    query.year ?? now.getFullYear(),
+    (query.month ?? now.getMonth() + 1) - 1,
+    query.day ?? 1,
+  );
   const endExclusive = new Date(
     query.year2 ?? now.getFullYear(),
     (query.month2 ?? now.getMonth() + 1) - 1,
@@ -110,7 +116,22 @@ function buildSearchWhere(field: string, keyword: string): Prisma.OrderWhereInpu
   };
 }
 
-function buildOrderWhere(query: ReturnType<typeof adminOrderListQuerySchema.parse>): Prisma.OrderWhereInput {
+function buildPointsUsedWhere(
+  min: number | undefined,
+  max: number | undefined,
+): Prisma.OrderWhereInput | null {
+  if (min == null && max == null) return null;
+  return {
+    pointsUsed: {
+      ...(min == null ? {} : { gte: min }),
+      ...(max == null ? {} : { lte: max }),
+    },
+  };
+}
+
+function buildOrderWhere(
+  query: ReturnType<typeof adminOrderListQuerySchema.parse>,
+): Prisma.OrderWhereInput {
   const { start, endExclusive } = getDateRange(query);
   const and: Prisma.OrderWhereInput[] = [{ deletedAt: null }];
   if (query.status !== '-' && query.status !== '11') and.push({ status: query.status });
@@ -145,6 +166,9 @@ function buildOrderWhere(query: ReturnType<typeof adminOrderListQuerySchema.pars
     );
   }
 
+  const pointsUsedWhere = buildPointsUsedWhere(query.point_min, query.point_max);
+  if (pointsUsedWhere) and.push(pointsUsedWhere);
+
   return { AND: and };
 }
 
@@ -173,10 +197,12 @@ export async function GET(request: Request) {
   for (const order of orders) {
     const payment = order.payments[0];
     const shipment = order.shipments[0];
-    const buyerName = order.user?.name || readJsonString(order.buyerInfo, ['name', 'buyerName']) || '비회원';
+    const buyerName =
+      order.user?.name || readJsonString(order.buyerInfo, ['name', 'buyerName']) || '비회원';
     const buyerLabel = `${buyerName}[${order.userId ? '일반회원' : '비회원'}]`;
     const receiver = readJsonString(order.shippingAddress, ['receiver', 'name']) || buyerName;
-    const receiverPhone = readJsonString(order.shippingAddress, ['phone', 'tel']) || order.user?.phone || '';
+    const receiverPhone =
+      readJsonString(order.shippingAddress, ['phone', 'tel']) || order.user?.phone || '';
     const address = [
       readJsonString(order.shippingAddress, ['address1', 'address']),
       readJsonString(order.shippingAddress, ['address2', 'detailAddress']),
