@@ -22,6 +22,7 @@ async function getMyPageData(email: string) {
       id: true,
       email: true,
       name: true,
+      loginId: true,
       phone: true,
       createdAt: true,
       pointHistories: {
@@ -84,7 +85,10 @@ export default async function MyPage() {
       <section className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-lg bg-white p-4">
           <p className="text-xs font-medium text-neutral-500">회원명</p>
-          <p className="mt-2 text-base font-bold text-neutral-900">{user.name}</p>
+          <p className="mt-2 text-base font-bold text-neutral-900">
+            {user.name}
+            <span className="ml-2 text-sm font-medium text-neutral-500">({user.loginId ?? '-'})</span>
+          </p>
         </div>
         <div className="rounded-lg bg-white p-4">
           <p className="text-xs font-medium text-neutral-500">이메일</p>

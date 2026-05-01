@@ -303,7 +303,7 @@ export default async function MyOrderDetailPage({ params, searchParams }: Detail
           {(isBankTransfer || asString(depositDisplayName) || asString(depositorName)) && (
             <div className="rounded-lg bg-neutral-50 p-3 text-sm text-neutral-700">
               <p className="font-semibold text-neutral-900">
-                {isBankTransfer ? '입금해야 하는 계좌' : '입금 정보'}
+                {isBankTransfer ? '입금 계좌' : '입금 정보'}
               </p>
               {depositDisplayName && <p className="mt-1">{asString(depositDisplayName)}</p>}
               {depositorName && (
