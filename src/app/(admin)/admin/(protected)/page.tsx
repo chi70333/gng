@@ -87,7 +87,7 @@ const getAdminStats = unstable_cache(
           createdAt: true,
           loginCount: true,
           grade: { select: { name: true } },
-          pointHistories: { orderBy: { createdAt: 'desc' }, take: 1, select: { balance: true } },
+          pointHistories: { orderBy: { id: 'desc' }, take: 1, select: { balance: true } },
         },
       }),
       prisma.inquiry.findMany({

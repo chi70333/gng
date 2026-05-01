@@ -5,10 +5,7 @@ import { prisma } from '@/server/db';
 import { hashPassword } from '@/server/services/auth.service';
 import { createPointLedgerEntry } from '@/server/services/point-ledger.service';
 import type { Prisma } from '@prisma/client';
-import type {
-  LegacyPointSyncInput,
-  LegacyRegisterMemberInput,
-} from '@/schemas/legacy-api';
+import type { LegacyPointSyncInput, LegacyRegisterMemberInput } from '@/schemas/legacy-api';
 
 export type LegacyMemberListResult = {
   success: true;
@@ -118,7 +115,7 @@ export async function listLegacyMembers(params: {
         phone: true,
         createdAt: true,
         pointHistories: {
-          orderBy: { createdAt: 'desc' },
+          orderBy: { id: 'desc' },
           take: 1,
           select: { balance: true },
         },

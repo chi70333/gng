@@ -8,7 +8,7 @@ type PointLedgerTx = Prisma.TransactionClient;
 export async function getPointBalance(tx: PointLedgerTx, userId: bigint): Promise<number> {
   const latest = await tx.userPointHistory.findFirst({
     where: { userId },
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    orderBy: { id: 'desc' },
     select: { balance: true },
   });
 

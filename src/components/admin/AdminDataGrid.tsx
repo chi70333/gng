@@ -1,10 +1,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { cn } from '@/lib/cn';
-import {
-  adminFieldClass,
-  adminSecondaryButtonClass,
-} from '@/components/admin/AdminUI';
+import { adminFieldClass, adminSecondaryButtonClass } from '@/components/admin/AdminUI';
 
 export type AdminDataColumn = {
   key: string;
@@ -33,7 +30,6 @@ type AdminDataGridProps<T> = {
   currentSortKey?: string;
   currentSortDirection?: AdminSortDirection;
   getSortHref?: (sortKey: string, direction: AdminSortDirection) => string;
-  toolbarEnd?: ReactNode;
 };
 
 const alignClass = {
@@ -111,18 +107,12 @@ export function AdminDataGrid<T>({
   currentSortKey,
   currentSortDirection = 'desc',
   getSortHref,
-  toolbarEnd,
 }: AdminDataGridProps<T>) {
   const headerPadding = density === 'compact' ? 'px-2 py-1.5' : 'px-2 py-2';
 
   return (
     <div className={cn('overflow-hidden rounded-lg border border-neutral-200 bg-white', className)}>
       {caption ? <div className="sr-only">{caption}</div> : null}
-      {toolbarEnd ? (
-        <div className="flex items-center justify-end border-b border-neutral-200 bg-white px-2 py-1.5">
-          {toolbarEnd}
-        </div>
-      ) : null}
       <div
         className={cn(
           renderMobileCard ? 'hidden md:block' : 'block',

@@ -39,7 +39,9 @@ function escapeCell(value: string | number | null | undefined): string {
     .replace(/"/g, '&quot;');
 }
 
-function buildUserWhere(query: ReturnType<typeof adminUserListQuerySchema.parse>): Prisma.UserWhereInput {
+function buildUserWhere(
+  query: ReturnType<typeof adminUserListQuerySchema.parse>,
+): Prisma.UserWhereInput {
   return {
     deletedAt: null,
     ...(query.status ? { status: query.status } : {}),
@@ -88,7 +90,7 @@ export async function GET(request: Request) {
         select: { zipCode: true, address1: true, address2: true, phone: true },
       },
       pointHistories: {
-        orderBy: { createdAt: 'desc' },
+        orderBy: { id: 'desc' },
         take: 1,
         select: { balance: true },
       },

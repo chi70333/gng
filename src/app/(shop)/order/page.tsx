@@ -64,7 +64,7 @@ async function getOrderUserData(email: string | null, subtotal: Decimal) {
         },
       },
       pointHistories: {
-        orderBy: { createdAt: 'desc' },
+        orderBy: { id: 'desc' },
         take: 1,
         select: { balance: true },
       },

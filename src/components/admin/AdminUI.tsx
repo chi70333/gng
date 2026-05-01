@@ -79,8 +79,10 @@ export function AdminSection({
 }) {
   return (
     <section className={cn(adminSurfaceClass, className)}>
-      <div className={cn(adminSurfaceHeaderClass, 'flex items-center justify-between gap-3')}>
-        <div className="flex min-w-0 items-center gap-2.5">
+      <div
+        className={cn(adminSurfaceHeaderClass, 'flex flex-wrap items-center justify-between gap-3')}
+      >
+        <div className="flex min-w-[180px] flex-1 items-center gap-2.5">
           {Icon ? (
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-700 shadow-sm">
               <Icon size={16} />
@@ -93,7 +95,7 @@ export function AdminSection({
             ) : null}
           </div>
         </div>
-        {headerAction ? <div className="shrink-0">{headerAction}</div> : null}
+        {headerAction ? <div className="ml-auto shrink-0">{headerAction}</div> : null}
       </div>
       <div className={cn('p-3', bodyClassName)}>{children}</div>
     </section>

@@ -433,6 +433,17 @@ export default async function AdminApiMonitorPage({
         description={`검색 결과 ${formatNumber(data.total)}건`}
         icon={PlugZap}
         bodyClassName="p-0"
+        headerAction={
+          <AdminPageSizeSelect
+            action="/admin/api-monitor"
+            name="size"
+            value={query.size}
+            options={PAGE_SIZE_OPTIONS}
+            hiddenFields={hiddenFields}
+            label="표시"
+            ariaLabel="통신 이력 표시 개수"
+          />
+        }
       >
         <AdminDataGrid
           columns={[
@@ -453,17 +464,6 @@ export default async function AdminApiMonitorPage({
           minWidthClassName="min-w-[1120px]"
           scrollAreaClassName="max-h-[480px]"
           mobileScrollAreaClassName="max-h-[560px] overflow-y-auto"
-          toolbarEnd={
-            <AdminPageSizeSelect
-              action="/admin/api-monitor"
-              name="size"
-              value={query.size}
-              options={PAGE_SIZE_OPTIONS}
-              hiddenFields={hiddenFields}
-              label="표시"
-              ariaLabel="통신 이력 표시 개수"
-            />
-          }
           renderRow={(row, index) => {
             const message = errorMessage(row);
             const isSuccess = isSuccessfulLog(row, message);

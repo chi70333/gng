@@ -16,9 +16,9 @@ function escapeCell(value: string | number): string {
 }
 
 const tableStyle =
-  'border-collapse:collapse;border:2px solid #111827;font-family:Arial,sans-serif;font-size:12px;';
+  'border-collapse:collapse;border:1px solid #6b7280;font-family:Arial,sans-serif;font-size:12px;';
 const headerCellStyle =
-  'border:2px solid #111827;background:#e5e7eb;color:#111827;font-weight:800;text-align:center;padding:8px 10px;';
+  'border:1px solid #6b7280;background:#e5e7eb;color:#111827;font-weight:800;text-align:center;padding:8px 10px;';
 const bodyCellStyle = 'border:1px solid #6b7280;padding:7px 10px;mso-number-format:"\\@";';
 
 function tableRow(values: (string | number)[], isHeader = false): string {

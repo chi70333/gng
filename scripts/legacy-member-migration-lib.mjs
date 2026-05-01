@@ -569,6 +569,13 @@ export function buildPointLedger(points, targetBalance) {
       reason: '레거시 포인트 잔액 보정',
       createdAt: undefined,
     });
+  } else if (targetBalance != null && entries.length > 0) {
+    entries.push({
+      delta: 0,
+      balance: targetBalance,
+      reason: '레거시 포인트 최종 잔액 확인',
+      createdAt: undefined,
+    });
   }
 
   return entries;

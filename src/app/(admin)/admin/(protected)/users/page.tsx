@@ -145,7 +145,7 @@ export default async function AdminUsersPage({
         loginCount: true,
         grade: { select: { name: true } },
         pointHistories: {
-          orderBy: { createdAt: 'desc' },
+          orderBy: { id: 'desc' },
           take: 1,
           select: { balance: true },
         },
@@ -302,6 +302,15 @@ export default async function AdminUsersPage({
         title="회원 목록"
         description={`현재 페이지 ${formatNumber(users.length)}명 · ${formatNumber(query.page)} / 총 ${formatNumber(totalPages)}페이지`}
         bodyClassName="p-0"
+        headerAction={
+          <AdminPageSizeSelect
+            action="/admin/users"
+            name="pageSize"
+            value={pageSize}
+            options={PAGE_SIZE_OPTIONS}
+            hiddenFields={Array.from(params.entries()).map(([name, value]) => ({ name, value }))}
+          />
+        }
       >
         <AdminDataGrid
           caption="회원 목록"
@@ -353,15 +362,6 @@ export default async function AdminUsersPage({
           rowKey={(user) => user.id.toString()}
           emptyText="조회된 회원이 없습니다."
           minWidthClassName="min-w-[1260px]"
-          toolbarEnd={
-            <AdminPageSizeSelect
-              action="/admin/users"
-              name="pageSize"
-              value={pageSize}
-              options={PAGE_SIZE_OPTIONS}
-              hiddenFields={Array.from(params.entries()).map(([name, value]) => ({ name, value }))}
-            />
-          }
           currentSortKey={sortState.sort}
           currentSortDirection={sortState.dir}
           getSortHref={getSortHref}

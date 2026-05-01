@@ -147,7 +147,7 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
         select: { orderNo: true, status: true, total: true, createdAt: true },
       },
       pointHistories: {
-        orderBy: { createdAt: 'desc' },
+        orderBy: { id: 'desc' },
         take: 20,
       },
       couponIssues: {

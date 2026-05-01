@@ -677,6 +677,15 @@ export default async function AdminOrdersPage({
         title="주문 목록"
         description={`주문건수 ${formatNumber(total)}건`}
         bodyClassName="p-0"
+        headerAction={
+          <AdminPageSizeSelect
+            action="/admin/orders"
+            name="trade_list_cnt"
+            value={pageSize}
+            options={LIST_COUNTS}
+            hiddenFields={Array.from(params.entries()).map(([name, value]) => ({ name, value }))}
+          />
+        }
       >
         <AdminDataGrid
           caption="주문 목록"
@@ -722,15 +731,6 @@ export default async function AdminOrdersPage({
           rowKey={(order) => order.orderNo}
           emptyText="주문 내역이 없습니다."
           minWidthClassName="min-w-[1120px]"
-          toolbarEnd={
-            <AdminPageSizeSelect
-              action="/admin/orders"
-              name="trade_list_cnt"
-              value={pageSize}
-              options={LIST_COUNTS}
-              hiddenFields={Array.from(params.entries()).map(([name, value]) => ({ name, value }))}
-            />
-          }
           currentSortKey={sortState.sort}
           currentSortDirection={sortState.dir}
           getSortHref={getSortHref}

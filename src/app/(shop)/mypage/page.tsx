@@ -25,7 +25,7 @@ async function getMyPageData(email: string) {
       phone: true,
       createdAt: true,
       pointHistories: {
-        orderBy: { createdAt: 'desc' },
+        orderBy: { id: 'desc' },
         take: 1,
         select: { balance: true },
       },
@@ -76,9 +76,7 @@ export default async function MyPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-neutral-900">마이페이지</h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            주문과 회원 정보를 확인할 수 있습니다.
-          </p>
+          <p className="mt-1 text-sm text-neutral-500">주문과 회원 정보를 확인할 수 있습니다.</p>
         </div>
         <UserRound className="text-neutral-300" size={28} />
       </div>
@@ -90,9 +88,7 @@ export default async function MyPage() {
         </div>
         <div className="rounded-lg bg-white p-4">
           <p className="text-xs font-medium text-neutral-500">이메일</p>
-          <p className="mt-2 break-all text-base font-bold text-neutral-900">
-            {user.email}
-          </p>
+          <p className="mt-2 break-all text-base font-bold text-neutral-900">{user.email}</p>
         </div>
         <div className="rounded-lg bg-white p-4">
           <p className="text-xs font-medium text-neutral-500">적립금</p>

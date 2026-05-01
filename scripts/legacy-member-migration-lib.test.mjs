@@ -194,6 +194,20 @@ describe('legacy member migration helpers', () => {
     ]);
   });
 
+  it('adds a final point balance snapshot even when the ledger already matches', () => {
+    const ledger = buildPointLedger([{ delta: 300, reason: '적립', index: 0 }], 300);
+
+    expect(ledger).toEqual([
+      { delta: 300, balance: 300, reason: '적립', createdAt: undefined },
+      {
+        delta: 0,
+        balance: 300,
+        reason: '레거시 포인트 최종 잔액 확인',
+        createdAt: undefined,
+      },
+    ]);
+  });
+
   it('attaches social, address, and point rows to active members', () => {
     const plan = buildMigrationPlan(
       backupFromRows({

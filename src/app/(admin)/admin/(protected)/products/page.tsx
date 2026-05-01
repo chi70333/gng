@@ -372,12 +372,26 @@ export default async function AdminProductsPage({
         title="상품 목록"
         description={`현재 페이지 ${formatNumber(products.length)}개`}
         bodyClassName="p-0"
+        headerAction={
+          <AdminPageSizeSelect
+            action="/admin/products"
+            name="pageSize"
+            value={pageSize}
+            options={PAGE_SIZE_OPTIONS}
+            hiddenFields={Array.from(params.entries()).map(([name, value]) => ({ name, value }))}
+          />
+        }
       >
         <AdminDataGrid
           caption="상품 목록"
           columns={[
             { key: 'no', label: 'No', align: 'right', widthClassName: 'w-20', sortKey: 'no' },
-            { key: 'select', label: <AdminGridSelectAll name="productId" />, align: 'center', widthClassName: 'w-16' },
+            {
+              key: 'select',
+              label: <AdminGridSelectAll name="productId" />,
+              align: 'center',
+              widthClassName: 'w-16',
+            },
             { key: 'image', label: '이미지', align: 'center', widthClassName: 'w-24' },
             {
               key: 'name',
@@ -431,15 +445,6 @@ export default async function AdminProductsPage({
           rowKey={(product) => product.id.toString()}
           emptyText="조회된 상품이 없습니다."
           minWidthClassName="min-w-[1240px]"
-          toolbarEnd={
-            <AdminPageSizeSelect
-              action="/admin/products"
-              name="pageSize"
-              value={pageSize}
-              options={PAGE_SIZE_OPTIONS}
-              hiddenFields={Array.from(params.entries()).map(([name, value]) => ({ name, value }))}
-            />
-          }
           currentSortKey={sortState.sort}
           currentSortDirection={sortState.dir}
           getSortHref={getSortHref}
