@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import {
   Banknote,
   CalendarDays,
@@ -9,6 +10,7 @@ import {
   ClipboardList,
   ReceiptText,
   Search,
+  Trash2,
   Truck,
   UserRound,
   WalletCards,
@@ -187,6 +189,15 @@ function toWon(value: number): number {
   return Math.max(0, Math.floor(value));
 }
 
+function itemTotal(item: PaymentCartItem): number {
+  return Number(item.unitPrice) * item.quantity;
+}
+
+function checkoutShippingFee(subtotal: number): number {
+  if (subtotal <= 0) return 0;
+  return subtotal >= 50000 ? 0 : 3000;
+}
+
 function pointValue(value: string): number {
   if (!value) return 0;
   return toWon(Number(value.replace(/,/g, '')));
@@ -216,6 +227,15 @@ function PaymentSubmitButton({ finalTotal, disabled }: { finalTotal: number; dis
       {pending ? '처리 중' : `${formatKRW(finalTotal)} 구매하기`}
     </button>
   );
+}
+
+async function deleteOrderItem(skuId: string): Promise<boolean> {
+  const res = await fetch('/api/cart', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ skuId, quantity: 0 }),
+  });
+  return res.ok;
 }
 
 function SelectField({
@@ -323,12 +343,11 @@ export function OrderPaymentForm({
   sessionEmail,
   cartItems,
   selectedSkuIds,
-  subtotal,
-  shippingFee,
   hasUnavailableItem,
   bankInfo,
   error,
 }: OrderPaymentFormProps) {
+  const router = useRouter();
   const defaultAddress = orderUser?.defaultAddress ?? null;
   const [receiver, setReceiver] = useState(defaultAddress?.receiver ?? orderUser?.name ?? '');
   const [phone, setPhone] = useState(defaultAddress?.phone ?? orderUser?.phone ?? '');
@@ -345,15 +364,28 @@ export function OrderPaymentForm({
   const [postcodeOpen, setPostcodeOpen] = useState(false);
   const [postcodeError, setPostcodeError] = useState('');
   const [postcodeLayerHeight, setPostcodeLayerHeight] = useState(480);
+  const [removedSkuIds, setRemovedSkuIds] = useState<Set<string>>(() => new Set());
+  const [deletingSkuId, setDeletingSkuId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState('');
   const detailAddressRef = useRef<HTMLInputElement>(null);
   const postcodeLayerRef = useRef<HTMLDivElement>(null);
 
+  const visibleCartItems = useMemo(
+    () => cartItems.filter((item) => !removedSkuIds.has(item.skuId)),
+    [cartItems, removedSkuIds],
+  );
+  const visibleSkuIds = useMemo(() => {
+    const visibleSkuIdSet = new Set(visibleCartItems.map((item) => item.skuId));
+    return selectedSkuIds.filter((skuId) => visibleSkuIdSet.has(skuId));
+  }, [selectedSkuIds, visibleCartItems]);
+  const currentSubtotal = visibleCartItems.reduce((sum, item) => sum + itemTotal(item), 0);
+  const currentShippingFee = checkoutShippingFee(currentSubtotal);
   const selectedCoupon = useMemo(
     () => orderUser?.coupons.find((coupon) => coupon.id === couponIssueId),
     [couponIssueId, orderUser?.coupons],
   );
-  const couponDiscount = calculateCouponDiscount(selectedCoupon, subtotal);
-  const payableBeforePoints = toWon(subtotal + shippingFee - couponDiscount);
+  const couponDiscount = calculateCouponDiscount(selectedCoupon, currentSubtotal);
+  const payableBeforePoints = toWon(currentSubtotal + currentShippingFee - couponDiscount);
   const maxUsablePoints = Math.min(orderUser?.pointBalance ?? 0, payableBeforePoints);
   const appliedPoints = Math.min(pointValue(pointsToUse), maxUsablePoints);
   const remainingPoints = Math.max(0, (orderUser?.pointBalance ?? 0) - appliedPoints);
@@ -466,6 +498,32 @@ export function OrderPaymentForm({
     setPointsToUse(String(Math.min(pointValue(value), maxUsablePoints)));
   };
 
+  const removeOrderItem = async (skuId: string) => {
+    if (deletingSkuId) return;
+
+    setDeletingSkuId(skuId);
+    setDeleteError('');
+
+    try {
+      const ok = await deleteOrderItem(skuId);
+      if (!ok) {
+        setDeleteError('상품을 삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+        return;
+      }
+
+      setRemovedSkuIds((current) => {
+        const next = new Set(current);
+        next.add(skuId);
+        return next;
+      });
+      router.refresh();
+    } catch {
+      setDeleteError('상품을 삭제하지 못했습니다. 네트워크 상태를 확인해 주세요.');
+    } finally {
+      setDeletingSkuId(null);
+    }
+  };
+
   return (
     <>
       <div className="bg-neutral-50">
@@ -490,7 +548,7 @@ export function OrderPaymentForm({
             )}
 
             <form action={createOrderAction} className="space-y-4">
-              {selectedSkuIds.map((skuId) => (
+              {visibleSkuIds.map((skuId) => (
                 <input key={skuId} type="hidden" name="selectedSkuIds" value={skuId} />
               ))}
               <FormSection
@@ -884,8 +942,8 @@ export function OrderPaymentForm({
                       <span className="text-xs font-bold text-emerald-700">무통장입금</span>
                     </div>
                     <SummaryRows
-                      subtotal={subtotal}
-                      shippingFee={shippingFee}
+                      subtotal={currentSubtotal}
+                      shippingFee={currentShippingFee}
                       couponDiscount={couponDiscount}
                       appliedPoints={appliedPoints}
                       finalTotal={finalTotal}
@@ -908,7 +966,12 @@ export function OrderPaymentForm({
                 </label>
               </section>
 
-              <PaymentSubmitButton finalTotal={finalTotal} disabled={hasUnavailableItem} />
+              <PaymentSubmitButton
+                finalTotal={finalTotal}
+                disabled={
+                  hasUnavailableItem || Boolean(deletingSkuId) || visibleCartItems.length === 0
+                }
+              />
             </form>
           </section>
 
@@ -917,9 +980,17 @@ export function OrderPaymentForm({
               <ClipboardList aria-hidden="true" size={18} className="text-neutral-900" />
               <h2 className="text-base font-extrabold text-neutral-950">결제 요약</h2>
             </div>
+            {deleteError && (
+              <p className="mb-3 rounded-md border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                {deleteError}
+              </p>
+            )}
             <ul className="mb-4 space-y-3">
-              {cartItems.map((item) => (
-                <li key={item.skuId} className="flex gap-3 text-sm">
+              {visibleCartItems.map((item) => (
+                <li
+                  key={item.skuId}
+                  className="grid grid-cols-[56px_minmax(0,1fr)_auto] gap-3 text-sm"
+                >
                   <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md bg-neutral-100">
                     {item.thumbnail && (
                       <Image
@@ -941,17 +1012,27 @@ export function OrderPaymentForm({
                       </p>
                     )}
                     <p className="mt-1 text-xs text-neutral-500">수량 {item.quantity}개</p>
+                    <p className="mt-1 text-sm font-extrabold text-neutral-950">
+                      {formatKRW(itemTotal(item))}
+                    </p>
                   </div>
-                  <span className="shrink-0 text-sm font-extrabold text-neutral-950">
-                    {formatKRW(Number(item.unitPrice) * item.quantity)}
-                  </span>
+                  <button
+                    type="button"
+                    disabled={Boolean(deletingSkuId)}
+                    onClick={() => void removeOrderItem(item.skuId)}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-neutral-200 text-neutral-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:border-neutral-100 disabled:text-neutral-300"
+                    aria-label={`${item.name} 삭제`}
+                    title="삭제"
+                  >
+                    <Trash2 aria-hidden="true" size={17} />
+                  </button>
                 </li>
               ))}
             </ul>
             <div className="border-t border-neutral-100 pt-4">
               <SummaryRows
-                subtotal={subtotal}
-                shippingFee={shippingFee}
+                subtotal={currentSubtotal}
+                shippingFee={currentShippingFee}
                 couponDiscount={couponDiscount}
                 appliedPoints={appliedPoints}
                 finalTotal={finalTotal}

@@ -58,7 +58,7 @@ export default async function HomePage() {
           >
             <div className="relative z-10 flex h-full flex-col justify-center px-8 py-12 md:px-16">
               <span className="mb-2 text-xs font-semibold uppercase tracking-widest text-neutral-400">
-                New Season
+                새 시즌
               </span>
               <h1 className="mb-4 text-3xl font-extrabold leading-tight md:text-5xl">
                 새로운 상품을
@@ -97,7 +97,7 @@ export default async function HomePage() {
                 </Link>
               </div>
 
-              <ul className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 md:mx-0 md:grid md:grid-cols-3 md:overflow-visible md:px-0 lg:grid-cols-4">
+              <ul className="flex snap-x gap-3 overflow-x-auto pb-2 md:grid md:grid-cols-3 md:overflow-visible lg:grid-cols-4">
                 {rootCategories.map((category, index) => (
                   <li key={category.id} className="min-w-[154px] snap-start md:min-w-0">
                     <CategoryCard category={category} index={index} />
