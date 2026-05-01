@@ -5,7 +5,7 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Prisma } from '@prisma/client';
-import { Download, ImageOff, Plus, RotateCcw, Search, Upload } from 'lucide-react';
+import { Download, ImageOff, Plus, RotateCcw, Search, Trash2, Upload } from 'lucide-react';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
 import { formatKRW, formatNumber } from '@/lib/format';
@@ -24,11 +24,12 @@ import {
   AdminSection,
   adminFieldClass,
   adminPrimaryButtonClass,
+  adminDangerButtonClass,
   adminSecondaryButtonClass,
 } from '@/components/admin/AdminUI';
 import { AdminPagination } from '@/components/admin/AdminPagination';
 import { adminProductListQuerySchema } from '@/schemas/admin-product';
-import { importAdminProductsCsv } from '../../actions';
+import { bulkDeleteAdminProducts, importAdminProductsCsv } from '../../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,6 +51,8 @@ type ProductSearchParams = {
   sort?: string;
   dir?: string;
   pageSize?: string;
+  deleted?: string;
+  bulkError?: string;
 };
 
 const PRODUCT_SORT_KEYS = [
@@ -233,6 +236,11 @@ export default async function AdminProductsPage({
   const baseHref = `/admin/products${params.toString() ? `?${params.toString()}` : ''}`;
   const exportHref = `/api/admin/products/export${params.toString() ? `?${params.toString()}` : ''}`;
   const hasFilters = Boolean(query.q || query.status || query.categoryId || query.stock);
+  const currentParams = new URLSearchParams(params);
+  if (query.page > 1) currentParams.set('page', String(query.page));
+  const currentHref = `/admin/products${currentParams.toString() ? `?${currentParams.toString()}` : ''}`;
+  const deleted = Number(searchParams.deleted ?? 0) || 0;
+  const bulkError = searchParams.bulkError?.trim() ?? '';
   const getSortHref = (sort: string, dir: AdminSortDirection) => {
     const nextParams = new URLSearchParams(params);
     if (nextParams.get('sort') === sort) {
@@ -272,6 +280,33 @@ export default async function AdminProductsPage({
           {formatNumber(Number(searchParams.skipped) || 0)}건
         </div>
       ) : null}
+      {deleted > 0 ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+          선택 상품 삭제 {formatNumber(deleted)}건 처리되었습니다.
+        </div>
+      ) : null}
+      {bulkError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+          {bulkError}
+        </div>
+      ) : null}
+
+      <form
+        id="bulkProductActionForm"
+        action={bulkDeleteAdminProducts}
+        className="rounded-lg border border-neutral-200 bg-white p-3 text-xs shadow-[0_8px_24px_rgba(15,23,42,0.045)] ring-1 ring-white"
+      >
+        <input type="hidden" name="redirectTo" value={currentHref} />
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          <span className="flex h-10 items-center whitespace-nowrap font-bold text-neutral-700">
+            선택 상품 일괄 처리
+          </span>
+          <button className={`${adminDangerButtonClass} h-10 lg:shrink-0`}>
+            <Trash2 size={17} />
+            선택 삭제
+          </button>
+        </div>
+      </form>
 
       <details className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.045)] ring-1 ring-white">
         <summary className="flex min-h-12 cursor-pointer items-center justify-between gap-3 px-4 text-sm font-extrabold text-neutral-950">
@@ -388,7 +423,7 @@ export default async function AdminProductsPage({
             { key: 'no', label: 'No', align: 'right', widthClassName: 'w-20', sortKey: 'no' },
             {
               key: 'select',
-              label: <AdminGridSelectAll name="productId" />,
+              label: <AdminGridSelectAll name="productId" formId="bulkProductActionForm" />,
               align: 'center',
               widthClassName: 'w-16',
             },
@@ -463,6 +498,7 @@ export default async function AdminProductsPage({
                 </td>
                 <td className={`${adminGridCellClass} text-center`}>
                   <input
+                    form="bulkProductActionForm"
                     type="checkbox"
                     name="productId"
                     value={product.id.toString()}
@@ -568,12 +604,13 @@ export default async function AdminProductsPage({
                       >
                         {product.name}
                       </Link>
-                      <input
-                        type="checkbox"
-                        name="productId"
-                        value={product.id.toString()}
-                        aria-label={`${product.name} 선택`}
-                        className="mt-1 h-5 w-5 shrink-0 rounded border-neutral-300 accent-neutral-900"
+                  <input
+                    form="bulkProductActionForm"
+                    type="checkbox"
+                    name="productId"
+                    value={product.id.toString()}
+                    aria-label={`${product.name} 선택`}
+                    className="mt-1 h-5 w-5 shrink-0 rounded border-neutral-300 accent-neutral-900"
                       />
                     </div>
                     <p className="mt-1 font-mono text-xs font-semibold text-neutral-500">

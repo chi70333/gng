@@ -48,6 +48,16 @@ export const adminProductListQuerySchema = z
     ...(value.stock ? { stock: value.stock } : {}),
   }));
 
+export const adminProductBulkDeleteFormSchema = z.object({
+  productIds: z.array(z.bigint()).min(1, '삭제할 상품을 선택해주세요.').max(500),
+  redirectTo: z.string().trim().optional(),
+});
+
+export const adminProductDeleteFormSchema = z.object({
+  productId: z.coerce.bigint(),
+  redirectTo: z.string().trim().optional(),
+});
+
 export const adminProductFormSchema = z
   .object({
     id: z.coerce.bigint().optional(),

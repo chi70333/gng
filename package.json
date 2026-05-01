@@ -16,6 +16,7 @@
     "smoke:e2e": "playwright test tests/e2e/core-routes-smoke.spec.ts --workers=1",
     "ship": "node scripts/ship.mjs",
     "ship:preview": "node scripts/ship.mjs --preview",
+    "git:push": "node scripts/git-safe-push.mjs",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",

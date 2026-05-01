@@ -54,7 +54,26 @@ legacy/             ← 기존 PHP (READ-ONLY)
 - `pnpm dev` 개발 서버
 - `pnpm build` 프로덕션 빌드 (prisma generate 포함)
 - `pnpm typecheck` / `pnpm lint` / `pnpm test`
+- `pnpm git:push --message "chore: 작업 내용"` 오류 체크 후 변경사항 확인, add/commit/push
 - `pnpm db:migrate` / `pnpm db:studio`
+
+## Git 올리기
+
+배포 없이 현재 브랜치의 변경사항만 확인하고 올릴 때 사용합니다. 기본 검증은 `pnpm typecheck`, `pnpm lint`, `pnpm test` 순서로 실행합니다.
+
+```bash
+pnpm git:push --message "fix: 상품 저장 오류 수정"
+```
+
+자주 쓰는 옵션:
+
+- `--yes`: 변경사항 확인 질문 없이 진행
+- `--files src/app/page.tsx`: 지정 파일만 add
+- `--no-test`: typecheck/lint만 실행하고 test는 생략
+- `--dry-run`: 검증과 변경사항 확인만 실행
+- `--no-push`: add/commit까지만 실행
+
+전체 배포까지 필요하면 기존 `pnpm ship --message "chore: 배포 내용"`을 사용합니다.
 
 ## 배포
 Vercel(Region: `icn1`). 프리뷰 배포에서 Lighthouse 모바일 + k6 부하 테스트 후 프로덕션 승격.

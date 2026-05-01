@@ -6,7 +6,7 @@ import {
   adminPostFormSchema,
   adminProductQnaAnswerSchema,
 } from './admin-board';
-import { adminProductFormSchema, adminProductListQuerySchema } from './admin-product';
+import { adminProductBulkDeleteFormSchema, adminProductFormSchema, adminProductListQuerySchema } from './admin-product';
 import { adminOrderStatusFormSchema } from './admin-order';
 import {
   adminUserBulkDeleteFormSchema,
@@ -200,6 +200,11 @@ describe('admin schemas', () => {
   it('requires at least one member for bulk deletion', () => {
     expect(adminUserBulkDeleteFormSchema.safeParse({ userIds: [1n, 2n] }).success).toBe(true);
     expect(adminUserBulkDeleteFormSchema.safeParse({ userIds: [] }).success).toBe(false);
+  });
+
+  it('requires at least one product for bulk deletion', () => {
+    expect(adminProductBulkDeleteFormSchema.safeParse({ productIds: [1n, 2n] }).success).toBe(true);
+    expect(adminProductBulkDeleteFormSchema.safeParse({ productIds: [] }).success).toBe(false);
   });
 
   it('validates board and post management forms', () => {

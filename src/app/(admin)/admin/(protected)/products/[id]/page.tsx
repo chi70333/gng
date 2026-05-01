@@ -1,11 +1,17 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { Trash2 } from 'lucide-react';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
 import { parseBigIntRouteParam } from '@/lib/route-params';
-import { AdminPageHeader, adminSecondaryButtonClass } from '@/components/admin/AdminUI';
+import {
+  AdminPageHeader,
+  adminDangerButtonClass,
+  adminSecondaryButtonClass,
+} from '@/components/admin/AdminUI';
 import { ProductForm } from '../ProductForm';
+import { deleteAdminProduct } from '../../../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,8 +25,8 @@ export default async function EditProductPage({ params }: { params: { id: string
   if (!id) notFound();
 
   const [product, categories] = await Promise.all([
-    prisma.product.findUnique({
-      where: { id },
+    prisma.product.findFirst({
+      where: { id, deletedAt: null },
       select: {
         id: true,
         sku: true,
@@ -57,9 +63,19 @@ export default async function EditProductPage({ params }: { params: { id: string
         title="상품 수정"
         description={product.name}
         actions={
-          <Link href="/admin/products" className={adminSecondaryButtonClass}>
-            목록으로
-          </Link>
+          <>
+            <Link href="/admin/products" className={adminSecondaryButtonClass}>
+              목록으로
+            </Link>
+            <form action={deleteAdminProduct}>
+              <input type="hidden" name="productId" value={product.id.toString()} />
+              <input type="hidden" name="redirectTo" value="/admin/products" />
+              <button className={`${adminDangerButtonClass} h-11`}>
+                <Trash2 size={17} />
+                상품 삭제
+              </button>
+            </form>
+          </>
         }
       />
       <ProductForm product={product} categories={categories} />

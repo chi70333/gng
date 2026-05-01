@@ -82,13 +82,14 @@ export default async function MyPage() {
         <UserRound className="text-neutral-300" size={28} />
       </div>
 
-      <section className="grid gap-3 sm:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-4">
         <div className="rounded-lg bg-white p-4">
           <p className="text-xs font-medium text-neutral-500">회원명</p>
-          <p className="mt-2 text-base font-bold text-neutral-900">
-            {user.name}
-            <span className="ml-2 text-sm font-medium text-neutral-500">({user.loginId ?? '-'})</span>
-          </p>
+          <p className="mt-2 text-base font-bold text-neutral-900">{user.name}</p>
+        </div>
+        <div className="rounded-lg bg-white p-4">
+          <p className="text-xs font-medium text-neutral-500">회원 ID</p>
+          <p className="mt-2 text-base font-bold text-neutral-900">{user.loginId ?? '-'}</p>
         </div>
         <div className="rounded-lg bg-white p-4">
           <p className="text-xs font-medium text-neutral-500">이메일</p>

@@ -18,7 +18,11 @@ import {
   type MileageUploadRecord,
 } from '@/server/services/mileage-spreadsheet.service';
 import { transitionOrderStatus } from '@/server/services/order.service';
-import { adminProductFormSchema } from '@/schemas/admin-product';
+import {
+  adminProductFormSchema,
+  adminProductBulkDeleteFormSchema,
+  adminProductDeleteFormSchema,
+} from '@/schemas/admin-product';
 import {
   adminOrderStatusFormSchema,
   adminOrderStatusSchema,
@@ -68,6 +72,24 @@ function optionalBigIntString(formData: FormData, key: string): string | undefin
 function safeAdminUsersRedirect(value: string | undefined): string {
   if (!value || !value.startsWith('/admin/users')) return '/admin/users';
   return value;
+}
+
+function safeAdminProductsRedirect(value: string | undefined): string {
+  if (!value) return '/admin/products';
+  if (value === '/admin/products' || value.startsWith('/admin/products?')) return value;
+  return '/admin/products';
+}
+
+function redirectWithAdminProductsResult(
+  redirectTo: string | undefined,
+  params: Record<string, string | number>,
+): never {
+  const target = safeAdminProductsRedirect(redirectTo);
+  const separator = target.includes('?') ? '&' : '?';
+  const resultParams = new URLSearchParams(
+    Object.entries(params).map(([key, value]) => [key, String(value)]),
+  );
+  redirect(`${target}${separator}${resultParams.toString()}`);
 }
 
 function safeAdminBoardsRedirect(value: string | undefined): string {
@@ -644,6 +666,122 @@ export async function importAdminProductsCsv(formData: FormData) {
   });
   revalidatePath('/admin/products');
   redirect(`/admin/products?imported=${created + updated}&skipped=${skipped}`);
+}
+
+type ProductForDeletion = Prisma.ProductGetPayload<{
+  select: {
+    id: true;
+    slug: true;
+    categories: {
+      select: {
+        category: {
+          select: {
+            id: true;
+            parentId: true;
+            slug: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+
+async function deleteAdminProductsInternal(
+  productIds: bigint[],
+): Promise<ProductForDeletion[]> {
+  const deletedAt = new Date();
+
+  const products = await prisma.product.findMany({
+    where: { id: { in: productIds }, deletedAt: null },
+    select: {
+      id: true,
+      slug: true,
+      categories: { select: { category: { select: { id: true, parentId: true, slug: true } } } },
+    },
+  });
+  const targetProductIds = products.map((product) => product.id);
+
+  if (targetProductIds.length === 0) {
+    return [];
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.product.updateMany({
+      where: { id: { in: targetProductIds } },
+      data: { deletedAt },
+    });
+    await tx.productSku.updateMany({
+      where: { productId: { in: targetProductIds } },
+      data: { isActive: false },
+    });
+  });
+
+  await Promise.all(
+    products.map(async (product: ProductForDeletion) => {
+      await revalidateProduct(product);
+    }),
+  );
+  revalidatePath('/admin/products');
+  return products;
+}
+
+export async function deleteAdminProduct(formData: FormData) {
+  const admin = await requireAdmin('product.write');
+  const parsed = adminProductDeleteFormSchema.parse({
+    productId: formString(formData, 'productId'),
+    redirectTo: formString(formData, 'redirectTo'),
+  });
+  const deletedProducts = await deleteAdminProductsInternal([parsed.productId]);
+  if (deletedProducts.length === 0) {
+    redirectWithAdminProductsResult(parsed.redirectTo, { bulkError: '삭제할 상품을 찾지 못했습니다.' });
+  }
+  const deletedProduct = deletedProducts[0];
+  if (!deletedProduct) {
+    redirectWithAdminProductsResult(parsed.redirectTo, { bulkError: '삭제할 상품을 찾지 못했습니다.' });
+  }
+  await writeAdminAuditLog({
+    admin,
+    action: 'product.delete',
+    entity: 'Product',
+    entityId: deletedProduct.id.toString(),
+    payload: {
+      slug: deletedProduct.slug,
+      deletedAt: new Date().toISOString(),
+      categoryIds: deletedProduct.categories.map((item) => item.category.id.toString()),
+    },
+  });
+  redirectWithAdminProductsResult(
+    parsed.redirectTo,
+    { deleted: 1 },
+  );
+}
+
+export async function bulkDeleteAdminProducts(formData: FormData) {
+  const admin = await requireAdmin('product.write');
+  const redirectTo = formString(formData, 'redirectTo');
+  const parsed = adminProductBulkDeleteFormSchema.safeParse({
+    productIds: uniqueBigInts(selectedBigInts(formData, 'productId')),
+    redirectTo,
+  });
+  if (!parsed.success) {
+    redirectWithAdminProductsResult(redirectTo, { bulkError: firstFormIssueMessage(parsed.error) });
+  }
+
+  const deletedProducts = await deleteAdminProductsInternal(parsed.data.productIds);
+  const deleted = deletedProducts.length;
+  if (!deleted) {
+    redirectWithAdminProductsResult(redirectTo, { bulkError: '삭제할 상품을 찾지 못했습니다.' });
+  }
+  await writeAdminAuditLog({
+    admin,
+    action: 'product.bulk.delete',
+    entity: 'Product',
+    payload: {
+      count: deleted,
+      productIds: deletedProducts.map((product) => product.id.toString()),
+    },
+  });
+  redirectWithAdminProductsResult(redirectTo, { deleted });
 }
 
 export async function updateAdminOrderStatus(formData: FormData) {
