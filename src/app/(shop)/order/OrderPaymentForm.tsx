@@ -226,6 +226,7 @@ function PaymentSubmitButton({
 }) {
   const { pending } = useFormStatus();
   const showOriginalPrice = !pending && finalTotal === 0 && payableBeforePoints > 0;
+  const purchaseLabel = finalTotal === 0 ? '0원 구매하기' : `${formatKRW(finalTotal)} 구매하기`;
 
   return (
     <button
@@ -238,7 +239,7 @@ function PaymentSubmitButton({
           {formatKRW(payableBeforePoints)}
         </span>
       )}
-      <span>{pending ? '처리 중' : `${formatKRW(finalTotal)} 구매하기`}</span>
+      <span>{pending ? '처리 중' : purchaseLabel}</span>
     </button>
   );
 }

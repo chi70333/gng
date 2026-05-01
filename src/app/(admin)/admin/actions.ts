@@ -37,8 +37,10 @@ import { adminCouponFormSchema } from '@/schemas/admin-coupon';
 import { adminAccountFormSchema } from '@/schemas/admin-auth';
 import {
   adminBoardFormSchema,
+  adminInquiryAnswerSchema,
   adminPostDeleteSchema,
   adminPostFormSchema,
+  adminProductQnaAnswerSchema,
 } from '@/schemas/admin-board';
 
 function optionalString(value: string | undefined): string | null {
@@ -66,6 +68,13 @@ function optionalBigIntString(formData: FormData, key: string): string | undefin
 function safeAdminUsersRedirect(value: string | undefined): string {
   if (!value || !value.startsWith('/admin/users')) return '/admin/users';
   return value;
+}
+
+function safeAdminBoardsRedirect(value: string | undefined): string {
+  if (!value) return '/admin/boards';
+  if (value === '/admin/boards' || value.startsWith('/admin/boards?')) return value;
+  if (value.startsWith('/admin/boards/')) return value;
+  return '/admin/boards';
 }
 
 function redirectWithAdminUsersResult(
@@ -525,7 +534,8 @@ export async function importAdminProductsCsv(formData: FormData) {
     const stock = Number.parseInt(row[14] ?? '0', 10);
     const useStock = row[13]?.trim() === '1' ? '2' : '1';
     const isSoldOut = row[13]?.trim() === '2';
-    const effectiveStock = useStock === '1' ? 999999 : Math.max(0, Number.isFinite(stock) ? stock : 0);
+    const effectiveStock =
+      useStock === '1' ? 999999 : Math.max(0, Number.isFinite(stock) ? stock : 0);
     const status = isSoldOut ? 'sold_out' : row[1]?.trim() === '0' ? 'hidden' : 'active';
     const attributes: Prisma.InputJsonObject = {
       model: row[46]?.trim() ?? '',
@@ -1360,7 +1370,11 @@ export async function saveAdminCoupon(formData: FormData) {
   };
 
   const coupon = parsed.id
-    ? await prisma.coupon.update({ where: { id: parsed.id }, data, select: { id: true, code: true } })
+    ? await prisma.coupon.update({
+        where: { id: parsed.id },
+        data,
+        select: { id: true, code: true },
+      })
     : await prisma.coupon.create({ data, select: { id: true, code: true } });
 
   await writeAdminAuditLog({
@@ -1382,6 +1396,7 @@ export async function saveAdminBoard(formData: FormData) {
     name: formString(formData, 'name'),
     type: formString(formData, 'type'),
     isActive: formData.has('isActive'),
+    redirectTo: formString(formData, 'redirectTo'),
   });
   const data = {
     code: parsed.code,
@@ -1390,7 +1405,11 @@ export async function saveAdminBoard(formData: FormData) {
     isActive: parsed.isActive,
   };
   const board = parsed.id
-    ? await prisma.board.update({ where: { id: parsed.id }, data, select: { id: true, code: true } })
+    ? await prisma.board.update({
+        where: { id: parsed.id },
+        data,
+        select: { id: true, code: true },
+      })
     : await prisma.board.create({ data, select: { id: true, code: true } });
 
   await writeAdminAuditLog({
@@ -1401,7 +1420,7 @@ export async function saveAdminBoard(formData: FormData) {
     payload: { code: board.code, isActive: parsed.isActive },
   });
   revalidatePath('/admin/boards');
-  redirect('/admin/boards');
+  redirect(safeAdminBoardsRedirect(parsed.redirectTo));
 }
 
 export async function saveAdminPost(formData: FormData) {
@@ -1413,6 +1432,7 @@ export async function saveAdminPost(formData: FormData) {
     content: formString(formData, 'content'),
     isNotice: formData.has('isNotice'),
     isSecret: formData.has('isSecret'),
+    redirectTo: formString(formData, 'redirectTo'),
   });
   const data = {
     boardId: parsed.boardId,
@@ -1422,7 +1442,11 @@ export async function saveAdminPost(formData: FormData) {
     isSecret: parsed.isSecret,
   };
   const post = parsed.id
-    ? await prisma.post.update({ where: { id: parsed.id }, data, select: { id: true, boardId: true } })
+    ? await prisma.post.update({
+        where: { id: parsed.id },
+        data,
+        select: { id: true, boardId: true },
+      })
     : await prisma.post.create({ data, select: { id: true, boardId: true } });
 
   await writeAdminAuditLog({
@@ -1433,13 +1457,15 @@ export async function saveAdminPost(formData: FormData) {
     payload: { boardId: post.boardId.toString(), isNotice: parsed.isNotice },
   });
   revalidatePath('/admin/boards');
-  redirect('/admin/boards');
+  revalidatePath('/admin/boards/posts');
+  redirect(safeAdminBoardsRedirect(parsed.redirectTo));
 }
 
 export async function deleteAdminPost(formData: FormData) {
   const admin = await requireAdmin('content.write');
   const parsed = adminPostDeleteSchema.parse({
     postId: formString(formData, 'postId'),
+    redirectTo: formString(formData, 'redirectTo'),
   });
   const post = await prisma.post.update({
     where: { id: parsed.postId },
@@ -1455,18 +1481,21 @@ export async function deleteAdminPost(formData: FormData) {
     payload: { boardId: post.boardId.toString() },
   });
   revalidatePath('/admin/boards');
-  redirect('/admin/boards');
+  revalidatePath('/admin/boards/posts');
+  redirect(safeAdminBoardsRedirect(parsed.redirectTo));
 }
 
 export async function answerProductQna(formData: FormData) {
   const admin = await requireAdmin('content.write');
-  const qnaId = BigInt(formString(formData, 'qnaId') || '0');
-  const answer = formString(formData, 'answer')?.trim();
-  if (!answer) throw new Error('답변을 입력해주세요.');
+  const parsed = adminProductQnaAnswerSchema.parse({
+    qnaId: formString(formData, 'qnaId'),
+    answer: formString(formData, 'answer'),
+    redirectTo: formString(formData, 'redirectTo'),
+  });
 
   const qna = await prisma.productQna.update({
-    where: { id: qnaId },
-    data: { answer, answeredAt: new Date() },
+    where: { id: parsed.qnaId },
+    data: { answer: parsed.answer, answeredAt: new Date() },
     select: { id: true, productId: true },
   });
 
@@ -1478,18 +1507,21 @@ export async function answerProductQna(formData: FormData) {
     payload: { productId: qna.productId.toString() },
   });
   revalidatePath('/admin/boards');
-  redirect('/admin/boards');
+  revalidatePath('/admin/boards/product-qna');
+  redirect(safeAdminBoardsRedirect(parsed.redirectTo));
 }
 
 export async function answerInquiry(formData: FormData) {
   const admin = await requireAdmin('content.write');
-  const inquiryId = BigInt(formString(formData, 'inquiryId') || '0');
-  const answer = formString(formData, 'answer')?.trim();
-  if (!answer) throw new Error('답변을 입력해주세요.');
+  const parsed = adminInquiryAnswerSchema.parse({
+    inquiryId: formString(formData, 'inquiryId'),
+    answer: formString(formData, 'answer'),
+    redirectTo: formString(formData, 'redirectTo'),
+  });
 
   const inquiry = await prisma.inquiry.update({
-    where: { id: inquiryId },
-    data: { answer, status: 'answered', answeredAt: new Date() },
+    where: { id: parsed.inquiryId },
+    data: { answer: parsed.answer, status: 'answered', answeredAt: new Date() },
     select: { id: true, email: true },
   });
 
@@ -1501,5 +1533,6 @@ export async function answerInquiry(formData: FormData) {
     payload: { email: inquiry.email },
   });
   revalidatePath('/admin/boards');
-  redirect('/admin/boards');
+  revalidatePath('/admin/boards/inquiries');
+  redirect(safeAdminBoardsRedirect(parsed.redirectTo));
 }

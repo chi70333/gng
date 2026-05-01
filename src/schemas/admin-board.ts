@@ -6,6 +6,7 @@ export const adminBoardFormSchema = z.object({
   name: z.string().trim().min(1, '게시판명을 입력해주세요.').max(80),
   type: z.enum(['free', 'notice', 'event', 'faq']).default('free'),
   isActive: z.coerce.boolean().default(false),
+  redirectTo: z.string().trim().optional(),
 });
 
 export const adminPostFormSchema = z.object({
@@ -15,8 +16,22 @@ export const adminPostFormSchema = z.object({
   content: z.string().trim().min(1, '내용을 입력해주세요.').max(20000),
   isNotice: z.coerce.boolean().default(false),
   isSecret: z.coerce.boolean().default(false),
+  redirectTo: z.string().trim().optional(),
 });
 
 export const adminPostDeleteSchema = z.object({
   postId: z.coerce.bigint(),
+  redirectTo: z.string().trim().optional(),
+});
+
+export const adminProductQnaAnswerSchema = z.object({
+  qnaId: z.coerce.bigint(),
+  answer: z.string().trim().min(1, '상품문의 답변을 입력해주세요.').max(20000),
+  redirectTo: z.string().trim().optional(),
+});
+
+export const adminInquiryAnswerSchema = z.object({
+  inquiryId: z.coerce.bigint(),
+  answer: z.string().trim().min(1, '1:1 문의 답변을 입력해주세요.').max(20000),
+  redirectTo: z.string().trim().optional(),
 });

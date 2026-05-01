@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { adminLoginSchema, adminPermissionSchema } from './admin-auth';
-import { adminBoardFormSchema, adminPostFormSchema } from './admin-board';
+import {
+  adminBoardFormSchema,
+  adminInquiryAnswerSchema,
+  adminPostFormSchema,
+  adminProductQnaAnswerSchema,
+} from './admin-board';
 import { adminProductFormSchema, adminProductListQuerySchema } from './admin-product';
 import { adminOrderStatusFormSchema } from './admin-order';
 import {
@@ -204,6 +209,7 @@ describe('admin schemas', () => {
         name: '공지사항',
         type: 'notice',
         isActive: true,
+        redirectTo: '/admin/boards',
       }).success,
     ).toBe(true);
     expect(
@@ -213,8 +219,32 @@ describe('admin schemas', () => {
         content: '내용',
         isNotice: true,
         isSecret: false,
+        redirectTo: '/admin/boards/posts?q=공지',
       }).success,
     ).toBe(true);
+  });
+
+  it('validates board answer forms', () => {
+    expect(
+      adminProductQnaAnswerSchema.safeParse({
+        qnaId: '1',
+        answer: '상품문의 답변입니다.',
+        redirectTo: '/admin/boards/product-qna',
+      }).success,
+    ).toBe(true);
+    expect(
+      adminInquiryAnswerSchema.safeParse({
+        inquiryId: '1',
+        answer: '1:1 문의 답변입니다.',
+        redirectTo: '/admin/boards/inquiries',
+      }).success,
+    ).toBe(true);
+    expect(
+      adminInquiryAnswerSchema.safeParse({
+        inquiryId: '1',
+        answer: '',
+      }).success,
+    ).toBe(false);
   });
 
   it('validates member message requests', () => {
