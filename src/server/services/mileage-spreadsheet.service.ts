@@ -339,6 +339,7 @@ function parseXlsxRows(bytes: Uint8Array): string[][] {
 function spreadsheetRows(fileName: string, bytes: Uint8Array): string[][] {
   const lowerName = fileName.toLowerCase();
   if (bytes[0] === 0x50 && bytes[1] === 0x4b) return parseXlsxRows(bytes);
+  if (lowerName.endsWith('.xlsx')) throw new Error('XLSX_ZIP_SIGNATURE_NOT_FOUND');
 
   const text = decodeText(bytes);
   if (lowerName.endsWith('.xls') || /<table[\s>]/i.test(text)) return parseHtmlTableRows(text);
@@ -401,7 +402,17 @@ function defaultReason(mode: MileageUploadMode): string {
 }
 
 export function parseMileageSpreadsheet(fileName: string, bytes: ArrayBuffer): MileageUploadParseResult {
-  const rows = spreadsheetRows(fileName, new Uint8Array(bytes));
+  let rows: string[][];
+  try {
+    rows = spreadsheetRows(fileName, new Uint8Array(bytes));
+  } catch {
+    return {
+      records: [],
+      skipped: 0,
+      errors: ['업로드 파일을 읽지 못했습니다. 양식 파일을 다시 내려받아 작성해주세요.'],
+    };
+  }
+
   if (rows.length === 0) return { records: [], skipped: 0, errors: ['업로드 파일에 데이터가 없습니다.'] };
 
   const { indexes, hasHeader } = indexesFromHeader(rows[0] ?? []);

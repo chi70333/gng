@@ -14,6 +14,7 @@ import {
 import { adminOrderListQuerySchema, adminOrderStatusFormSchema } from './admin-order';
 import {
   adminUserBulkDeleteFormSchema,
+  adminUserBulkPointFormSchema,
   adminUserListQuerySchema,
   adminUserMessageFormSchema,
   adminUserPointDeleteSchema,
@@ -214,6 +215,24 @@ describe('admin schemas', () => {
   it('requires at least one member for bulk deletion', () => {
     expect(adminUserBulkDeleteFormSchema.safeParse({ userIds: [1n, 2n] }).success).toBe(true);
     expect(adminUserBulkDeleteFormSchema.safeParse({ userIds: [] }).success).toBe(false);
+  });
+
+  it('validates bulk mileage grant forms', () => {
+    expect(
+      adminUserBulkPointFormSchema.safeParse({
+        intent: 'mileage-grant',
+        userIds: [1n, 2n],
+        delta: '1000',
+        reason: '관리자 마일리지 일괄 처리',
+      }).success,
+    ).toBe(true);
+    expect(
+      adminUserBulkPointFormSchema.safeParse({
+        intent: 'mileage-grant',
+        userIds: [1n],
+        delta: '',
+      }).success,
+    ).toBe(false);
   });
 
   it('requires at least one product for bulk deletion', () => {

@@ -4,7 +4,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { PackageCheck, UserRound } from 'lucide-react';
+import { Coins, PackageCheck, UserRound } from 'lucide-react';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { formatKRW } from '@/lib/format';
@@ -103,18 +103,28 @@ export default async function MyPage() {
         </div>
       </section>
 
-      <section className="mt-4 grid gap-3 sm:grid-cols-2">
+      <section className="mt-4 grid gap-3 sm:grid-cols-3">
         <Link
           href="/mypage/orders"
-          className="rounded-lg bg-white p-4 text-sm font-semibold text-neutral-900"
+          className="flex min-h-11 items-center justify-between gap-3 rounded-lg bg-white p-4 text-sm font-semibold text-neutral-900"
         >
-          주문내역 전체 보기
+          <span>주문내역 전체 보기</span>
+          <PackageCheck size={18} className="shrink-0 text-neutral-300" aria-hidden />
         </Link>
         <Link
           href="/mypage/addresses"
-          className="rounded-lg bg-white p-4 text-sm font-semibold text-neutral-900"
+          className="flex min-h-11 items-center justify-between gap-3 rounded-lg bg-white p-4 text-sm font-semibold text-neutral-900"
         >
-          배송지 관리
+          <span>배송지 관리</span>
+          <UserRound size={18} className="shrink-0 text-neutral-300" aria-hidden />
+        </Link>
+        <Link
+          href="/mypage/points"
+          className="flex min-h-11 items-center justify-between gap-3 rounded-lg bg-neutral-900 p-4 text-sm font-semibold text-white"
+          aria-label="나의 포인트 이력 조회"
+        >
+          <span>포인트 이력 조회</span>
+          <Coins size={18} className="shrink-0 text-white/70" aria-hidden />
         </Link>
       </section>
 

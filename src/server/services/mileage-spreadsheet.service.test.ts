@@ -66,4 +66,13 @@ describe('parseMileageSpreadsheet', () => {
     expect(result.skipped).toBe(1);
     expect(result.errors[0]).toContain('회원ID, 아이디, 이메일');
   });
+
+  it('returns a user-facing error for unreadable Excel uploads', () => {
+    const result = parseMileageSpreadsheet('mileage.xlsx', bufferFromText('not a zip file'));
+
+    expect(result.records).toHaveLength(0);
+    expect(result.errors[0]).toBe(
+      '업로드 파일을 읽지 못했습니다. 양식 파일을 다시 내려받아 작성해주세요.',
+    );
+  });
 });

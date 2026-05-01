@@ -8,6 +8,7 @@ import { keys, redis } from '@/server/redis';
 import { requireAdmin } from '@/server/admin/auth';
 import { writeAdminAuditLog } from '@/server/admin/audit';
 import { TAGS } from '@/lib/cache';
+import { logger } from '@/lib/logger';
 import { hashPassword } from '@/server/services/auth.service';
 import {
   createPointLedgerBalanceEntry,
@@ -117,6 +118,22 @@ function firstFormIssueMessage(error: { issues: { message: string }[] }): string
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isPrismaErrorCode(error: unknown, code: string): boolean {
+  return isRecord(error) && error.code === code;
+}
+
+function adminMileageErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message === 'POINT_BALANCE_NEGATIVE') {
+    return '마일리지 잔액은 0보다 작을 수 없습니다.';
+  }
+
+  if (isPrismaErrorCode(error, 'P2002')) {
+    return '마일리지 이력 번호 생성 중 오류가 발생했습니다. DB 마이그레이션 적용 상태를 확인해주세요.';
+  }
+
+  return '마일리지 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
 }
 
 function collectProductImages(formData: FormData) {
@@ -1075,23 +1092,35 @@ export async function bulkUpdateAdminUsers(formData: FormData) {
       ? '관리자 마일리지 일괄 초기화'
       : '관리자 마일리지 일괄 부여');
 
-  await prisma.$transaction(async (tx) => {
-    for (const userId of pointForm.userIds) {
-      if (pointForm.intent === 'mileage-reset') {
-        await createPointLedgerBalanceEntry(tx, {
-          userId,
-          targetBalance: 0,
-          reason,
-        });
-      } else {
-        await createPointLedgerEntry(tx, {
-          userId,
-          delta: pointForm.delta ?? 0,
-          reason,
-        });
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const userId of pointForm.userIds) {
+        if (pointForm.intent === 'mileage-reset') {
+          await createPointLedgerBalanceEntry(tx, {
+            userId,
+            targetBalance: 0,
+            reason,
+          });
+        } else {
+          await createPointLedgerEntry(tx, {
+            userId,
+            delta: pointForm.delta ?? 0,
+            reason,
+          });
+        }
       }
-    }
-  });
+    });
+  } catch (err) {
+    logger.error(
+      {
+        err,
+        action:
+          pointForm.intent === 'mileage-reset' ? 'user.points.bulk.reset' : 'user.points.bulk.grant',
+      },
+      'admin bulk mileage update failed',
+    );
+    redirectWithAdminUsersResult(redirectTo, { bulkError: adminMileageErrorMessage(err) });
+  }
 
   await writeAdminAuditLog({
     admin,
@@ -1133,20 +1162,26 @@ export async function importAdminUserMileageExcel(formData: FormData) {
   const redirectTo = formString(formData, 'redirectTo');
 
   if (!(file instanceof File) || file.size === 0) {
-    throw new Error('업로드할 엑셀 파일을 선택해주세요.');
+    redirectWithAdminUsersResult(redirectTo, { bulkError: '업로드할 엑셀 파일을 선택해주세요.' });
   }
   if (file.size > 2 * 1024 * 1024) {
-    throw new Error('마일리지 업로드 파일은 2MB 이하로 올려주세요.');
+    redirectWithAdminUsersResult(redirectTo, {
+      bulkError: '마일리지 업로드 파일은 2MB 이하로 올려주세요.',
+    });
   }
 
   const lowerName = file.name.toLowerCase();
   if (!lowerName.endsWith('.xlsx') && !lowerName.endsWith('.xls') && !lowerName.endsWith('.csv')) {
-    throw new Error('엑셀(.xlsx, .xls) 또는 CSV 파일만 업로드할 수 있습니다.');
+    redirectWithAdminUsersResult(redirectTo, {
+      bulkError: '엑셀(.xlsx, .xls) 또는 CSV 파일만 업로드할 수 있습니다.',
+    });
   }
 
   const parsed = parseMileageSpreadsheet(file.name, await file.arrayBuffer());
   if (parsed.records.length === 0) {
-    throw new Error(parsed.errors[0] ?? '반영할 마일리지 데이터가 없습니다.');
+    redirectWithAdminUsersResult(redirectTo, {
+      bulkError: parsed.errors[0] ?? '반영할 마일리지 데이터가 없습니다.',
+    });
   }
 
   const lookupOr: Prisma.UserWhereInput[] = [];
@@ -1158,57 +1193,62 @@ export async function importAdminUserMileageExcel(formData: FormData) {
   if (loginIds.length > 0) lookupOr.push({ loginId: { in: loginIds } });
   if (emails.length > 0) lookupOr.push({ email: { in: emails } });
 
-  const users = await prisma.user.findMany({
-    where: { deletedAt: null, OR: lookupOr },
-    select: { id: true, loginId: true, email: true },
-  });
-  const byId = new Map(users.map((user) => [user.id.toString(), user]));
-  const byLoginId = new Map(
-    users
-      .filter((user): user is typeof user & { loginId: string } => user.loginId !== null)
-      .map((user) => [user.loginId, user]),
-  );
-  const byEmail = new Map(users.map((user) => [user.email.toLowerCase(), user]));
-  const appliedRows = new Set<string>();
-
   let skipped = parsed.skipped;
   let updated = 0;
 
-  await prisma.$transaction(async (tx) => {
-    for (const record of parsed.records) {
-      const lookupKey = userLookupKey(record);
-      if (appliedRows.has(lookupKey)) {
-        skipped += 1;
-        continue;
-      }
-      appliedRows.add(lookupKey);
+  try {
+    const users = await prisma.user.findMany({
+      where: { deletedAt: null, OR: lookupOr },
+      select: { id: true, loginId: true, email: true },
+    });
+    const byId = new Map(users.map((user) => [user.id.toString(), user]));
+    const byLoginId = new Map(
+      users
+        .filter((user): user is typeof user & { loginId: string } => user.loginId !== null)
+        .map((user) => [user.loginId, user]),
+    );
+    const byEmail = new Map(users.map((user) => [user.email.toLowerCase(), user]));
+    const appliedRows = new Set<string>();
 
-      const user =
-        (record.userId ? byId.get(record.userId.toString()) : undefined) ??
-        (record.loginId ? byLoginId.get(record.loginId) : undefined) ??
-        (record.email ? byEmail.get(record.email.toLowerCase()) : undefined);
+    await prisma.$transaction(async (tx) => {
+      for (const record of parsed.records) {
+        const lookupKey = userLookupKey(record);
+        if (appliedRows.has(lookupKey)) {
+          skipped += 1;
+          continue;
+        }
+        appliedRows.add(lookupKey);
 
-      if (!user) {
-        skipped += 1;
-        continue;
-      }
+        const user =
+          (record.userId ? byId.get(record.userId.toString()) : undefined) ??
+          (record.loginId ? byLoginId.get(record.loginId) : undefined) ??
+          (record.email ? byEmail.get(record.email.toLowerCase()) : undefined);
 
-      if (record.mode === 'grant') {
-        await createPointLedgerEntry(tx, {
-          userId: user.id,
-          delta: record.amount ?? 0,
-          reason: record.reason,
-        });
-      } else {
-        await createPointLedgerBalanceEntry(tx, {
-          userId: user.id,
-          targetBalance: record.mode === 'reset' ? 0 : (record.amount ?? 0),
-          reason: record.reason,
-        });
+        if (!user) {
+          skipped += 1;
+          continue;
+        }
+
+        if (record.mode === 'grant') {
+          await createPointLedgerEntry(tx, {
+            userId: user.id,
+            delta: record.amount ?? 0,
+            reason: record.reason,
+          });
+        } else {
+          await createPointLedgerBalanceEntry(tx, {
+            userId: user.id,
+            targetBalance: record.mode === 'reset' ? 0 : (record.amount ?? 0),
+            reason: record.reason,
+          });
+        }
+        updated += 1;
       }
-      updated += 1;
-    }
-  });
+    });
+  } catch (err) {
+    logger.error({ err, fileName: file.name }, 'admin mileage import failed');
+    redirectWithAdminUsersResult(redirectTo, { bulkError: adminMileageErrorMessage(err) });
+  }
 
   await writeAdminAuditLog({
     admin,

@@ -56,7 +56,7 @@ export default function MobileMenuDrawer({
           <Link
             href="/"
             onClick={closeDrawer}
-            className="flex h-11 items-center text-lg font-bold text-neutral-900"
+            className="flex h-11 min-w-11 items-center text-lg font-bold text-neutral-900"
             aria-label="홈으로 이동"
           >
             GNG
