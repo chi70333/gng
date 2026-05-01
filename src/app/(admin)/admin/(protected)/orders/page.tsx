@@ -4,7 +4,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Prisma } from '@prisma/client';
-import { Check, Download, RotateCcw, Search } from 'lucide-react';
+import { CalendarDays, Check, Download, Filter, RotateCcw, Search } from 'lucide-react';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
 import { formatKRW, formatNumber } from '@/lib/format';
@@ -61,7 +61,9 @@ const PAYMENT_LABELS: Record<string, string> = {
 };
 
 const LIST_COUNTS = [20, 30, 50, 100, 200, 500, 1000];
-const compactDateSelectClass = `${adminFieldClass} h-8 px-1.5 text-xs shadow-none`;
+const orderFilterLabelClass = 'grid min-w-0 gap-1.5 text-xs font-extrabold text-neutral-600';
+const orderFilterFieldClass = `${adminFieldClass} h-11 sm:h-10`;
+const compactDateSelectClass = `${adminFieldClass} h-11 px-2 text-sm shadow-none sm:h-9 sm:px-1.5 sm:text-xs`;
 const compactDateUnitClass = 'text-[11px] font-bold text-neutral-500';
 
 type OrderSearchParams = {
@@ -394,6 +396,19 @@ export default async function AdminOrdersPage({
     endParts.year !== defaultParts.year2 ||
     endParts.month !== defaultParts.month2 ||
     endParts.day !== defaultParts.day2;
+  const activeFilterCount = [
+    query.card !== '0',
+    query.paym !== '0',
+    query.status !== '-',
+    query.search !== 'total' || query.searchstring !== '',
+    startParts.year !== defaultParts.year ||
+      startParts.month !== defaultParts.month ||
+      startParts.day !== defaultParts.day ||
+      endParts.year !== defaultParts.year2 ||
+      endParts.month !== defaultParts.month2 ||
+      endParts.day !== defaultParts.day2,
+    query.trade_list_cnt !== 30,
+  ].filter(Boolean).length;
 
   return (
     <div className="min-w-0 space-y-4">
@@ -412,224 +427,250 @@ export default async function AdminOrdersPage({
         }
       />
 
-      <form
-        className="rounded-lg border border-neutral-200 bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.045)] ring-1 ring-white sm:p-4"
-        method="get"
+      <AdminSection
+        title="조회 조건"
+        description={
+          activeFilterCount > 0
+            ? `${formatNumber(activeFilterCount)}개 조건 적용 중`
+            : '전체 주문 기준'
+        }
+        icon={Filter}
+        bodyClassName="p-0"
       >
-        <input type="hidden" name="serhs" value="1" />
-        <input type="hidden" name="fis" value="2" />
+        <form className="p-3 sm:p-4" method="get">
+          <input type="hidden" name="serhs" value="1" />
+          <input type="hidden" name="fis" value="2" />
 
-        <div className="grid grid-cols-2 gap-2.5 xl:grid-cols-[130px_140px_140px_140px_minmax(220px,1fr)]">
-          <label className="grid gap-1 text-xs font-bold text-neutral-600">
-            결제구분
-            <select name="card" defaultValue={query.card} className={adminFieldClass}>
-              <option value="0">전체 결제</option>
-              <option value="2">일반결제</option>
-              <option value="1">간편결제</option>
-            </select>
-          </label>
-          <label className="grid gap-1 text-xs font-bold text-neutral-600">
-            결제방법
-            <select name="paym" defaultValue={query.paym} className={adminFieldClass}>
-              <option value="0">전체 방법</option>
-              <option value="card">카드결제</option>
-              <option value="hand">휴대폰</option>
-              <option value="iche">계좌이체</option>
-              <option value="cyber">가상계좌</option>
-              <option value="bank">무통장입금</option>
-            </select>
-          </label>
-          <label className="grid gap-1 text-xs font-bold text-neutral-600">
-            주문상태
-            <select name="status" defaultValue={query.status} className={adminFieldClass}>
-              <option value="-">전체 상태</option>
-              <option value="11">주문통합</option>
-              {STATUS_OPTIONS.map((status) => (
-                <option key={status.value} value={status.value}>
-                  {status.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-1 text-xs font-bold text-neutral-600">
-            검색대상
-            <select name="search" defaultValue={query.search} className={adminFieldClass}>
-              <option value="total">통합검색</option>
-              <option value="t.name">주문자명</option>
-              <option value="t.ceo_name">회사명</option>
-              <option value="t.tradecode">주문코드</option>
-              <option value="t.userid">주문자 아이디</option>
-              <option value="t.rname">수령자</option>
-              <option value="g.name">상품명</option>
-            </select>
-          </label>
-          <label className="col-span-2 grid gap-1 text-xs font-bold text-neutral-600 xl:col-span-1">
-            검색어
-            <input
-              name="searchstring"
-              defaultValue={query.searchstring}
-              placeholder="주문번호, 이름, 아이디, 상품명"
-              className={adminFieldClass}
-            />
-          </label>
-        </div>
-
-        <div className="mt-3 grid gap-2.5 border-t border-neutral-100 pt-3 lg:grid-cols-[minmax(0,1fr)_130px_auto] lg:items-end">
-          <fieldset className="min-w-0 rounded-md border border-neutral-200 bg-neutral-50/60 px-2.5 py-2">
-            <legend className="px-1 text-xs font-bold text-neutral-600">조회기간</legend>
-            <div className="grid gap-2 md:grid-cols-[max-content_auto_max-content] md:items-center">
-              <div className="grid gap-1">
-                <span className="text-[11px] font-bold text-neutral-500">시작</span>
-                <div className="grid grid-cols-[74px_auto_48px_auto_48px_auto] items-center gap-1">
-                  <select
-                    name="year"
-                    defaultValue={startParts.year}
-                    aria-label="조회 시작 연도"
-                    className={compactDateSelectClass}
-                  >
-                    {Array.from(
-                      { length: new Date().getFullYear() - 2017 },
-                      (_, index) => 2018 + index,
-                    ).map((year) => (
-                      <option key={year} value={year}>
-                        {year}
-                      </option>
-                    ))}
-                  </select>
-                  <span className={compactDateUnitClass}>년</span>
-                  <select
-                    name="month"
-                    defaultValue={startParts.month}
-                    aria-label="조회 시작 월"
-                    className={compactDateSelectClass}
-                  >
-                    {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
-                      <option key={month} value={month}>
-                        {pad2(month)}
-                      </option>
-                    ))}
-                  </select>
-                  <span className={compactDateUnitClass}>월</span>
-                  <select
-                    name="day"
-                    defaultValue={startParts.day}
-                    aria-label="조회 시작 일"
-                    className={compactDateSelectClass}
-                  >
-                    {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
-                      <option key={day} value={day}>
-                        {pad2(day)}
-                      </option>
-                    ))}
-                  </select>
-                  <span className={compactDateUnitClass}>일</span>
-                </div>
-              </div>
-
-              <span className="hidden text-center text-xs font-extrabold text-neutral-400 md:block">
-                ~
-              </span>
-
-              <div className="grid gap-1">
-                <span className="text-[11px] font-bold text-neutral-500">종료</span>
-                <div className="grid grid-cols-[74px_auto_48px_auto_48px_auto] items-center gap-1">
-                  <select
-                    name="year2"
-                    defaultValue={endParts.year}
-                    aria-label="조회 종료 연도"
-                    className={compactDateSelectClass}
-                  >
-                    {Array.from(
-                      { length: new Date().getFullYear() - 2017 },
-                      (_, index) => 2018 + index,
-                    ).map((year) => (
-                      <option key={year} value={year}>
-                        {year}
-                      </option>
-                    ))}
-                  </select>
-                  <span className={compactDateUnitClass}>년</span>
-                  <select
-                    name="month2"
-                    defaultValue={endParts.month}
-                    aria-label="조회 종료 월"
-                    className={compactDateSelectClass}
-                  >
-                    {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
-                      <option key={month} value={month}>
-                        {pad2(month)}
-                      </option>
-                    ))}
-                  </select>
-                  <span className={compactDateUnitClass}>월</span>
-                  <select
-                    name="day2"
-                    defaultValue={endParts.day}
-                    aria-label="조회 종료 일"
-                    className={compactDateSelectClass}
-                  >
-                    {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
-                      <option key={day} value={day}>
-                        {pad2(day)}
-                      </option>
-                    ))}
-                  </select>
-                  <span className={compactDateUnitClass}>일</span>
-                </div>
-              </div>
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)]">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className={orderFilterLabelClass}>
+                결제구분
+                <select name="card" defaultValue={query.card} className={orderFilterFieldClass}>
+                  <option value="0">전체 결제</option>
+                  <option value="2">일반결제</option>
+                  <option value="1">간편결제</option>
+                </select>
+              </label>
+              <label className={orderFilterLabelClass}>
+                결제방법
+                <select name="paym" defaultValue={query.paym} className={orderFilterFieldClass}>
+                  <option value="0">전체 방법</option>
+                  <option value="card">카드결제</option>
+                  <option value="hand">휴대폰</option>
+                  <option value="iche">계좌이체</option>
+                  <option value="cyber">가상계좌</option>
+                  <option value="bank">무통장입금</option>
+                </select>
+              </label>
+              <label className={orderFilterLabelClass}>
+                주문상태
+                <select name="status" defaultValue={query.status} className={orderFilterFieldClass}>
+                  <option value="-">전체 상태</option>
+                  <option value="11">주문통합</option>
+                  {STATUS_OPTIONS.map((status) => (
+                    <option key={status.value} value={status.value}>
+                      {status.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
-          </fieldset>
 
-          <label className="grid gap-1 text-xs font-bold text-neutral-600">
-            표시 개수
-            <select name="trade_list_cnt" defaultValue={pageSize} className={adminFieldClass}>
-              {LIST_COUNTS.map((count) => (
-                <option key={count} value={count}>
-                  목록 {count}개씩
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="flex flex-wrap gap-2 xl:justify-end">
-            <button className={`${adminPrimaryButtonClass} flex-1 xl:flex-none`}>
-              <Search size={17} />
-              검색
-            </button>
-            {hasFilters ? (
-              <Link
-                href="/admin/orders"
-                className={`${adminSecondaryButtonClass} flex-1 xl:flex-none`}
-              >
-                <RotateCcw size={16} />
-                초기화
-              </Link>
-            ) : null}
+            <div className="grid gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
+              <label className={orderFilterLabelClass}>
+                검색대상
+                <select name="search" defaultValue={query.search} className={orderFilterFieldClass}>
+                  <option value="total">통합검색</option>
+                  <option value="t.name">주문자명</option>
+                  <option value="t.ceo_name">회사명</option>
+                  <option value="t.tradecode">주문코드</option>
+                  <option value="t.userid">주문자 아이디</option>
+                  <option value="t.rname">수령자</option>
+                  <option value="g.name">상품명</option>
+                </select>
+              </label>
+              <label className={orderFilterLabelClass}>
+                검색어
+                <input
+                  name="searchstring"
+                  defaultValue={query.searchstring}
+                  placeholder="주문번호, 이름, 아이디, 상품명"
+                  className={orderFilterFieldClass}
+                />
+              </label>
+            </div>
           </div>
-        </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-neutral-100 pt-3">
-          <span className="mr-1 text-xs font-bold text-neutral-600">조회기간</span>
-          {periodShortcuts.map((shortcut) => {
-            const isActive =
-              sameDateParts(startParts, shortcut.start) && sameDateParts(endParts, shortcut.end);
-            return (
-              <Link
-                key={shortcut.label}
-                href={getPeriodHref(shortcut.start, shortcut.end)}
-                aria-label={`${shortcut.label} 주문 조회기간 적용`}
-                className={`inline-flex h-8 items-center justify-center rounded border px-2.5 text-xs font-bold transition ${
-                  isActive
-                    ? 'border-neutral-900 bg-neutral-900 text-white'
-                    : 'border-neutral-300 bg-white text-neutral-700 hover:border-neutral-500 hover:bg-neutral-50'
-                }`}
+          <div className="mt-4 grid gap-3 border-t border-neutral-100 pt-4 xl:grid-cols-[minmax(0,1fr)_160px_auto] xl:items-end">
+            <fieldset className="min-w-0 rounded-md border border-neutral-200 bg-neutral-50/70 p-3">
+              <legend className="sr-only">조회기간</legend>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs font-extrabold text-neutral-700">
+                  <CalendarDays size={16} className="text-neutral-500" />
+                  조회기간
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {periodShortcuts.map((shortcut) => {
+                    const isActive =
+                      sameDateParts(startParts, shortcut.start) &&
+                      sameDateParts(endParts, shortcut.end);
+                    return (
+                      <Link
+                        key={shortcut.label}
+                        href={getPeriodHref(shortcut.start, shortcut.end)}
+                        aria-label={`${shortcut.label} 주문 조회기간 적용`}
+                        className={`inline-flex min-h-9 items-center justify-center rounded border px-2.5 text-xs font-bold transition sm:min-h-8 ${
+                          isActive
+                            ? 'border-neutral-900 bg-neutral-900 text-white'
+                            : 'border-neutral-300 bg-white text-neutral-700 hover:border-neutral-500 hover:bg-neutral-50'
+                        }`}
+                      >
+                        {shortcut.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] lg:items-end">
+                <div className="grid gap-1.5">
+                  <span className="text-[11px] font-bold text-neutral-500">시작일</span>
+                  <div className="grid grid-cols-[minmax(74px,1fr)_auto_minmax(52px,0.7fr)_auto_minmax(52px,0.7fr)_auto] items-center gap-1.5">
+                    <select
+                      name="year"
+                      defaultValue={startParts.year}
+                      aria-label="조회 시작 연도"
+                      className={compactDateSelectClass}
+                    >
+                      {Array.from(
+                        { length: new Date().getFullYear() - 2017 },
+                        (_, index) => 2018 + index,
+                      ).map((year) => (
+                        <option key={year} value={year}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
+                    <span className={compactDateUnitClass}>년</span>
+                    <select
+                      name="month"
+                      defaultValue={startParts.month}
+                      aria-label="조회 시작 월"
+                      className={compactDateSelectClass}
+                    >
+                      {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
+                        <option key={month} value={month}>
+                          {pad2(month)}
+                        </option>
+                      ))}
+                    </select>
+                    <span className={compactDateUnitClass}>월</span>
+                    <select
+                      name="day"
+                      defaultValue={startParts.day}
+                      aria-label="조회 시작 일"
+                      className={compactDateSelectClass}
+                    >
+                      {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
+                        <option key={day} value={day}>
+                          {pad2(day)}
+                        </option>
+                      ))}
+                    </select>
+                    <span className={compactDateUnitClass}>일</span>
+                  </div>
+                </div>
+
+                <span className="hidden pb-2 text-center text-xs font-extrabold text-neutral-400 lg:block">
+                  ~
+                </span>
+
+                <div className="grid gap-1.5">
+                  <span className="text-[11px] font-bold text-neutral-500">종료일</span>
+                  <div className="grid grid-cols-[minmax(74px,1fr)_auto_minmax(52px,0.7fr)_auto_minmax(52px,0.7fr)_auto] items-center gap-1.5">
+                    <select
+                      name="year2"
+                      defaultValue={endParts.year}
+                      aria-label="조회 종료 연도"
+                      className={compactDateSelectClass}
+                    >
+                      {Array.from(
+                        { length: new Date().getFullYear() - 2017 },
+                        (_, index) => 2018 + index,
+                      ).map((year) => (
+                        <option key={year} value={year}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
+                    <span className={compactDateUnitClass}>년</span>
+                    <select
+                      name="month2"
+                      defaultValue={endParts.month}
+                      aria-label="조회 종료 월"
+                      className={compactDateSelectClass}
+                    >
+                      {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
+                        <option key={month} value={month}>
+                          {pad2(month)}
+                        </option>
+                      ))}
+                    </select>
+                    <span className={compactDateUnitClass}>월</span>
+                    <select
+                      name="day2"
+                      defaultValue={endParts.day}
+                      aria-label="조회 종료 일"
+                      className={compactDateSelectClass}
+                    >
+                      {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
+                        <option key={day} value={day}>
+                          {pad2(day)}
+                        </option>
+                      ))}
+                    </select>
+                    <span className={compactDateUnitClass}>일</span>
+                  </div>
+                </div>
+              </div>
+            </fieldset>
+
+            <label className={orderFilterLabelClass}>
+              표시 개수
+              <select
+                name="trade_list_cnt"
+                defaultValue={pageSize}
+                className={orderFilterFieldClass}
               >
-                {shortcut.label}
-              </Link>
-            );
-          })}
-        </div>
-      </form>
+                {LIST_COUNTS.map((count) => (
+                  <option key={count} value={count}>
+                    목록 {count}개씩
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div
+              className={
+                hasFilters
+                  ? 'grid grid-cols-2 gap-2 xl:flex xl:justify-end'
+                  : 'grid gap-2 xl:flex xl:justify-end'
+              }
+            >
+              <button className={`${adminPrimaryButtonClass} h-11 px-4`}>
+                <Search size={17} />
+                검색
+              </button>
+              {hasFilters ? (
+                <Link href="/admin/orders" className={`${adminSecondaryButtonClass} h-11 px-4`}>
+                  <RotateCcw size={16} />
+                  초기화
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        </form>
+      </AdminSection>
 
       <form
         id="bulkOrderForm"
