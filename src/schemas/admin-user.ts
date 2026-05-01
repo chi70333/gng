@@ -13,7 +13,7 @@ export const adminUserListQuerySchema = z.object({
   ),
   pageSize: z.preprocess(
     emptyStringToUndefined,
-    z.coerce.number().int().min(10).max(200).optional().default(30),
+    z.coerce.number().int().min(10).max(1000).optional().default(30),
   ),
 });
 

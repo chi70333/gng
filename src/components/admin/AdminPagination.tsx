@@ -4,12 +4,16 @@ export function AdminPagination({
   baseHref,
   page,
   hasNext,
+  totalPages,
 }: {
   baseHref: string;
   page: number;
   hasNext: boolean;
+  totalPages?: number;
 }) {
   const joiner = baseHref.includes('?') ? '&' : '?';
+  const pageLabel =
+    totalPages == null ? `${page}` : `${page} / 총 ${totalPages.toLocaleString('ko-KR')}페이지`;
 
   return (
     <div className="mt-5 flex items-center justify-between">
@@ -20,7 +24,7 @@ export function AdminPagination({
       >
         이전
       </Link>
-      <span className="text-sm font-semibold text-neutral-500">{page}</span>
+      <span className="text-sm font-semibold text-neutral-500">{pageLabel}</span>
       <Link
         href={hasNext ? `${baseHref}${joiner}page=${page + 1}` : baseHref}
         aria-disabled={!hasNext}

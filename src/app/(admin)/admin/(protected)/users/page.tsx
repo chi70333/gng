@@ -40,7 +40,7 @@ export const metadata: Metadata = {
 };
 
 const DEFAULT_PAGE_SIZE = 30;
-const PAGE_SIZE_OPTIONS = [20, 30, 50, 100, 200];
+const PAGE_SIZE_OPTIONS = [20, 30, 50, 100, 200, 500, 1000];
 
 type AdminUsersSearchParams = {
   q?: string;
@@ -127,34 +127,35 @@ export default async function AdminUsersPage({
       : {}),
   };
 
-  // Count(*) is expensive on large member tables, so fetch one extra row to detect next page.
-  const usersWithExtra = await prisma.user.findMany({
-    where,
-    orderBy: userOrderBy(sortState.sort ?? 'no', sortState.dir),
-    skip: (query.page - 1) * pageSize,
-    take: pageSize + 1,
-    select: {
-      id: true,
-      loginId: true,
-      email: true,
-      name: true,
-      phone: true,
-      status: true,
-      createdAt: true,
-      lastLoginAt: true,
-      loginCount: true,
-      grade: { select: { name: true } },
-      pointHistories: {
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-        select: { balance: true },
+  const [users, total] = await prisma.$transaction([
+    prisma.user.findMany({
+      where,
+      orderBy: userOrderBy(sortState.sort ?? 'no', sortState.dir),
+      skip: (query.page - 1) * pageSize,
+      take: pageSize,
+      select: {
+        id: true,
+        loginId: true,
+        email: true,
+        name: true,
+        phone: true,
+        status: true,
+        createdAt: true,
+        lastLoginAt: true,
+        loginCount: true,
+        grade: { select: { name: true } },
+        pointHistories: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { balance: true },
+        },
+        _count: { select: { orders: true } },
       },
-      _count: { select: { orders: true } },
-    },
-  });
-  const hasNext = usersWithExtra.length > pageSize;
-  const users = usersWithExtra.slice(0, pageSize);
-  const visibleResultCount = (query.page - 1) * pageSize + users.length;
+    }),
+    prisma.user.count({ where }),
+  ]);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const hasNext = query.page < totalPages;
 
   const params = new URLSearchParams();
   if (query.q) params.set('q', query.q);
@@ -192,7 +193,7 @@ export default async function AdminUsersPage({
     <div className="w-full space-y-4">
       <AdminPageHeader
         title="회원 관리"
-        description={`최신순으로 ${formatNumber(visibleResultCount)}명까지 조회했습니다.`}
+        description={`총 ${formatNumber(total)}명, 총 ${formatNumber(totalPages)}페이지를 조회합니다.`}
         actions={
           <>
             <AdminUserMileageUploadButton
@@ -226,6 +227,7 @@ export default async function AdminUsersPage({
           <option value="blocked">차단</option>
         </select>
         <button className={`${adminPrimaryButtonClass} h-11`}>검색</button>
+        <input type="hidden" name="pageSize" value={pageSize} />
       </form>
 
       {mileageChanged > 0 || mileageSkipped > 0 || deleted > 0 ? (
@@ -298,7 +300,7 @@ export default async function AdminUsersPage({
 
       <AdminSection
         title="회원 목록"
-        description={`현재 페이지 ${formatNumber(users.length)}명`}
+        description={`현재 페이지 ${formatNumber(users.length)}명 · ${formatNumber(query.page)} / 총 ${formatNumber(totalPages)}페이지`}
         bodyClassName="p-0"
       >
         <AdminDataGrid
@@ -364,7 +366,7 @@ export default async function AdminUsersPage({
           currentSortDirection={sortState.dir}
           getSortHref={getSortHref}
           renderRow={(user, index) => {
-            const rowNo = visibleResultCount - index;
+            const rowNo = total - (query.page - 1) * pageSize - index;
             return (
               <tr key={user.id.toString()} className="bg-white transition hover:bg-neutral-50">
                 <td className={`${adminGridCellClass} text-right font-bold text-neutral-500`}>
@@ -478,7 +480,12 @@ export default async function AdminUsersPage({
           )}
         />
       </AdminSection>
-      <AdminPagination baseHref={baseHref} page={query.page} hasNext={hasNext} />
+      <AdminPagination
+        baseHref={baseHref}
+        page={query.page}
+        hasNext={hasNext}
+        totalPages={totalPages}
+      />
     </div>
   );
 }

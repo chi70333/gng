@@ -61,6 +61,8 @@ const PAYMENT_LABELS: Record<string, string> = {
 };
 
 const LIST_COUNTS = [20, 30, 50, 100, 200, 500, 1000];
+const compactDateSelectClass = `${adminFieldClass} h-8 px-1.5 text-xs shadow-none`;
+const compactDateUnitClass = 'text-[11px] font-bold text-neutral-500';
 
 type OrderSearchParams = {
   card?: string;
@@ -472,100 +474,109 @@ export default async function AdminOrdersPage({
           </label>
         </div>
 
-        <div className="mt-3 grid gap-2.5 border-t border-neutral-100 pt-3 xl:grid-cols-[minmax(260px,1fr)_minmax(260px,1fr)_130px_auto] xl:items-end">
-          <fieldset className="min-w-0">
-            <legend className="mb-1 text-xs font-bold text-neutral-600">조회 시작일</legend>
-            <div className="grid grid-cols-[minmax(78px,1fr)_auto_minmax(54px,0.75fr)_auto_minmax(54px,0.75fr)_auto] items-center gap-1.5">
-              <select
-                name="year"
-                defaultValue={startParts.year}
-                aria-label="조회 시작 연도"
-                className={adminFieldClass}
-              >
-                {Array.from(
-                  { length: new Date().getFullYear() - 2017 },
-                  (_, index) => 2018 + index,
-                ).map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
-              </select>
-              <span className="text-xs font-bold text-neutral-500">년</span>
-              <select
-                name="month"
-                defaultValue={startParts.month}
-                aria-label="조회 시작 월"
-                className={adminFieldClass}
-              >
-                {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
-                  <option key={month} value={month}>
-                    {pad2(month)}
-                  </option>
-                ))}
-              </select>
-              <span className="text-xs font-bold text-neutral-500">월</span>
-              <select
-                name="day"
-                defaultValue={startParts.day}
-                aria-label="조회 시작 일"
-                className={adminFieldClass}
-              >
-                {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
-                  <option key={day} value={day}>
-                    {pad2(day)}
-                  </option>
-                ))}
-              </select>
-              <span className="text-xs font-bold text-neutral-500">일</span>
-            </div>
-          </fieldset>
+        <div className="mt-3 grid gap-2.5 border-t border-neutral-100 pt-3 lg:grid-cols-[minmax(0,1fr)_130px_auto] lg:items-end">
+          <fieldset className="min-w-0 rounded-md border border-neutral-200 bg-neutral-50/60 px-2.5 py-2">
+            <legend className="px-1 text-xs font-bold text-neutral-600">조회기간</legend>
+            <div className="grid gap-2 md:grid-cols-[max-content_auto_max-content] md:items-center">
+              <div className="grid gap-1">
+                <span className="text-[11px] font-bold text-neutral-500">시작</span>
+                <div className="grid grid-cols-[74px_auto_48px_auto_48px_auto] items-center gap-1">
+                  <select
+                    name="year"
+                    defaultValue={startParts.year}
+                    aria-label="조회 시작 연도"
+                    className={compactDateSelectClass}
+                  >
+                    {Array.from(
+                      { length: new Date().getFullYear() - 2017 },
+                      (_, index) => 2018 + index,
+                    ).map((year) => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                  <span className={compactDateUnitClass}>년</span>
+                  <select
+                    name="month"
+                    defaultValue={startParts.month}
+                    aria-label="조회 시작 월"
+                    className={compactDateSelectClass}
+                  >
+                    {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
+                      <option key={month} value={month}>
+                        {pad2(month)}
+                      </option>
+                    ))}
+                  </select>
+                  <span className={compactDateUnitClass}>월</span>
+                  <select
+                    name="day"
+                    defaultValue={startParts.day}
+                    aria-label="조회 시작 일"
+                    className={compactDateSelectClass}
+                  >
+                    {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
+                      <option key={day} value={day}>
+                        {pad2(day)}
+                      </option>
+                    ))}
+                  </select>
+                  <span className={compactDateUnitClass}>일</span>
+                </div>
+              </div>
 
-          <fieldset className="min-w-0">
-            <legend className="mb-1 text-xs font-bold text-neutral-600">조회 종료일</legend>
-            <div className="grid grid-cols-[minmax(78px,1fr)_auto_minmax(54px,0.75fr)_auto_minmax(54px,0.75fr)_auto] items-center gap-1.5">
-              <select
-                name="year2"
-                defaultValue={endParts.year}
-                aria-label="조회 종료 연도"
-                className={adminFieldClass}
-              >
-                {Array.from(
-                  { length: new Date().getFullYear() - 2017 },
-                  (_, index) => 2018 + index,
-                ).map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
-              </select>
-              <span className="text-xs font-bold text-neutral-500">년</span>
-              <select
-                name="month2"
-                defaultValue={endParts.month}
-                aria-label="조회 종료 월"
-                className={adminFieldClass}
-              >
-                {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
-                  <option key={month} value={month}>
-                    {pad2(month)}
-                  </option>
-                ))}
-              </select>
-              <span className="text-xs font-bold text-neutral-500">월</span>
-              <select
-                name="day2"
-                defaultValue={endParts.day}
-                aria-label="조회 종료 일"
-                className={adminFieldClass}
-              >
-                {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
-                  <option key={day} value={day}>
-                    {pad2(day)}
-                  </option>
-                ))}
-              </select>
-              <span className="text-xs font-bold text-neutral-500">일</span>
+              <span className="hidden text-center text-xs font-extrabold text-neutral-400 md:block">
+                ~
+              </span>
+
+              <div className="grid gap-1">
+                <span className="text-[11px] font-bold text-neutral-500">종료</span>
+                <div className="grid grid-cols-[74px_auto_48px_auto_48px_auto] items-center gap-1">
+                  <select
+                    name="year2"
+                    defaultValue={endParts.year}
+                    aria-label="조회 종료 연도"
+                    className={compactDateSelectClass}
+                  >
+                    {Array.from(
+                      { length: new Date().getFullYear() - 2017 },
+                      (_, index) => 2018 + index,
+                    ).map((year) => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                  <span className={compactDateUnitClass}>년</span>
+                  <select
+                    name="month2"
+                    defaultValue={endParts.month}
+                    aria-label="조회 종료 월"
+                    className={compactDateSelectClass}
+                  >
+                    {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
+                      <option key={month} value={month}>
+                        {pad2(month)}
+                      </option>
+                    ))}
+                  </select>
+                  <span className={compactDateUnitClass}>월</span>
+                  <select
+                    name="day2"
+                    defaultValue={endParts.day}
+                    aria-label="조회 종료 일"
+                    className={compactDateSelectClass}
+                  >
+                    {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
+                      <option key={day} value={day}>
+                        {pad2(day)}
+                      </option>
+                    ))}
+                  </select>
+                  <span className={compactDateUnitClass}>일</span>
+                </div>
+              </div>
             </div>
           </fieldset>
 

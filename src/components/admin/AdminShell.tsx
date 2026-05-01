@@ -86,10 +86,10 @@ export function AdminShell({
             </div>
           </div>
         </header>
-        <main className="max-w-screen-2xl mx-auto px-4 py-5 pb-36 lg:px-6 lg:pb-5">{children}</main>
+        <main className="max-w-screen-2xl mx-auto px-4 py-5 pb-24 lg:px-6 lg:pb-5">{children}</main>
       </div>
       <nav
-        className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-neutral-200 bg-white/95 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] backdrop-blur lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-20 flex overflow-x-auto border-t border-neutral-200 bg-white/95 px-2 py-1 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] backdrop-blur [-ms-overflow-style:none] [scrollbar-width:none] lg:hidden [&::-webkit-scrollbar]:hidden"
         aria-label="관리자 모바일 메뉴"
       >
         {navItems.map((item) => {
@@ -98,7 +98,7 @@ export function AdminShell({
             <Link
               key={item.href}
               href={item.href}
-              className="flex min-h-14 flex-col items-center justify-center gap-1 text-[11px] font-semibold text-neutral-600 transition hover:bg-neutral-50 hover:text-neutral-950"
+              className="flex min-h-14 min-w-[4.5rem] flex-col items-center justify-center gap-1 rounded-md text-[11px] font-semibold text-neutral-600 transition hover:bg-neutral-50 hover:text-neutral-950"
             >
               <Icon size={18} />
               {item.label}

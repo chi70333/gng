@@ -932,28 +932,8 @@ async function appendLegacyPointLedger(tx, userId, pointLedger) {
 }
 
 async function writeMemberPlan(tx, plan, report) {
-  const userData = definedData({
-    legacyMemberId: plan.draft.legacyMemberId,
-    loginId: plan.draft.loginId,
-    email: plan.draft.email,
-    phone: plan.draft.phone,
-    name: plan.draft.name,
-    nickname: plan.draft.nickname,
-    birth: plan.draft.birth,
-    gender: plan.draft.gender,
-    passwordHash: plan.draft.passwordHash,
-    legacyPasswordHash: plan.draft.legacyPasswordHash,
-    legacyPasswordAlgo: plan.draft.legacyPasswordAlgo,
-    status: plan.draft.status,
-    memberType: plan.draft.memberType,
-    marketingAgreedAt: plan.draft.marketingAgreedAt,
-    smsAgreedAt: plan.draft.smsAgreedAt,
-    legacyPointBalance: plan.draft.legacyPointBalance,
-    lastLoginAt: plan.draft.lastLoginAt,
-    lastLoginIp: plan.draft.lastLoginIp,
-    loginCount: plan.draft.loginCount,
-  });
-  const createData = definedData({ ...userData, createdAt: plan.draft.createdAt });
+  const userData = userDataFromPlan(plan);
+  const createData = userDataFromPlan(plan, true);
 
   const user = await tx.user.upsert({
     where: { legacyMemberId: plan.draft.legacyMemberId },
@@ -998,6 +978,188 @@ async function writeMemberPlan(tx, plan, report) {
   report.writtenPointEntries += plan.pointLedger?.length ?? 0;
 
   return user.id;
+}
+
+function userDataFromPlan(plan, includeCreatedAt = false) {
+  return definedData({
+    legacyMemberId: plan.draft.legacyMemberId,
+    loginId: plan.draft.loginId,
+    email: plan.draft.email,
+    phone: plan.draft.phone,
+    name: plan.draft.name,
+    nickname: plan.draft.nickname,
+    birth: plan.draft.birth,
+    gender: plan.draft.gender,
+    passwordHash: plan.draft.passwordHash,
+    legacyPasswordHash: plan.draft.legacyPasswordHash,
+    legacyPasswordAlgo: plan.draft.legacyPasswordAlgo,
+    status: plan.draft.status,
+    memberType: plan.draft.memberType,
+    marketingAgreedAt: plan.draft.marketingAgreedAt,
+    smsAgreedAt: plan.draft.smsAgreedAt,
+    legacyPointBalance: plan.draft.legacyPointBalance,
+    lastLoginAt: plan.draft.lastLoginAt,
+    lastLoginIp: plan.draft.lastLoginIp,
+    loginCount: plan.draft.loginCount,
+    createdAt: includeCreatedAt ? plan.draft.createdAt : undefined,
+  });
+}
+
+async function fetchMigratedUsers(prisma, legacyMemberIds) {
+  const users = [];
+  for (const idChunk of chunk(legacyMemberIds, 500)) {
+    users.push(
+      ...(await prisma.user.findMany({
+        where: { legacyMemberId: { in: idChunk } },
+        select: { id: true, legacyMemberId: true },
+      })),
+    );
+  }
+  return new Map(users.map((user) => [user.legacyMemberId, user.id]));
+}
+
+function addressDataFromPlan(plan, userId) {
+  if (plan.draft.status === 'withdrawn') return [];
+  return [plan.defaultAddress, ...plan.addresses].filter(Boolean).map((address) =>
+    definedData({
+      userId,
+      legacySeq: address.legacySeq,
+      legacyMemberId: address.legacyMemberId,
+      label: address.label,
+      receiver: address.receiver,
+      phone: address.phone,
+      zipCode: address.zipCode,
+      address1: address.address1,
+      address2: address.address2,
+      isDefault: address.isDefault,
+    }),
+  );
+}
+
+function socialDataFromPlan(plan, userId) {
+  if (plan.draft.status === 'withdrawn') return [];
+  return plan.socials.map((social) =>
+    definedData({
+      userId,
+      legacyUid: social.legacyUid,
+      provider: social.provider,
+      providerUid: social.providerUid,
+    }),
+  );
+}
+
+function pointDataFromPlan(plan, userId) {
+  if (plan.draft.status === 'withdrawn') return [];
+  return (plan.pointLedger ?? []).map((entry) =>
+    definedData({
+      userId,
+      delta: entry.delta,
+      balance: entry.balance,
+      reason: entry.reason.startsWith(legacyPointReasonPrefix)
+        ? entry.reason
+        : `레거시 포인트: ${entry.reason}`,
+      createdAt: entry.createdAt,
+    }),
+  );
+}
+
+async function deleteManyByChunks(model, field, values, extraWhere = {}) {
+  const unique = [...new Set(values.filter(Boolean))];
+  for (const valueChunk of chunk(unique, 1000)) {
+    if (valueChunk.length === 0) continue;
+    await model.deleteMany({
+      where: {
+        ...extraWhere,
+        [field]: { in: valueChunk },
+      },
+    });
+  }
+}
+
+async function createManyByChunks(model, rows, size = 1000, options = {}) {
+  let count = 0;
+  for (const rowChunk of chunk(rows, size)) {
+    if (rowChunk.length === 0) continue;
+    const result = await model.createMany({
+      data: rowChunk,
+      ...options,
+    });
+    count += result.count ?? rowChunk.length;
+  }
+  return count;
+}
+
+async function writeMigrationPlanBulk(prisma, plan, report) {
+  for (const memberPlan of plan.members) {
+    await prisma.user.upsert({
+      where: { legacyMemberId: memberPlan.draft.legacyMemberId },
+      update: userDataFromPlan(memberPlan),
+      create: userDataFromPlan(memberPlan, true),
+      select: { id: true },
+    });
+    report.writtenUsers += 1;
+  }
+
+  const legacyMemberIds = plan.members.map((memberPlan) => memberPlan.draft.legacyMemberId);
+  const userIdByLegacyMemberId = await fetchMigratedUsers(prisma, legacyMemberIds);
+
+  for (const memberPlan of plan.members) {
+    const userId = userIdByLegacyMemberId.get(memberPlan.draft.legacyMemberId);
+    if (!userId || memberPlan.draft.status === 'withdrawn') continue;
+    await upsertBusinessProfile(prisma, userId, memberPlan.businessProfile);
+    await upsertRefundAccount(prisma, userId, memberPlan.refundAccount);
+  }
+
+  const addressRows = [];
+  const legacySeqs = [];
+  const legacyAddressIds = [];
+  const socialRows = [];
+  const socialLegacyUids = [];
+  const pointRows = [];
+  const userIds = [];
+
+  for (const memberPlan of plan.members) {
+    const userId = userIdByLegacyMemberId.get(memberPlan.draft.legacyMemberId);
+    if (!userId) continue;
+    userIds.push(userId);
+
+    for (const row of addressDataFromPlan(memberPlan, userId)) {
+      addressRows.push(row);
+      if (row.legacySeq) legacySeqs.push(row.legacySeq);
+      if (row.legacyMemberId) legacyAddressIds.push(row.legacyMemberId);
+    }
+
+    for (const row of socialDataFromPlan(memberPlan, userId)) {
+      socialRows.push(row);
+      if (row.legacyUid) socialLegacyUids.push(row.legacyUid);
+    }
+
+    pointRows.push(...pointDataFromPlan(memberPlan, userId));
+  }
+
+  await deleteManyByChunks(prisma.userAddress, 'legacySeq', legacySeqs);
+  await deleteManyByChunks(prisma.userAddress, 'legacyMemberId', legacyAddressIds);
+  report.writtenAddresses = await createManyByChunks(prisma.userAddress, addressRows, 1000);
+
+  await deleteManyByChunks(prisma.userSocialAccount, 'legacyUid', socialLegacyUids);
+  report.writtenSocialAccounts = await createManyByChunks(
+    prisma.userSocialAccount,
+    socialRows,
+    1000,
+    {
+      skipDuplicates: true,
+    },
+  );
+
+  for (const userIdChunk of chunk(userIds, 1000)) {
+    await prisma.userPointHistory.deleteMany({
+      where: {
+        userId: { in: userIdChunk },
+        reason: { startsWith: legacyPointReasonPrefix },
+      },
+    });
+  }
+  report.writtenPointEntries = await createManyByChunks(prisma.userPointHistory, pointRows, 1000);
 }
 
 function chunk(values, size = 500) {
@@ -1092,14 +1254,7 @@ export async function runLegacyMemberMigration({ prisma, env = process.env, cwd 
   };
 
   if (!dryRun) {
-    for (const memberPlan of plan.members) {
-      await prisma.$transaction(
-        async (tx) => {
-          await writeMemberPlan(tx, memberPlan, report);
-        },
-        { maxWait: 10000, timeout: 60000 },
-      );
-    }
+    await writeMigrationPlanBulk(prisma, plan, report);
   }
 
   const reportDir = path.resolve(
