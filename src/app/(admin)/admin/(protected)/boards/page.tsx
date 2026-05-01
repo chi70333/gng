@@ -4,6 +4,7 @@
 import type { Metadata } from 'next';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
+import { formatNumber } from '@/lib/format';
 import {
   AdminDataGrid,
   AdminMobileCard,
@@ -32,6 +33,7 @@ export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: '게시판 설정',
+  description: '관리자 게시판 설정을 관리합니다.',
 };
 
 const BOARD_TYPES = [
@@ -52,7 +54,7 @@ async function getBoardAdminCounts() {
   const [posts, productQna, inquiries] = await prisma.$transaction([
     prisma.post.count({ where: { deletedAt: null } }),
     prisma.productQna.count({ where: { answer: null } }),
-    prisma.inquiry.count({ where: { status: 'open' } }),
+    prisma.inquiry.count({ where: { status: 'open', deletedAt: null } }),
   ]);
 
   return { posts, productQna, inquiries };
@@ -95,10 +97,10 @@ export default async function AdminBoardsPage({
   const redirectTo = currentRedirectTo(searchParams);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <AdminPageHeader
-        title="게시판 관리"
-        description="게시판 설정, 게시글, 상품문의와 1:1 문의 답변을 관리합니다."
+        title="게시판 설정"
+        description={`게시판 ${formatNumber(boards.length)}개를 관리합니다.`}
       />
       <BoardAdminNav active="settings" counts={counts} />
 
@@ -136,13 +138,13 @@ export default async function AdminBoardsPage({
 
       <AdminSection
         title="게시판 목록"
-        description="행에서 바로 수정할 수 있습니다."
+        description="게시판 이름, 코드, 유형, 사용 여부를 행에서 바로 수정합니다."
         bodyClassName="p-0"
       >
         <AdminDataGrid
           caption="게시판 목록"
           columns={[
-            { key: 'no', label: 'No', align: 'right', widthClassName: 'w-20', sortKey: 'no' },
+            { key: 'no', label: '번호', align: 'right', widthClassName: 'w-20', sortKey: 'no' },
             {
               key: 'board',
               label: '게시판',

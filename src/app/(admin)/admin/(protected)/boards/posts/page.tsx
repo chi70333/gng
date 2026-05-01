@@ -314,59 +314,55 @@ export default async function AdminBoardPostsPage({
                         접기
                       </span>
                     </summary>
-                    <form
-                      action={saveAdminPost}
-                      className="mt-3 grid gap-2 rounded-md border border-neutral-200 bg-neutral-50 p-3"
-                    >
-                      <input type="hidden" name="id" value={post.id.toString()} />
-                      <input type="hidden" name="redirectTo" value={currentHref} />
-                      <div className="grid gap-2 md:grid-cols-[160px_1fr_80px_80px]">
-                        <select
-                          name="boardId"
-                          defaultValue={post.boardId.toString()}
-                          className={`${adminFieldClass} h-10`}
-                          aria-label={`${post.title} 게시판`}
-                        >
-                          {boards.map((board) => (
-                            <option key={board.id.toString()} value={board.id.toString()}>
-                              {board.name}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          name="title"
-                          defaultValue={post.title}
-                          className={`${adminFieldClass} h-10 font-bold`}
-                          aria-label={`${post.title} 제목`}
+                    <div className="mt-3 grid gap-2 rounded-md border border-neutral-200 bg-neutral-50 p-3">
+                      <form action={saveAdminPost} className="grid gap-2">
+                        <input type="hidden" name="id" value={post.id.toString()} />
+                        <input type="hidden" name="redirectTo" value={currentHref} />
+                        <div className="grid gap-2 md:grid-cols-[160px_1fr_80px_80px]">
+                          <select
+                            name="boardId"
+                            defaultValue={post.boardId.toString()}
+                            className={`${adminFieldClass} h-10`}
+                            aria-label={`${post.title} 게시판`}
+                          >
+                            {boards.map((board) => (
+                              <option key={board.id.toString()} value={board.id.toString()}>
+                                {board.name}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            name="title"
+                            defaultValue={post.title}
+                            className={`${adminFieldClass} h-10 font-bold`}
+                            aria-label={`${post.title} 제목`}
+                          />
+                          <label className="flex min-h-10 items-center gap-2 text-sm font-bold">
+                            <input type="checkbox" name="isNotice" defaultChecked={post.isNotice} />
+                            공지
+                          </label>
+                          <label className="flex min-h-10 items-center gap-2 text-sm font-bold">
+                            <input type="checkbox" name="isSecret" defaultChecked={post.isSecret} />
+                            비밀
+                          </label>
+                        </div>
+                        <textarea
+                          name="content"
+                          defaultValue={post.content}
+                          rows={5}
+                          className={adminTextareaClass}
+                          aria-label={`${post.title} 내용`}
                         />
-                        <label className="flex min-h-10 items-center gap-2 text-sm font-bold">
-                          <input type="checkbox" name="isNotice" defaultChecked={post.isNotice} />
-                          공지
-                        </label>
-                        <label className="flex min-h-10 items-center gap-2 text-sm font-bold">
-                          <input type="checkbox" name="isSecret" defaultChecked={post.isSecret} />
-                          비밀
-                        </label>
-                      </div>
-                      <textarea
-                        name="content"
-                        defaultValue={post.content}
-                        rows={5}
-                        className={adminTextareaClass}
-                        aria-label={`${post.title} 내용`}
-                      />
-                      <div className="flex flex-wrap justify-end gap-2">
-                        <button className={`${adminGridButtonClass} h-10 px-4`}>저장</button>
-                        <button
-                          formAction={deleteAdminPost}
-                          name="postId"
-                          value={post.id.toString()}
-                          className={`${adminDangerButtonClass} h-10`}
-                        >
-                          삭제
-                        </button>
-                      </div>
-                    </form>
+                        <div className="flex justify-end">
+                          <button className={`${adminGridButtonClass} h-10 px-4`}>저장</button>
+                        </div>
+                      </form>
+                      <form action={deleteAdminPost} className="flex justify-end">
+                        <input type="hidden" name="postId" value={post.id.toString()} />
+                        <input type="hidden" name="redirectTo" value={currentHref} />
+                        <button className={`${adminDangerButtonClass} h-10`}>삭제</button>
+                      </form>
+                    </div>
                   </details>
                 </td>
                 <td className={adminGridCellClass}>{post.board.name}</td>
@@ -411,59 +407,53 @@ export default async function AdminBoardPostsPage({
                     수정 닫기
                   </p>
                 </summary>
-                <form
-                  action={saveAdminPost}
-                  className="mt-3 grid gap-3 border-t border-neutral-100 pt-3"
-                >
-                  <input type="hidden" name="id" value={post.id.toString()} />
-                  <input type="hidden" name="redirectTo" value={currentHref} />
-                  <select
-                    name="boardId"
-                    defaultValue={post.boardId.toString()}
-                    className={`${adminFieldClass} h-11`}
-                    aria-label={`${post.title} 게시판`}
-                  >
-                    {boards.map((board) => (
-                      <option key={board.id.toString()} value={board.id.toString()}>
-                        {board.name}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    name="title"
-                    defaultValue={post.title}
-                    className={`${adminFieldClass} h-11 font-bold`}
-                    aria-label={`${post.title} 제목`}
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="flex min-h-11 items-center gap-2 text-sm font-bold">
-                      <input type="checkbox" name="isNotice" defaultChecked={post.isNotice} />
-                      공지
-                    </label>
-                    <label className="flex min-h-11 items-center gap-2 text-sm font-bold">
-                      <input type="checkbox" name="isSecret" defaultChecked={post.isSecret} />
-                      비밀
-                    </label>
-                  </div>
-                  <textarea
-                    name="content"
-                    defaultValue={post.content}
-                    rows={6}
-                    className={adminTextareaClass}
-                    aria-label={`${post.title} 내용`}
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <button className={`${adminGridButtonClass} h-11`}>저장</button>
-                    <button
-                      formAction={deleteAdminPost}
-                      name="postId"
-                      value={post.id.toString()}
-                      className={`${adminDangerButtonClass} h-11`}
+                <div className="mt-3 grid gap-3 border-t border-neutral-100 pt-3">
+                  <form action={saveAdminPost} className="grid gap-3">
+                    <input type="hidden" name="id" value={post.id.toString()} />
+                    <input type="hidden" name="redirectTo" value={currentHref} />
+                    <select
+                      name="boardId"
+                      defaultValue={post.boardId.toString()}
+                      className={`${adminFieldClass} h-11`}
+                      aria-label={`${post.title} 게시판`}
                     >
-                      삭제
-                    </button>
-                  </div>
-                </form>
+                      {boards.map((board) => (
+                        <option key={board.id.toString()} value={board.id.toString()}>
+                          {board.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      name="title"
+                      defaultValue={post.title}
+                      className={`${adminFieldClass} h-11 font-bold`}
+                      aria-label={`${post.title} 제목`}
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="flex min-h-11 items-center gap-2 text-sm font-bold">
+                        <input type="checkbox" name="isNotice" defaultChecked={post.isNotice} />
+                        공지
+                      </label>
+                      <label className="flex min-h-11 items-center gap-2 text-sm font-bold">
+                        <input type="checkbox" name="isSecret" defaultChecked={post.isSecret} />
+                        비밀
+                      </label>
+                    </div>
+                    <textarea
+                      name="content"
+                      defaultValue={post.content}
+                      rows={6}
+                      className={adminTextareaClass}
+                      aria-label={`${post.title} 내용`}
+                    />
+                    <button className={`${adminGridButtonClass} h-11`}>저장</button>
+                  </form>
+                  <form action={deleteAdminPost}>
+                    <input type="hidden" name="postId" value={post.id.toString()} />
+                    <input type="hidden" name="redirectTo" value={currentHref} />
+                    <button className={`${adminDangerButtonClass} h-11 w-full`}>삭제</button>
+                  </form>
+                </div>
               </details>
             </AdminMobileCard>
           )}
