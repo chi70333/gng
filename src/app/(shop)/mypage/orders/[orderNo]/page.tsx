@@ -2,10 +2,13 @@
 // Cache: no-store. Order detail is private member state.
 
 import type { Metadata } from 'next';
+import Image from 'next/image';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { formatKRW } from '@/lib/format';
+import { getCachedSitePolicy } from '@/server/services/site-policy.service';
 import { cancelOrderAction } from './actions';
 
 export const dynamic = 'force-dynamic';
@@ -114,6 +117,7 @@ export default async function MyOrderDetailPage({ params, searchParams }: Detail
       items: {
         orderBy: { id: 'asc' },
         select: {
+          productId: true,
           productName: true,
           optionSummary: true,
           unitPrice: true,
@@ -133,6 +137,17 @@ export default async function MyOrderDetailPage({ params, searchParams }: Detail
     },
   });
   if (!order) notFound();
+  const sitePolicy = await getCachedSitePolicy();
+  const productIds = [...new Set(order.items.map((item) => item.productId))];
+  const products = productIds.length
+    ? await prisma.product.findMany({
+        where: { id: { in: productIds } },
+        select: { id: true, slug: true, thumbnail: true },
+      })
+    : [];
+  const productMap = new Map<string, { slug: string; thumbnail: string | null }>(
+    products.map((product) => [product.id.toString(), { slug: product.slug, thumbnail: product.thumbnail }]),
+  );
 
   const shipping = asRecord(order.shippingAddress);
   const buyer = asRecord(order.buyerInfo);
@@ -150,6 +165,22 @@ export default async function MyOrderDetailPage({ params, searchParams }: Detail
   const payment = order.payments[0];
   const rawPayment = asRecord(payment?.rawResponse);
   const bankDeposit = asRecord(rawPayment.bankDeposit);
+  const isBankTransfer = payment?.method === 'bank';
+
+  const depositAccount =
+    asString(bankDeposit.account) ??
+    asString(bankDeposit.accountNo) ??
+    (isBankTransfer ? sitePolicy.bankAccount : null);
+  const depositBankName =
+    asString(bankDeposit.bankName) ??
+    asString(rawPayment.bankName) ??
+    (isBankTransfer ? sitePolicy.bankName : null);
+  const depositorName = asString(bankDeposit.depositorName);
+  const depositDisplayName =
+    asString(depositBankName) !== null && asString(depositAccount) !== null
+      ? `${asString(depositBankName)} ${asString(depositAccount)}`
+      : asString(depositBankName) ?? asString(depositAccount);
+
   const canCancel = order.status === 'pending' || order.status === 'paid';
   const cancelAction = cancelOrderAction.bind(null, order.orderNo);
 
@@ -174,21 +205,68 @@ export default async function MyOrderDetailPage({ params, searchParams }: Detail
         <h2 className="text-base font-bold text-neutral-900">주문 상품</h2>
         <ul className="mt-4 space-y-3">
           {order.items.map((item) => (
-            <li key={`${item.productName}-${item.quantity}`} className="border-b border-neutral-100 pb-3 last:border-b-0 last:pb-0">
-              <div className="flex items-start justify-between gap-3 text-sm">
-                <div className="min-w-0">
-                  <p className="font-semibold text-neutral-900">{item.productName}</p>
-                  {item.optionSummary && (
-                    <p className="mt-1 text-xs text-neutral-500">{item.optionSummary}</p>
-                  )}
-                  <p className="mt-1 text-xs text-neutral-500">
-                    {formatKRW(item.unitPrice.toString())} / {item.quantity}개
-                  </p>
-                </div>
-                <span className="shrink-0 font-bold text-neutral-900">
-                  {formatKRW(item.totalPrice.toString())}
-                </span>
-              </div>
+            <li
+              key={`${item.productId}-${item.productName}-${item.quantity}`}
+              className="border-b border-neutral-100 pb-3 last:border-b-0 last:pb-0"
+            >
+              {(() => {
+                const product = productMap.get(item.productId.toString());
+                if (!product?.slug) {
+                  return (
+                    <div className="flex items-start justify-between gap-3 text-sm">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-neutral-900">{item.productName}</p>
+                        {item.optionSummary && (
+                          <p className="mt-1 text-xs text-neutral-500">{item.optionSummary}</p>
+                        )}
+                        <p className="mt-1 text-xs text-neutral-500">
+                          {formatKRW(item.unitPrice.toString())} / {item.quantity}개
+                        </p>
+                      </div>
+                      <span className="shrink-0 font-bold text-neutral-900">
+                        {formatKRW(item.totalPrice.toString())}
+                      </span>
+                    </div>
+                  );
+                }
+
+                return (
+                  <Link
+                    href={`/goods/${product.slug}`}
+                    className="flex items-start justify-between gap-3 text-sm transition-colors hover:text-blue-700"
+                  >
+                    <div className="min-w-0 flex min-h-12 flex-1 gap-3">
+                      <span className="relative h-16 w-16 overflow-hidden rounded-md border border-neutral-200 bg-neutral-100">
+                        {product.thumbnail ? (
+                          <Image
+                            src={product.thumbnail}
+                            alt={item.productName}
+                            fill
+                            sizes="64px"
+                            className="object-cover"
+                          />
+                        ) : (
+                          <span className="flex h-full w-full items-center justify-center text-xs text-neutral-400">
+                            이미지 없음
+                          </span>
+                        )}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-neutral-900">{item.productName}</p>
+                        {item.optionSummary && (
+                          <p className="mt-1 text-xs text-neutral-500">{item.optionSummary}</p>
+                        )}
+                        <p className="mt-1 text-xs text-neutral-500">
+                          {formatKRW(item.unitPrice.toString())} / {item.quantity}개
+                        </p>
+                      </div>
+                    </div>
+                    <span className="shrink-0 self-center font-bold text-neutral-900">
+                      {formatKRW(item.totalPrice.toString())}
+                    </span>
+                  </Link>
+                );
+              })()}
             </li>
           ))}
         </ul>
@@ -222,12 +300,14 @@ export default async function MyOrderDetailPage({ params, searchParams }: Detail
               결제수단: {paymentLabel(payment.method)} / 상태: {payment.status}
             </p>
           )}
-          {asString(bankDeposit.account) && (
+          {(isBankTransfer || asString(depositDisplayName) || asString(depositorName)) && (
             <div className="rounded-lg bg-neutral-50 p-3 text-sm text-neutral-700">
-              <p className="font-semibold text-neutral-900">입금 정보</p>
-              <p className="mt-1">{asString(bankDeposit.account)}</p>
-              {asString(bankDeposit.depositorName) && (
-                <p className="mt-1">입금자명: {asString(bankDeposit.depositorName)}</p>
+              <p className="font-semibold text-neutral-900">
+                {isBankTransfer ? '입금해야 하는 계좌' : '입금 정보'}
+              </p>
+              {depositDisplayName && <p className="mt-1">{asString(depositDisplayName)}</p>}
+              {depositorName && (
+                <p className="mt-1">입금자명: {depositorName}</p>
               )}
             </div>
           )}
