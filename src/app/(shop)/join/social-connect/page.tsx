@@ -10,6 +10,7 @@ import {
   SOCIAL_PENDING_COOKIE,
   decodePendingSocialProfile,
 } from '@/server/services/social-pending.service';
+import { SocialConnectPhoneField } from '@/components/shop/SocialConnectPhoneField';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,10 +121,9 @@ export default function SocialConnectPage({ searchParams }: SocialConnectPagePro
           inputMode="email"
           defaultValue={pendingSocial.email}
         />
-        <Field
+        <SocialConnectPhoneField
           label="휴대전화번호"
           name="phone"
-          type="tel"
           autoComplete="tel"
           inputMode="tel"
           maxLength={13}
