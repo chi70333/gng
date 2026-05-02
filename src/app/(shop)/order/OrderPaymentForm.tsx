@@ -180,7 +180,7 @@ function toWon(value: number): number {
 }
 
 function itemTotal(item: PaymentCartItem): number {
-  return Number(item.unitPrice) * item.quantity;
+  return Number(item.unitPrice);
 }
 
 function checkoutShippingFee(subtotal: number): number {
@@ -892,7 +892,7 @@ export function OrderPaymentForm({
                         {item.optionSummary}
                       </p>
                     )}
-                    <p className="mt-1 text-xs text-neutral-500">수량 {item.quantity}개</p>
+                    <p className="mt-1 text-xs text-neutral-500">1개 단위 구매</p>
                     <p className="mt-1 text-sm font-extrabold text-neutral-950">
                       {formatKRW(itemTotal(item))}
                     </p>

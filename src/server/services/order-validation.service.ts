@@ -1,7 +1,11 @@
 // Legacy sources: order_method_check.php, order_table_trans_chk.php
 // Cache: no-cache. Validation reads current stock and the per-user/per-guest cart.
 
-import { getCart, type CartIdentity } from '@/server/services/cart.service';
+import {
+  CART_ITEM_QUANTITY,
+  getCart,
+  type CartIdentity,
+} from '@/server/services/cart.service';
 import { prisma } from '@/server/db';
 
 export type OrderValidationResult = {
@@ -31,7 +35,7 @@ export async function validateCartForOrder(
     if (!sku || !sku.isActive) {
       return [{ skuId: item.skuId, message: 'Product option is no longer available.' }];
     }
-    if (sku.stock - sku.reserved < item.quantity) {
+    if (sku.stock - sku.reserved < CART_ITEM_QUANTITY) {
       return [{ skuId: item.skuId, message: 'Not enough stock.' }];
     }
     return [];

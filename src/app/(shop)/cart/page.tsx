@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: '장바구니',
-  description: '장바구니에 담긴 상품과 수량을 확인합니다.',
+  description: '장바구니에 담긴 상품을 확인합니다.',
 };
 
 const CART_COOKIE = 'gng_cart_id';

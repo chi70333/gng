@@ -13,7 +13,7 @@ type CartSelectionPanelProps = {
 };
 
 function itemTotal(item: CartItem): number {
-  return Number(item.unitPrice) * item.quantity;
+  return Number(item.unitPrice);
 }
 
 function shippingFee(subtotal: number): number {
@@ -164,10 +164,10 @@ export default function CartSelectionPanel({ items }: CartSelectionPanelProps) {
                     <span className="text-sm font-bold text-neutral-900">
                       {formatKRW(item.unitPrice)}
                     </span>
-                    <span className="text-xs text-neutral-500">수량 {item.quantity}개</span>
+                    <span className="text-xs text-neutral-500">1개 단위 구매</span>
                   </div>
                   <div className="mt-3">
-                    <CartItemControls skuId={item.skuId} quantity={item.quantity} />
+                    <CartItemControls skuId={item.skuId} />
                   </div>
                 </div>
               </li>
