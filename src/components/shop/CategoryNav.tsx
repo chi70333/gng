@@ -10,11 +10,18 @@ interface CategoryNavProps {
   categories: SerializedCategory[];
   /** 현재 활성 slug. */
   activeSlug: string;
+  /** 현재 카테고리의 조상 slug 목록. */
+  activeAncestorSlugs?: string[];
   /** 부모 카테고리 정보 (소제목용). */
   parentName?: string;
 }
 
-export default function CategoryNav({ categories, activeSlug, parentName }: CategoryNavProps) {
+export default function CategoryNav({
+  categories,
+  activeSlug,
+  activeAncestorSlugs = [],
+  parentName,
+}: CategoryNavProps) {
   if (categories.length === 0) return null;
 
   const isChildList = Boolean(parentName);
@@ -71,43 +78,55 @@ export default function CategoryNav({ categories, activeSlug, parentName }: Cate
           </div>
         )}
         <ul className={cn('space-y-1', parentName && 'border-t border-neutral-100 pt-2')}>
-          {categories.map((cat) => (
-            <li key={cat.id}>
-              <Link
-                href={`/category/${cat.slug}`}
-                aria-current={activeSlug === cat.slug ? 'page' : undefined}
-                className={cn(
-                  'flex min-h-10 items-center rounded-lg transition-colors',
-                  isChildList ? 'ml-2 px-3 text-xs' : 'px-2 text-sm',
-                  activeSlug === cat.slug
-                    ? 'bg-neutral-100 font-semibold text-neutral-950'
-                    : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900',
+          {categories.map((cat) => {
+            const isActive = activeSlug === cat.slug;
+            const isExpanded = isActive || activeAncestorSlugs.includes(cat.slug);
+
+            return (
+              <li key={cat.id}>
+                <Link
+                  href={`/category/${cat.slug}`}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={cn(
+                    'flex min-h-10 items-center rounded-lg transition-colors',
+                    isChildList ? 'ml-2 px-3 text-xs' : 'px-2 text-sm',
+                    isActive
+                      ? 'bg-neutral-100 font-semibold text-neutral-950'
+                      : isExpanded
+                        ? 'font-semibold text-neutral-950 hover:bg-neutral-50'
+                        : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900',
+                  )}
+                >
+                  <span className="truncate">{cat.name}</span>
+                </Link>
+                {/* 3단계 서브카테고리 */}
+                {isExpanded && cat.children.length > 0 && (
+                  <ul className="ml-2 mt-0.5 space-y-0.5">
+                    {cat.children.map((child) => {
+                      const isChildActive = activeSlug === child.slug;
+
+                      return (
+                        <li key={child.id}>
+                          <Link
+                            href={`/category/${child.slug}`}
+                            aria-current={isChildActive ? 'page' : undefined}
+                            className={cn(
+                              'flex min-h-9 items-center rounded-lg pl-3 pr-2 text-xs transition-colors',
+                              isChildActive
+                                ? 'bg-neutral-100 font-semibold text-neutral-950'
+                                : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800',
+                            )}
+                          >
+                            {child.name}
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
                 )}
-              >
-                <span className="truncate">{cat.name}</span>
-                {activeSlug === cat.slug && (
-                  <span className="ml-auto shrink-0 pl-2 text-[11px] font-medium text-neutral-500">
-                    현재
-                  </span>
-                )}
-              </Link>
-              {/* 3단계 서브카테고리 */}
-              {activeSlug === cat.slug && cat.children.length > 0 && (
-                <ul className="ml-2 mt-0.5 space-y-0.5">
-                  {cat.children.map((child) => (
-                    <li key={child.id}>
-                      <Link
-                        href={`/category/${child.slug}`}
-                        className="flex h-8 items-center rounded-lg pl-3 pr-2 text-xs text-neutral-500 transition-colors hover:bg-neutral-50 hover:text-neutral-800"
-                      >
-                        {child.name}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       </aside>
     </>

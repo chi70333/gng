@@ -102,6 +102,8 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
   const siblings = parentTreeCategory
     ? parentTreeCategory.children.filter((c) => c.isActive)
     : categoryTree.filter((c) => c.depth === 0 && c.isActive);
+  const rootCategories = categoryTree.filter((c) => c.depth === 0 && c.isActive);
+  const activeAncestorSlugs = ancestors.map((ancestor) => ancestor.slug);
   const mobileCategories =
     currentTreeCategory && currentTreeCategory.children.length > 0
       ? currentTreeCategory.children.filter((c) => c.isActive)
@@ -138,9 +140,9 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
         {/* 데스크톱: 사이드 카테고리 */}
         <div className="hidden md:block">
           <CategoryNav
-            categories={siblings}
+            categories={rootCategories}
             activeSlug={params.slug}
-            parentName={ancestors[ancestors.length - 1]?.name}
+            activeAncestorSlugs={activeAncestorSlugs}
           />
         </div>
 

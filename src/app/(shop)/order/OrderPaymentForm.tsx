@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ClipboardList,
-  ReceiptText,
   Search,
   Trash2,
   Truck,
@@ -112,20 +111,11 @@ type PostcodeWindow = Window & {
 
 const postcodeScriptId = 'daum-postcode-script';
 const postcodeScriptSrc = 'https://t1.kakaocdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js';
-const receiptStorageKey = 'gng:order:receipt';
 const fieldClass =
   'min-h-11 w-full min-w-0 rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-neutral-200 disabled:border-neutral-200 disabled:bg-neutral-50 disabled:text-neutral-400';
 const selectClass = `${fieldClass} appearance-none pr-10`;
 const labelClass = 'mb-1.5 block text-xs font-bold text-neutral-700';
 const sectionClass = 'rounded-lg border border-neutral-200 bg-white p-4 shadow-sm sm:p-5';
-
-type StoredReceiptInfo = {
-  cashReceiptType?: 'none' | 'personal' | 'business';
-  cashReceiptIdentity?: string;
-  taxInvoiceRequested?: boolean;
-  taxInvoiceCompanyName?: string;
-  taxInvoiceBusinessNumber?: string;
-};
 
 function FormSection({
   icon: Icon,
@@ -371,11 +361,6 @@ export function OrderPaymentForm({
   const [address2, setAddress2] = useState(defaultAddress?.address2 ?? '');
   const [couponIssueId, setCouponIssueId] = useState('');
   const [pointsToUse, setPointsToUse] = useState('');
-  const [cashReceiptType, setCashReceiptType] = useState<'none' | 'personal' | 'business'>('none');
-  const [cashReceiptIdentity, setCashReceiptIdentity] = useState('');
-  const [taxInvoiceRequested, setTaxInvoiceRequested] = useState(false);
-  const [taxInvoiceCompanyName, setTaxInvoiceCompanyName] = useState('');
-  const [taxInvoiceBusinessNumber, setTaxInvoiceBusinessNumber] = useState('');
   const [postcodeOpen, setPostcodeOpen] = useState(false);
   const [postcodeError, setPostcodeError] = useState('');
   const [postcodeLayerHeight, setPostcodeLayerHeight] = useState(480);
@@ -406,52 +391,12 @@ export function OrderPaymentForm({
   const remainingPoints = Math.max(0, (orderUser?.pointBalance ?? 0) - appliedPoints);
   const finalTotal = toWon(payableBeforePoints - appliedPoints);
   const bankAccountLabel = [bankInfo.bankName, bankInfo.bankAccount].filter(Boolean).join(' ');
-  const hasReceiptInfo = cashReceiptType !== 'none';
 
   useEffect(() => {
     if (pointValue(pointsToUse) > maxUsablePoints) {
       setPointsToUse(maxUsablePoints > 0 ? String(maxUsablePoints) : '');
     }
   }, [maxUsablePoints, pointsToUse]);
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem(receiptStorageKey);
-    if (!stored) return;
-
-    try {
-      const receipt = JSON.parse(stored) as StoredReceiptInfo;
-      if (
-        receipt.cashReceiptType === 'none' ||
-        receipt.cashReceiptType === 'personal' ||
-        receipt.cashReceiptType === 'business'
-      ) {
-        setCashReceiptType(receipt.cashReceiptType);
-      }
-      setCashReceiptIdentity(receipt.cashReceiptIdentity ?? '');
-      setTaxInvoiceRequested(Boolean(receipt.taxInvoiceRequested));
-      setTaxInvoiceCompanyName(receipt.taxInvoiceCompanyName ?? '');
-      setTaxInvoiceBusinessNumber(receipt.taxInvoiceBusinessNumber ?? '');
-    } catch {
-      window.localStorage.removeItem(receiptStorageKey);
-    }
-  }, []);
-
-  useEffect(() => {
-    const receipt: StoredReceiptInfo = {
-      cashReceiptType,
-      cashReceiptIdentity,
-      taxInvoiceRequested,
-      taxInvoiceCompanyName,
-      taxInvoiceBusinessNumber,
-    };
-    window.localStorage.setItem(receiptStorageKey, JSON.stringify(receipt));
-  }, [
-    cashReceiptIdentity,
-    cashReceiptType,
-    taxInvoiceBusinessNumber,
-    taxInvoiceCompanyName,
-    taxInvoiceRequested,
-  ]);
 
   useEffect(() => {
     if (!postcodeOpen) return;
@@ -792,7 +737,7 @@ export function OrderPaymentForm({
                           type="button"
                           disabled={maxUsablePoints <= 0}
                           onClick={() => setPointsToUse(String(maxUsablePoints))}
-                          className="min-h-11 shrink-0 rounded-md border border-neutral-900 px-3 text-xs font-bold text-neutral-900 disabled:border-neutral-200 disabled:text-neutral-300"
+                          className="min-h-11 shrink-0 rounded-md border border-neutral-900 bg-neutral-900 px-3 text-xs font-bold text-white transition-colors hover:bg-neutral-800 disabled:border-neutral-200 disabled:bg-neutral-100 disabled:text-neutral-300"
                         >
                           전액사용
                         </button>
@@ -865,83 +810,6 @@ export function OrderPaymentForm({
                       />
                     </div>
                   </label>
-                </div>
-              </FormSection>
-
-              <FormSection
-                icon={ReceiptText}
-                title="증빙 신청"
-                description="현금영수증 또는 세금계산서가 필요하면 정보를 입력해 주세요."
-              >
-                <div className="grid gap-3 md:grid-cols-2">
-                  <label className={`block ${hasReceiptInfo ? '' : 'md:col-span-2'}`}>
-                    <span className={labelClass}>현금영수증</span>
-                    <SelectField
-                      name="cashReceiptType"
-                      value={cashReceiptType}
-                      onChange={(value) =>
-                        setCashReceiptType(
-                          value === 'personal' || value === 'business' ? value : 'none',
-                        )
-                      }
-                    >
-                      <option value="none">신청 안 함</option>
-                      <option value="personal">개인 소득공제</option>
-                      <option value="business">사업자 지출증빙</option>
-                    </SelectField>
-                  </label>
-                  {hasReceiptInfo ? (
-                    <label className="block">
-                      <span className={labelClass}>휴대폰/사업자번호</span>
-                      <input
-                        name="cashReceiptIdentity"
-                        value={cashReceiptIdentity}
-                        onChange={(event) =>
-                          setCashReceiptIdentity(event.target.value.slice(0, 40))
-                        }
-                        className={fieldClass}
-                        placeholder="번호를 입력해 주세요"
-                      />
-                    </label>
-                  ) : null}
-                  <label className="flex min-h-11 items-center gap-2 text-sm text-neutral-700 md:col-span-2">
-                    <input
-                      name="taxInvoiceRequested"
-                      type="checkbox"
-                      checked={taxInvoiceRequested}
-                      onChange={(event) => setTaxInvoiceRequested(event.target.checked)}
-                      className="h-4 w-4"
-                    />
-                    <span>세금계산서를 신청합니다.</span>
-                  </label>
-                  {taxInvoiceRequested ? (
-                    <>
-                      <label className="block">
-                        <span className={labelClass}>상호명</span>
-                        <input
-                          name="taxInvoiceCompanyName"
-                          value={taxInvoiceCompanyName}
-                          onChange={(event) =>
-                            setTaxInvoiceCompanyName(event.target.value.slice(0, 100))
-                          }
-                          className={fieldClass}
-                          placeholder="상호명을 입력해 주세요"
-                        />
-                      </label>
-                      <label className="block">
-                        <span className={labelClass}>사업자등록번호</span>
-                        <input
-                          name="taxInvoiceBusinessNumber"
-                          value={taxInvoiceBusinessNumber}
-                          onChange={(event) =>
-                            setTaxInvoiceBusinessNumber(event.target.value.slice(0, 20))
-                          }
-                          className={fieldClass}
-                          placeholder="사업자등록번호를 입력해 주세요"
-                        />
-                      </label>
-                    </>
-                  ) : null}
                 </div>
               </FormSection>
 

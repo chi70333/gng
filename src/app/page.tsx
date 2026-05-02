@@ -52,30 +52,6 @@ export default async function HomePage() {
       </Suspense>
       <main className="flex-1">
         <div className="mx-auto max-w-screen-xl space-y-12 px-4 py-6">
-          <section
-            className="relative min-h-[280px] overflow-hidden rounded-2xl bg-neutral-900 text-white"
-            aria-label="메인 배너"
-          >
-            <div className="relative z-10 flex h-full flex-col justify-center px-8 py-12 md:px-16">
-              <span className="mb-2 text-xs font-semibold uppercase tracking-widest text-neutral-400">
-                새 시즌
-              </span>
-              <h1 className="mb-4 text-3xl font-extrabold leading-tight md:text-5xl">
-                새로운 상품을
-                <br className="md:hidden" /> 만나보세요
-              </h1>
-              <p className="mb-6 max-w-sm text-sm text-neutral-300 md:text-base">
-                지금 가장 인기 있는 스타일을 GNG에서 먼저 확인하세요.
-              </p>
-              <Link
-                href={rootCategories[0] ? `/category/${rootCategories[0].slug}` : '/search'}
-                className="inline-flex h-11 w-fit items-center justify-center rounded-xl bg-white px-6 text-sm font-semibold text-neutral-900 transition-colors hover:bg-neutral-100"
-              >
-                쇼핑 시작하기
-              </Link>
-            </div>
-          </section>
-
           {rootCategories.length > 0 && (
             <section aria-labelledby="category-heading" className="space-y-4">
               <div className="flex items-end justify-between gap-4">
