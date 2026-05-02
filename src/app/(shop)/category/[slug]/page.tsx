@@ -22,6 +22,7 @@ import {
 import { auth } from '@/server/auth';
 import { canViewMemberPrice } from '@/server/auth-utils';
 import { formatNumber } from '@/lib/format';
+import { cn } from '@/lib/cn';
 import type { SortOption } from '@/server/repositories/product.repository';
 import type { SerializedCategory } from '@/server/repositories/category.repository';
 
@@ -146,32 +147,37 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
         {/* 메인 콘텐츠 */}
         <div className="min-w-0 flex-1">
           {/* 헤더 */}
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="mb-5 flex flex-col gap-3 border-b border-neutral-100 pb-5 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">
               {parentCategory && (
-                <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2 text-sm">
+                <div className="mb-1 flex min-w-0 flex-wrap items-center gap-2">
                   <Link
                     href={`/category/${parentCategory.slug}`}
                     aria-label={`${parentCategory.name} 상위 카테고리로 이동`}
-                    className="inline-flex min-h-11 max-w-full items-center rounded-lg border border-neutral-200 bg-white px-3 font-medium text-neutral-700 transition-colors hover:border-neutral-400 hover:text-neutral-950"
+                    className="inline-flex min-h-11 max-w-full items-center font-bold text-neutral-950 transition-colors hover:text-neutral-600"
                   >
-                    <span className="truncate">{parentCategory.name}</span>
+                    <span className="truncate text-2xl md:text-3xl">{parentCategory.name}</span>
                   </Link>
                   <ChevronRight
-                    size={16}
+                    size={18}
                     className="shrink-0 text-neutral-300"
                     aria-hidden="true"
                   />
-                  <span className="inline-flex min-h-8 items-center rounded-full bg-neutral-900 px-3 text-xs font-semibold text-white">
+                  <span className="inline-flex min-h-8 items-center rounded-full bg-neutral-100 px-2.5 text-xs font-semibold text-neutral-600">
                     하위 카테고리
                   </span>
                 </div>
               )}
-              <h1 className="truncate text-2xl font-bold text-neutral-950 md:text-3xl">
+              <h1
+                className={cn(
+                  'truncate font-bold text-neutral-950',
+                  parentCategory ? 'text-xl md:text-2xl' : 'text-2xl md:text-3xl',
+                )}
+              >
                 {category.name}
               </h1>
               <p className="mt-1 text-sm text-neutral-500">
-                {parentCategory ? `${parentCategory.name} 하위 카테고리 · ` : ''}
+                {parentCategory ? `${parentCategory.name}의 하위 카테고리 · ` : ''}
                 {formatNumber(result.total)}개 상품
               </p>
             </div>

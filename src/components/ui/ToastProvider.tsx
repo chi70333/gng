@@ -87,9 +87,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-neutral-900">{toast.title}</p>
                 {toast.description && (
-                  <p className="mt-0.5 text-xs leading-5 text-neutral-500">
-                    {toast.description}
-                  </p>
+                  <p className="mt-0.5 text-xs leading-5 text-neutral-500">{toast.description}</p>
                 )}
                 {toast.action && (
                   <button
@@ -98,7 +96,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                       toast.action?.onClick();
                       removeToast(toast.id);
                     }}
-                    className="mt-2 min-h-8 text-xs font-semibold text-neutral-900 underline"
+                    className="mt-2 inline-flex min-h-11 items-center text-xs font-semibold text-neutral-900 underline"
                   >
                     {toast.action.label}
                   </button>
@@ -108,7 +106,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 type="button"
                 aria-label="알림 닫기"
                 onClick={() => removeToast(toast.id)}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
               >
                 <X size={16} />
               </button>

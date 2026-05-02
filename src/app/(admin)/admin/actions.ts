@@ -150,6 +150,7 @@ function adminMileageErrorMessage(error: unknown): string {
 }
 
 const ADMIN_MILEAGE_RESET_ALL_BATCH_SIZE = 200;
+const ADMIN_MILEAGE_IMPORT_TRANSACTION_TIMEOUT_MS = 15000;
 
 async function createBulkPointLedgerEntries(
   tx: Prisma.TransactionClient,
@@ -181,8 +182,7 @@ async function createBulkPointLedgerEntries(
 
   const rows = users.map((user) => {
     const previousBalance = user.pointHistories[0]?.balance ?? 0;
-    const nextBalance =
-      input.intent === 'mileage-reset' ? 0 : previousBalance + input.delta;
+    const nextBalance = input.intent === 'mileage-reset' ? 0 : previousBalance + input.delta;
 
     if (nextBalance < 0) {
       throw new Error('POINT_BALANCE_NEGATIVE');
@@ -1498,6 +1498,78 @@ function uniqueStrings(values: (string | undefined)[]): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value)))];
 }
 
+type MileageImportOperation = {
+  userId: bigint;
+  record: MileageUploadRecord;
+};
+
+async function applyMileageImportOperations(
+  operations: MileageImportOperation[],
+): Promise<{ updated: number; skipped: number }> {
+  if (operations.length === 0) return { updated: 0, skipped: 0 };
+
+  return prisma.$transaction(
+    async (tx) => {
+      const userIds = uniqueBigInts(operations.map((operation) => operation.userId));
+      const users = await tx.user.findMany({
+        where: {
+          id: { in: userIds },
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          pointHistories: {
+            orderBy: { id: 'desc' },
+            take: 1,
+            select: { balance: true },
+          },
+        },
+      });
+      const balances = new Map(
+        users.map((user) => [user.id.toString(), user.pointHistories[0]?.balance ?? 0]),
+      );
+      const rows: Prisma.UserPointHistoryCreateManyInput[] = [];
+
+      for (const operation of operations) {
+        const balanceKey = operation.userId.toString();
+        const previousBalance = balances.get(balanceKey);
+        if (previousBalance == null) continue;
+
+        const nextBalance =
+          operation.record.mode === 'reset'
+            ? 0
+            : operation.record.mode === 'set'
+              ? (operation.record.amount ?? 0)
+              : previousBalance + (operation.record.amount ?? 0);
+
+        if (nextBalance < 0) {
+          throw new Error('POINT_BALANCE_NEGATIVE');
+        }
+
+        rows.push({
+          userId: operation.userId,
+          delta: nextBalance - previousBalance,
+          balance: nextBalance,
+          reason: operation.record.reason,
+        });
+        balances.set(balanceKey, nextBalance);
+      }
+
+      if (rows.length > 0) {
+        await tx.userPointHistory.createMany({
+          data: rows,
+        });
+      }
+
+      return {
+        updated: rows.length,
+        skipped: operations.length - rows.length,
+      };
+    },
+    { timeout: ADMIN_MILEAGE_IMPORT_TRANSACTION_TIMEOUT_MS },
+  );
+}
+
 function uniqueBigInts(values: (bigint | undefined)[]): bigint[] {
   const unique = new Map<string, bigint>();
   values.forEach((value) => {
@@ -1608,45 +1680,35 @@ export async function importAdminUserMileageExcel(formData: FormData) {
       });
     });
     const appliedRows = new Set<string>();
+    const operations: MileageImportOperation[] = [];
 
-    await prisma.$transaction(async (tx) => {
-      for (const record of parsed.records) {
-        const lookupKey = userLookupKey(record);
-        if (appliedRows.has(lookupKey)) {
-          skipped += 1;
-          continue;
-        }
-        appliedRows.add(lookupKey);
-
-        const user =
-          (record.userId ? byId.get(record.userId.toString()) : undefined) ??
-          (record.loginId ? byLoginId.get(record.loginId) : undefined) ??
-          (record.loginId
-            ? bySocialLoginId.get(canonicalSocialLoginId(record.loginId) ?? record.loginId)
-            : undefined) ??
-          (record.email ? byEmail.get(record.email.toLowerCase()) : undefined);
-
-        if (!user) {
-          skipped += 1;
-          continue;
-        }
-
-        if (record.mode === 'grant') {
-          await createPointLedgerEntry(tx, {
-            userId: user.id,
-            delta: record.amount ?? 0,
-            reason: record.reason,
-          });
-        } else {
-          await createPointLedgerBalanceEntry(tx, {
-            userId: user.id,
-            targetBalance: record.mode === 'reset' ? 0 : (record.amount ?? 0),
-            reason: record.reason,
-          });
-        }
-        updated += 1;
+    for (const record of parsed.records) {
+      const lookupKey = userLookupKey(record);
+      if (appliedRows.has(lookupKey)) {
+        skipped += 1;
+        continue;
       }
-    });
+      appliedRows.add(lookupKey);
+
+      const user =
+        (record.userId ? byId.get(record.userId.toString()) : undefined) ??
+        (record.loginId ? byLoginId.get(record.loginId) : undefined) ??
+        (record.loginId
+          ? bySocialLoginId.get(canonicalSocialLoginId(record.loginId) ?? record.loginId)
+          : undefined) ??
+        (record.email ? byEmail.get(record.email.toLowerCase()) : undefined);
+
+      if (!user) {
+        skipped += 1;
+        continue;
+      }
+
+      operations.push({ userId: user.id, record });
+    }
+
+    const result = await applyMileageImportOperations(operations);
+    updated += result.updated;
+    skipped += result.skipped;
   } catch (err) {
     logger.error({ err, fileName: file.name }, 'admin mileage import failed');
     redirectWithAdminUsersResult(redirectTo, { bulkError: adminMileageErrorMessage(err) });
