@@ -30,6 +30,7 @@
 | `SENTRY_DSN` | Vercel env | |
 | `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY` | Vercel env | |
 | `LEGACY_API_TOKEN` | Vercel env | 외부 API 호환용 |
+| `CRON_SECRET` | Vercel env | Vercel Cron Route Handler 인증용 |
 
 `.env.example` 에 키 이름만 기재(값은 비움).
 
@@ -49,6 +50,8 @@
 ### Cron (Vercel Cron)
 - 휴면회원 처리, 인기상품 갱신, 사이트맵 빌드 등.
 - 길어지는 작업은 cron이 QStash로 enqueue만.
+- `/api/cron/prune-api-logs`: 매일 03:00 KST 실행. `ApiCommunicationLog`의 3일 지난 로그 삭제.
+- 모든 Cron Route Handler는 `Authorization: Bearer ${CRON_SECRET}` 검증 필수.
 
 ## ISR / 캐시 사용 패턴
 

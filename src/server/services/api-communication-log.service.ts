@@ -25,6 +25,15 @@ const SECRET_KEY_PATTERN = /password|pass|token|authorization|api[-_]?key|secret
 const MAX_STRING_LENGTH = 600;
 const MAX_ARRAY_ITEMS = 12;
 const MAX_DEPTH = 4;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+export const API_COMMUNICATION_LOG_RETENTION_DAYS = 3;
+
+export type ApiCommunicationLogPruneResult = {
+  cutoff: Date;
+  deletedCount: number;
+  retentionDays: number;
+};
 
 function clipString(value: string): string {
   if (value.length <= MAX_STRING_LENGTH) return value;
@@ -59,6 +68,10 @@ function sanitizeJson(value: unknown, depth = 0): JsonLike {
 
 function jsonText(value: unknown): string {
   return JSON.stringify(sanitizeJson(value));
+}
+
+export function getApiCommunicationLogRetentionCutoff(now = new Date()): Date {
+  return new Date(now.getTime() - API_COMMUNICATION_LOG_RETENTION_DAYS * MS_PER_DAY);
 }
 
 export async function recordApiCommunicationLog(input: ApiCommunicationLogInput): Promise<void> {
@@ -97,5 +110,46 @@ export async function recordApiCommunicationLog(input: ApiCommunicationLogInput)
     `;
   } catch (err) {
     logger.error({ err, service: input.service, endpoint: input.endpoint }, 'API log write failed');
+  }
+}
+
+export async function pruneOldApiCommunicationLogs(
+  now = new Date(),
+): Promise<ApiCommunicationLogPruneResult> {
+  const cutoff = getApiCommunicationLogRetentionCutoff(now);
+
+  if (!process.env.DATABASE_URL) {
+    return {
+      cutoff,
+      deletedCount: 0,
+      retentionDays: API_COMMUNICATION_LOG_RETENTION_DAYS,
+    };
+  }
+
+  try {
+    // Raw SQL is intentional for this maintenance path: it uses a safe Prisma bind
+    // parameter and avoids depending on a freshly generated Prisma Client during cutover.
+    const deletedCount = await prisma.$executeRaw`
+      DELETE FROM "ApiCommunicationLog"
+      WHERE "createdAt" < ${cutoff}
+    `;
+
+    logger.info(
+      {
+        cutoff: cutoff.toISOString(),
+        deletedCount,
+        retentionDays: API_COMMUNICATION_LOG_RETENTION_DAYS,
+      },
+      'Old API communication logs pruned',
+    );
+
+    return {
+      cutoff,
+      deletedCount,
+      retentionDays: API_COMMUNICATION_LOG_RETENTION_DAYS,
+    };
+  } catch (err) {
+    logger.error({ err, cutoff: cutoff.toISOString() }, 'API log prune failed');
+    throw err;
   }
 }

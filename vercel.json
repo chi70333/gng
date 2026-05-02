@@ -7,5 +7,10 @@
     "src/app/api/legacy/**/route.ts": { "maxDuration": 15 },
     "src/app/api/**/route.ts": { "maxDuration": 10 }
   },
-  "crons": []
+  "crons": [
+    {
+      "path": "/api/cron/prune-api-logs",
+      "schedule": "0 18 * * *"
+    }
+  ]
 }
