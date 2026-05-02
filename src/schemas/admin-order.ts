@@ -5,6 +5,9 @@ const optionalMileageAmountSchema = z.preprocess(
   z.coerce.number().int().min(0).max(999_999_999).optional(),
 );
 
+export const ADMIN_ORDER_MILEAGE_EXCEPTION_VALUE = 2_000_000;
+export const ADMIN_ORDER_MILEAGE_EXCEPTION_QUERY = 'mileage-not-2000000';
+
 export const adminOrderStatusSchema = z.enum([
   'pending',
   'paid',
@@ -37,6 +40,7 @@ export const adminOrderListQuerySchema = z.object({
   fis: z.enum(['1', '2']).optional().default('2'),
   point_min: optionalMileageAmountSchema,
   point_max: optionalMileageAmountSchema,
+  exception: z.enum([ADMIN_ORDER_MILEAGE_EXCEPTION_QUERY]).optional(),
   trade_list_cnt: z.coerce.number().int().min(20).max(1000).optional().default(30),
   page: z.coerce.number().int().min(1).max(1000).optional().default(1),
 });

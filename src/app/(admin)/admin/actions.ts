@@ -82,6 +82,12 @@ function safeAdminProductsRedirect(value: string | undefined): string {
   return '/admin/products';
 }
 
+function safeAdminOrdersRedirect(value: string | undefined): string {
+  if (!value) return '/admin/orders';
+  if (value === '/admin/orders' || value.startsWith('/admin/orders?')) return value;
+  return '/admin/orders';
+}
+
 function redirectWithAdminProductsResult(
   redirectTo: string | undefined,
   params: Record<string, string | number>,
@@ -635,11 +641,16 @@ function buildDepthUpdates(
 async function revalidateAllCategorySurfaces() {
   const categories = await prisma.category.findMany({ select: { slug: true } });
   revalidateTag(TAGS.categoryTree);
+  revalidateTag(TAGS.dashboardCategorySections);
   for (const category of categories) {
     revalidateTag(TAGS.productList(category.slug));
     revalidateTag(TAGS.filterFacets(category.slug));
   }
-  await redis.del(keys.categoryTree()).catch(() => undefined);
+  await Promise.all([
+    redis.del(keys.categoryTree()).catch(() => undefined),
+    redis.del(keys.dashboardCategorySections(8)).catch(() => undefined),
+  ]);
+  revalidatePath('/');
 }
 
 async function revalidateProduct(product: {
@@ -649,6 +660,9 @@ async function revalidateProduct(product: {
   revalidateTag(TAGS.product(product.slug));
   revalidateTag(TAGS.bestProducts);
   revalidateTag(TAGS.newProducts);
+  revalidateTag(TAGS.dashboardCategorySections);
+  await redis.del(keys.dashboardCategorySections(8)).catch(() => undefined);
+  revalidatePath('/');
   const categories = await prisma.category.findMany({
     select: { id: true, parentId: true, slug: true },
   });
@@ -987,6 +1001,9 @@ export async function importAdminProductsCsv(formData: FormData) {
     revalidateTag(TAGS.product(product.slug));
     if (category) revalidateTag(TAGS.productList(category.slug));
   }
+  revalidateTag(TAGS.dashboardCategorySections);
+  await redis.del(keys.dashboardCategorySections(8)).catch(() => undefined);
+  revalidatePath('/');
 
   await writeAdminAuditLog({
     admin,
@@ -1159,6 +1176,7 @@ export async function updateAdminOrderStatus(formData: FormData) {
 export async function bulkUpdateAdminOrders(formData: FormData) {
   const admin = await requireAdmin('order.write');
   const intent = formString(formData, 'intent');
+  const redirectTo = safeAdminOrdersRedirect(formString(formData, 'redirectTo'));
   const orderNos = formData
     .getAll('orderNo')
     .filter((value): value is string => typeof value === 'string' && value.trim() !== '')
@@ -1179,7 +1197,7 @@ export async function bulkUpdateAdminOrders(formData: FormData) {
       payload: { orderNos },
     });
     revalidatePath('/admin/orders');
-    redirect('/admin/orders');
+    redirect(redirectTo);
   }
 
   const nextStatus = adminOrderStatusSchema.parse(formString(formData, 'bulkStatus'));
@@ -1205,7 +1223,7 @@ export async function bulkUpdateAdminOrders(formData: FormData) {
     payload: { orderNos, status: nextStatus },
   });
   revalidatePath('/admin/orders');
-  redirect('/admin/orders');
+  redirect(redirectTo);
 }
 
 export async function saveAdminShipment(formData: FormData) {
@@ -1898,6 +1916,7 @@ export async function saveAdminCategory(formData: FormData) {
     slug: formString(formData, 'slug'),
     sortOrder: formString(formData, 'sortOrder'),
     isActive: formData.get('isActive') === 'on',
+    showOnDashboard: formData.get('showOnDashboard') === 'on',
   });
 
   const category = await prisma.$transaction(async (tx) => {
@@ -1942,6 +1961,7 @@ export async function saveAdminCategory(formData: FormData) {
             depth,
             sortOrder: parsed.sortOrder,
             isActive: parsed.isActive,
+            showOnDashboard: parsed.showOnDashboard,
           },
           select: { id: true, slug: true },
         })
@@ -1954,6 +1974,7 @@ export async function saveAdminCategory(formData: FormData) {
             depth,
             sortOrder: parsed.sortOrder,
             isActive: parsed.isActive,
+            showOnDashboard: parsed.showOnDashboard,
           },
           select: { id: true, slug: true },
         });
@@ -1982,7 +2003,11 @@ export async function saveAdminCategory(formData: FormData) {
     action: parsed.id ? 'category.update' : 'category.create',
     entity: 'Category',
     entityId: category.id.toString(),
-    payload: { slug: category.slug, isActive: parsed.isActive },
+    payload: {
+      slug: category.slug,
+      isActive: parsed.isActive,
+      showOnDashboard: parsed.showOnDashboard,
+    },
   });
   await revalidateAllCategorySurfaces();
   revalidatePath('/admin/categories');

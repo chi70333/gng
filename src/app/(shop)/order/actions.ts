@@ -1,12 +1,13 @@
 'use server';
 
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
 import type { CartIdentity } from '@/server/services/cart.service';
-import { createOrderFromCart } from '@/server/services/order.service';
+import { createOrderFromCart, createOrderFromDirectItem } from '@/server/services/order.service';
 import { createOrderSchema } from '@/schemas/order';
 import { formDataValue, formDataValues } from '@/lib/form-data';
+import { legacyClientIpFromHeaders } from '@/lib/legacy-order-code';
 
 const CART_COOKIE = 'gng_cart_id';
 
@@ -18,13 +19,46 @@ async function resolveCartIdentity(): Promise<CartIdentity | null> {
   return guestId ? { type: 'guest', id: guestId } : null;
 }
 
+function parseDirectQuantity(value: FormDataEntryValue | null): number {
+  const parsed = Number(typeof value === 'string' ? value : '1');
+  if (!Number.isInteger(parsed)) return 1;
+  return Math.min(Math.max(parsed, 1), 99);
+}
+
+function isSkuId(value: FormDataEntryValue | null): value is string {
+  return typeof value === 'string' && /^[0-9]+$/.test(value);
+}
+
+function orderErrorUrl(
+  error: 'failed' | 'validation',
+  source: {
+    directSkuId: string | null;
+    directQuantity: number;
+    selectedSkuIds: string[];
+  },
+): string {
+  const params = new URLSearchParams({ error });
+  if (source.directSkuId) {
+    params.set('directSkuId', source.directSkuId);
+    params.set('quantity', String(source.directQuantity));
+  } else if (source.selectedSkuIds.length > 0) {
+    params.set('items', source.selectedSkuIds.join(','));
+  }
+  return `/order?${params.toString()}`;
+}
+
 export async function createOrderAction(formData: FormData): Promise<void> {
   const identity = await resolveCartIdentity();
-  if (!identity) redirect('/cart');
-  if (formDataValue(formData, 'agree') !== 'on') redirect('/order?error=validation');
+  const directSkuIdInput = formDataValue(formData, 'directSkuId');
+  const directSkuId = isSkuId(directSkuIdInput) ? directSkuIdInput : null;
+  const directQuantity = parseDirectQuantity(formDataValue(formData, 'directQuantity'));
   const selectedSkuIds = formDataValues(formData, 'selectedSkuIds').filter(
     (value): value is string => typeof value === 'string' && value !== '',
   );
+  const errorSource = { directSkuId, directQuantity, selectedSkuIds };
+
+  if (!identity && !directSkuId) redirect('/cart');
+  if (formDataValue(formData, 'agree') !== 'on') redirect(orderErrorUrl('validation', errorSource));
 
   const parsed = createOrderSchema.safeParse({
     buyerName: formDataValue(formData, 'buyerName'),
@@ -51,16 +85,27 @@ export async function createOrderAction(formData: FormData): Promise<void> {
     saveShippingAddress: formDataValue(formData, 'saveShippingAddress') === 'on',
     couponIssueId: formDataValue(formData, 'couponIssueId'),
     pointsToUse: formDataValue(formData, 'pointsToUse'),
-    selectedSkuIds: selectedSkuIds.length > 0 ? selectedSkuIds : undefined,
+    selectedSkuIds: !directSkuId && selectedSkuIds.length > 0 ? selectedSkuIds : undefined,
   });
 
-  if (!parsed.success) redirect('/order?error=validation');
+  if (!parsed.success) redirect(orderErrorUrl('validation', errorSource));
 
   let orderDetailUrl: string;
   try {
-    const order = await createOrderFromCart(identity, parsed.data);
+    const orderIdentity =
+      identity ?? ({ type: 'guest', id: 'direct-checkout' } satisfies CartIdentity);
+    const clientIp = legacyClientIpFromHeaders(headers());
+    const order = directSkuId
+      ? await createOrderFromDirectItem({
+          identity: orderIdentity,
+          orderInput: parsed.data,
+          skuId: directSkuId,
+          quantity: directQuantity,
+          clientIp,
+        })
+      : await createOrderFromCart(orderIdentity, parsed.data, { clientIp });
     const guestOrderParams = new URLSearchParams();
-    if (identity.type === 'guest') {
+    if (orderIdentity.type === 'guest') {
       guestOrderParams.set('phone', parsed.data.buyerPhone ?? parsed.data.phone);
     }
     const queryString = guestOrderParams.toString();
@@ -68,7 +113,7 @@ export async function createOrderAction(formData: FormData): Promise<void> {
       queryString ? `?${queryString}` : ''
     }`;
   } catch {
-    redirect('/order?error=failed');
+    redirect(orderErrorUrl('failed', errorSource));
   }
 
   redirect(orderDetailUrl);

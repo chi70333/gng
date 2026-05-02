@@ -14,8 +14,10 @@ import {
   incrementProductViewCountBySlug,
   getBestProducts,
   getNewProducts,
+  getDashboardCategorySections,
   getProductSkusByProductId,
   getFilterFacets,
+  type DashboardCategorySection,
   type ProductListParams,
   type ProductListResult,
   type ProductDetail,
@@ -166,6 +168,21 @@ export const getCachedNewProducts = unstable_cache(
     ),
   ['new-products'],
   { revalidate: TTL.BEST_PRODUCTS, tags: [TAGS.newProducts] },
+);
+
+/** 메인 카테고리 섹션 (Redis 5m + ISR 5m). */
+export const getCachedDashboardCategorySections = unstable_cache(
+  (limitPerCategory = 8): Promise<DashboardCategorySection[]> =>
+    readThroughRedis(
+      keys.dashboardCategorySections(limitPerCategory),
+      TTL.DASHBOARD_PRODUCTS,
+      () => getDashboardCategorySections(limitPerCategory),
+    ),
+  ['dashboard-category-sections'],
+  {
+    revalidate: TTL.DASHBOARD_PRODUCTS,
+    tags: [TAGS.dashboardCategorySections],
+  },
 );
 
 /** SKU 목록 — options API 에서 Edge cache 30s. */

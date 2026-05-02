@@ -10,9 +10,7 @@ import { logger } from '@/lib/logger';
 
 export const CART_TTL_SECONDS = 60 * 60 * 24 * 30;
 
-export type CartIdentity =
-  | { type: 'user'; id: string }
-  | { type: 'guest'; id: string };
+export type CartIdentity = { type: 'user'; id: string } | { type: 'guest'; id: string };
 
 export type CartItem = {
   skuId: string;
@@ -35,9 +33,7 @@ export type Cart = {
 };
 
 function cartKey(identity: CartIdentity): string {
-  return identity.type === 'user'
-    ? keys.cartUser(identity.id)
-    : keys.cartGuest(identity.id);
+  return identity.type === 'user' ? keys.cartUser(identity.id) : keys.cartGuest(identity.id);
 }
 
 function shouldUseDbCartFallback(): boolean {
@@ -194,11 +190,7 @@ export async function getCart(identity: CartIdentity): Promise<Cart> {
   return withSubtotal(await hydrateItems(await readItems(identity)));
 }
 
-export async function addCartItem(
-  identity: CartIdentity,
-  skuId: string,
-  quantity: number,
-): Promise<Cart> {
+export async function getOrderReadyItem(skuId: string, quantity: number): Promise<CartItem> {
   const sku = await prisma.productSku.findUnique({
     where: { id: BigInt(skuId) },
     include: {
@@ -226,27 +218,36 @@ export async function addCartItem(
     throw new ConflictError(String(Math.max(0, available)));
   }
 
+  return {
+    skuId,
+    productId: sku.product.id.toString(),
+    slug: sku.product.slug,
+    name: sku.product.name,
+    thumbnail: sku.product.thumbnail,
+    optionSummary: summarizeOptions(sku.optionValues),
+    unitPrice: (sku.product.salePrice ?? sku.product.price).plus(sku.priceDelta).toString(),
+    quantity,
+    addedAt: new Date().toISOString(),
+    isAvailable: true,
+    availableQuantity: available,
+    stockMessage: null,
+  };
+}
+
+export async function addCartItem(
+  identity: CartIdentity,
+  skuId: string,
+  quantity: number,
+): Promise<Cart> {
+  const checkoutItem = await getOrderReadyItem(skuId, quantity);
   const items = await readItems(identity);
   const existing = items.find((item) => item.skuId === skuId);
 
   if (existing) {
-    const nextQuantity = Math.min(existing.quantity + quantity, available, 99);
+    const nextQuantity = Math.min(existing.quantity + quantity, checkoutItem.availableQuantity, 99);
     existing.quantity = nextQuantity;
   } else {
-    items.push({
-      skuId,
-      productId: sku.product.id.toString(),
-      slug: sku.product.slug,
-      name: sku.product.name,
-      thumbnail: sku.product.thumbnail,
-      optionSummary: summarizeOptions(sku.optionValues),
-      unitPrice: (sku.product.salePrice ?? sku.product.price).plus(sku.priceDelta).toString(),
-      quantity,
-      addedAt: new Date().toISOString(),
-      isAvailable: true,
-      availableQuantity: available,
-      stockMessage: null,
-    });
+    items.push(checkoutItem);
   }
 
   await writeItems(identity, items);
@@ -318,20 +319,14 @@ export async function updateCartItem(
   return withSubtotal(await hydrateItems(nextItems));
 }
 
-export async function deleteCartItems(
-  identity: CartIdentity,
-  skuIds: string[],
-): Promise<Cart> {
+export async function deleteCartItems(identity: CartIdentity, skuIds: string[]): Promise<Cart> {
   const targets = new Set(skuIds);
   const nextItems = (await readItems(identity)).filter((item) => !targets.has(item.skuId));
   await writeItems(identity, nextItems);
   return withSubtotal(await hydrateItems(nextItems));
 }
 
-export async function mergeCart(
-  source: CartIdentity,
-  target: CartIdentity,
-): Promise<Cart> {
+export async function mergeCart(source: CartIdentity, target: CartIdentity): Promise<Cart> {
   const [sourceItems, targetItems] = await Promise.all([readItems(source), readItems(target)]);
   const merged = [...targetItems];
 

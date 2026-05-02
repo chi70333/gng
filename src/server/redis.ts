@@ -62,6 +62,7 @@ export const keys = {
     `product:list:${categorySlug}:${page}:${sort}:${limit}`,
   bestProducts: (limit: number) => `product:best:${limit}`,
   newProducts: (limit: number) => `product:new:${limit}`,
+  dashboardCategorySections: (limit: number) => `category:dashboard-sections:${limit}`,
   productView: (slug: string, visitorId: string) => `product:view:${slug}:${visitorId}`,
   categoryTree: () => 'category:tree',
   categoryLegacyIndex: (legacyIndex: number) => `category:legacy-index:${legacyIndex}`,

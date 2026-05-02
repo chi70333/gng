@@ -186,16 +186,17 @@ model Brand {
 }
 
 model Category {
-  id        BigInt     @id @default(autoincrement())
-  parentId  BigInt?
-  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id])
-  children  Category[] @relation("CategoryTree")
-  code      String     @unique
-  name      String
-  slug      String     @unique
-  depth     Int        @default(0)
-  sortOrder Int        @default(0)
-  isActive  Boolean    @default(true)
+  id              BigInt     @id @default(autoincrement())
+  parentId        BigInt?
+  parent          Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children        Category[] @relation("CategoryTree")
+  code            String     @unique
+  name            String
+  slug            String     @unique
+  depth           Int        @default(0)
+  sortOrder       Int        @default(0)
+  isActive        Boolean    @default(true)
+  showOnDashboard Boolean    @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -204,6 +205,7 @@ model Category {
   legacyMaps CategoryLegacyMap[]
 
   @@index([parentId, sortOrder])
+  @@index([showOnDashboard, isActive, sortOrder])
 }
 
 model CategoryLegacyMap {
@@ -446,6 +448,7 @@ model Order {
   @@index([userId, createdAt(sort: Desc)])
   @@index([status, createdAt(sort: Desc)])
   @@index([deletedAt, createdAt(sort: Desc)])
+  @@index([deletedAt, pointsUsed, createdAt(sort: Desc)])
   @@index([deletedAt, status, createdAt(sort: Desc)])
 }
 

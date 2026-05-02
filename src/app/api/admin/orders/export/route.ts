@@ -5,7 +5,11 @@ import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
-import { adminOrderListQuerySchema } from '@/schemas/admin-order';
+import {
+  ADMIN_ORDER_MILEAGE_EXCEPTION_QUERY,
+  ADMIN_ORDER_MILEAGE_EXCEPTION_VALUE,
+  adminOrderListQuerySchema,
+} from '@/schemas/admin-order';
 
 export const dynamic = 'force-dynamic';
 
@@ -134,6 +138,9 @@ function buildOrderWhere(
 ): Prisma.OrderWhereInput {
   const { start, endExclusive } = getDateRange(query);
   const and: Prisma.OrderWhereInput[] = [{ deletedAt: null }];
+  if (query.exception === ADMIN_ORDER_MILEAGE_EXCEPTION_QUERY) {
+    and.push({ pointsUsed: { not: ADMIN_ORDER_MILEAGE_EXCEPTION_VALUE } });
+  }
   if (query.status !== '-' && query.status !== '11') and.push({ status: query.status });
   if (query.serhs) and.push({ createdAt: { gte: start, lt: endExclusive } });
 
@@ -176,7 +183,12 @@ export async function GET(request: Request) {
   await requireAdmin('order.read');
   const url = new URL(request.url);
   const selectedOrderNos = url.searchParams.getAll('orderNo').filter(Boolean);
-  const query = adminOrderListQuerySchema.parse(Object.fromEntries(url.searchParams));
+  const rawQuery = Object.fromEntries(url.searchParams);
+  const query = adminOrderListQuerySchema.parse(
+    rawQuery.exception === ADMIN_ORDER_MILEAGE_EXCEPTION_QUERY && rawQuery.serhs == null
+      ? { ...rawQuery, serhs: '0' }
+      : rawQuery,
+  );
   const where =
     selectedOrderNos.length > 0
       ? { deletedAt: null, orderNo: { in: selectedOrderNos } }

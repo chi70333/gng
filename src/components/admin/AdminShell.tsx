@@ -2,6 +2,7 @@ import Link from 'next/link';
 import {
   Boxes,
   ClipboardList,
+  CircleAlert,
   FileText,
   Gauge,
   LogOut,
@@ -18,6 +19,11 @@ const navItems = [
   { href: '/admin', label: '대시보드', icon: Gauge },
   { href: '/admin/products', label: '상품', icon: Boxes },
   { href: '/admin/orders', label: '주문', icon: ClipboardList },
+  {
+    href: '/admin/orders?exception=mileage-not-2000000',
+    label: '예외주문',
+    icon: CircleAlert,
+  },
   { href: '/admin/users', label: '회원', icon: UsersRound },
   { href: '/admin/categories', label: '카테고리', icon: Tags },
   { href: '/admin/coupons', label: '쿠폰', icon: TicketPercent },

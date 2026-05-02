@@ -8,6 +8,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { auth } from '@/server/auth';
 import {
   getCart,
+  getOrderReadyItem,
   mergeCart,
   type CartIdentity,
   type CartItem,
@@ -206,19 +207,44 @@ function serializeOrderUser(
 
 type OrderPageProps = {
   searchParams: {
+    directSkuId?: string;
     error?: string;
     items?: string | string[];
+    quantity?: string;
   };
 };
 
+function parseDirectQuantity(quantity: string | undefined): number {
+  const parsed = Number(quantity ?? '1');
+  if (!Number.isInteger(parsed)) return 1;
+  return Math.min(Math.max(parsed, 1), 99);
+}
+
+async function getDirectOrderItems(
+  skuId: string | undefined,
+  quantity: string | undefined,
+): Promise<CartItem[] | null> {
+  if (!skuId || !/^[0-9]+$/.test(skuId)) return null;
+
+  try {
+    return [await getOrderReadyItem(skuId, parseDirectQuantity(quantity))];
+  } catch {
+    return [];
+  }
+}
+
 export default async function OrderPage({ searchParams }: OrderPageProps) {
   const session = await auth();
-  const identity = await resolveCartIdentity();
+  const directOrderItems = await getDirectOrderItems(
+    searchParams.directSkuId,
+    searchParams.quantity,
+  );
+  const identity = directOrderItems ? null : await resolveCartIdentity();
   const cart = identity ? await getCart(identity) : { items: [], subtotal: '0' };
-  const selectedSkuIds = parseSelectedSkuIds(searchParams.items);
-  const orderItems = selectedSkuIds
-    ? cart.items.filter((item) => selectedSkuIds.has(item.skuId))
-    : cart.items;
+  const selectedSkuIds = directOrderItems ? null : parseSelectedSkuIds(searchParams.items);
+  const orderItems =
+    directOrderItems ??
+    (selectedSkuIds ? cart.items.filter((item) => selectedSkuIds.has(item.skuId)) : cart.items);
   const subtotal = calculateSubtotal(orderItems);
   const shippingFee = subtotal.gte(50000) ? new Decimal(0) : new Decimal(3000);
   const orderUser = await getOrderUserData(session?.user?.email ?? null, subtotal);
@@ -249,6 +275,9 @@ export default async function OrderPage({ searchParams }: OrderPageProps) {
       sessionEmail={session?.user?.email ?? null}
       cartItems={serializeCartItems(orderItems)}
       selectedSkuIds={orderItems.map((item) => item.skuId)}
+      checkoutSource={directOrderItems ? 'direct' : 'cart'}
+      directSkuId={directOrderItems ? searchParams.directSkuId : undefined}
+      directQuantity={directOrderItems ? parseDirectQuantity(searchParams.quantity) : undefined}
       subtotal={Number(subtotal.toString())}
       shippingFee={Number(shippingFee.toString())}
       hasUnavailableItem={hasUnavailableItem}

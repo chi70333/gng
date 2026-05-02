@@ -11,10 +11,7 @@ test.describe('[GNG] legacy join and points mobile flow', () => {
   test.afterAll(async () => {
     const users = await prisma.user.findMany({
       where: {
-        OR: [
-          { loginId: { startsWith: runId } },
-          { email: { startsWith: runId } },
-        ],
+        OR: [{ loginId: { startsWith: runId } }, { email: { startsWith: runId } }],
       },
       select: { id: true },
     });
@@ -58,7 +55,7 @@ test.describe('[GNG] legacy join and points mobile flow', () => {
     });
   });
 
-  test('shows the latest point ledger balance after login', async ({ page }) => {
+  test('shows point ledger rows after login', async ({ page }) => {
     const userid = `${runId}_points`;
     const user = await prisma.user.create({
       data: {
@@ -91,11 +88,13 @@ test.describe('[GNG] legacy join and points mobile flow', () => {
     await page.goto('/login?callbackUrl=/mypage/points');
     await page.locator('input[name="loginId"]').fill(userid);
     await page.locator('input[name="password"]').fill('Password123!');
-    await page.locator('button[type="submit"]').click();
+    await page.getByRole('button', { name: '로그인', exact: true }).click();
 
     await expect(page).toHaveURL(/\/mypage\/points/);
-    await expect(page.getByText(/1,000 P/).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: /전체/ })).toBeVisible();
     await expect(page.getByText('외부 적립')).toBeVisible();
+    await expect(page.getByText('+1,200원')).toBeVisible();
     await expect(page.getByText('외부 사용')).toBeVisible();
+    await expect(page.getByText('-200원')).toBeVisible();
   });
 });

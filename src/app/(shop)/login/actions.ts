@@ -18,11 +18,19 @@ function isRedirectError(err: unknown): boolean {
 }
 
 function isSocialProviderConfigured(provider: 'kakao' | 'naver'): boolean {
+  if (isDevelopmentKakaoAutoLogin(provider)) {
+    return true;
+  }
+
   if (provider === 'kakao') {
     return Boolean(process.env.KAKAO_CLIENT_ID);
   }
 
   return Boolean(process.env.NAVER_CLIENT_ID && process.env.NAVER_CLIENT_SECRET);
+}
+
+function isDevelopmentKakaoAutoLogin(provider: 'kakao' | 'naver'): boolean {
+  return process.env.NODE_ENV === 'development' && provider === 'kakao';
 }
 
 export async function loginAction(formData: FormData): Promise<void> {
@@ -75,6 +83,21 @@ export async function socialLoginAction(formData: FormData): Promise<void> {
     maxAge: SOCIAL_PENDING_MAX_AGE,
     path: '/',
   });
+
+  if (isDevelopmentKakaoAutoLogin(parsed.data.provider)) {
+    try {
+      await signIn('development-kakao', {
+        redirectTo: parsed.data.callbackUrl,
+      });
+    } catch (err) {
+      if (isRedirectError(err)) throw err;
+      if (err instanceof AuthError) {
+        redirect('/login?error=dev_kakao');
+      }
+      redirect('/login?error=unknown');
+    }
+    return;
+  }
 
   await signIn(parsed.data.provider, {
     redirectTo: parsed.data.callbackUrl,

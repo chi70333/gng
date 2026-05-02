@@ -68,6 +68,9 @@ export type OrderPaymentFormProps = {
   sessionEmail: string | null;
   cartItems: PaymentCartItem[];
   selectedSkuIds: string[];
+  checkoutSource: 'cart' | 'direct';
+  directSkuId?: string;
+  directQuantity?: number;
   subtotal: number;
   shippingFee: number;
   hasUnavailableItem: boolean;
@@ -348,6 +351,9 @@ export function OrderPaymentForm({
   sessionEmail,
   cartItems,
   selectedSkuIds,
+  checkoutSource,
+  directSkuId,
+  directQuantity,
   hasUnavailableItem,
   bankInfo,
   error,
@@ -508,9 +514,16 @@ export function OrderPaymentForm({
             )}
 
             <form action={createOrderAction} className="space-y-4">
-              {visibleSkuIds.map((skuId) => (
-                <input key={skuId} type="hidden" name="selectedSkuIds" value={skuId} />
-              ))}
+              {checkoutSource === 'direct' ? (
+                <>
+                  <input type="hidden" name="directSkuId" value={directSkuId ?? ''} />
+                  <input type="hidden" name="directQuantity" value={String(directQuantity ?? 1)} />
+                </>
+              ) : (
+                visibleSkuIds.map((skuId) => (
+                  <input key={skuId} type="hidden" name="selectedSkuIds" value={skuId} />
+                ))
+              )}
               <FormSection
                 icon={UserRound}
                 title="구매자 정보"
@@ -841,7 +854,7 @@ export function OrderPaymentForm({
                   />
                 </label>
                 <label className="mt-4 flex min-h-11 items-start gap-2 rounded-md bg-neutral-50 px-3 py-3 text-sm leading-5 text-neutral-700">
-                  <input name="agree" type="checkbox" required className="h-4 w-4" />
+                  <input name="agree" type="checkbox" required defaultChecked className="h-4 w-4" />
                   <span>상품, 결제 금액, 배송 정보를 확인했으며 구매 진행에 동의합니다.</span>
                 </label>
               </section>
@@ -897,16 +910,18 @@ export function OrderPaymentForm({
                       {formatKRW(itemTotal(item))}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    disabled={Boolean(deletingSkuId)}
-                    onClick={() => void removeOrderItem(item.skuId)}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-neutral-200 text-neutral-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:border-neutral-100 disabled:text-neutral-300"
-                    aria-label={`${item.name} 삭제`}
-                    title="삭제"
-                  >
-                    <Trash2 aria-hidden="true" size={17} />
-                  </button>
+                  {checkoutSource === 'cart' && (
+                    <button
+                      type="button"
+                      disabled={Boolean(deletingSkuId)}
+                      onClick={() => void removeOrderItem(item.skuId)}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-neutral-200 text-neutral-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:border-neutral-100 disabled:text-neutral-300"
+                      aria-label={`${item.name} 삭제`}
+                      title="삭제"
+                    >
+                      <Trash2 aria-hidden="true" size={17} />
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

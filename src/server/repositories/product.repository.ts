@@ -85,6 +85,15 @@ export interface ProductListResult {
   totalPages: number;
 }
 
+export interface DashboardCategorySection {
+  category: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+  products: ProductSummary[];
+}
+
 export type ProductSearchSortOption =
   | 'relevance'
   | 'new'
@@ -455,6 +464,53 @@ export async function getNewProducts(limit = 8): Promise<ProductSummary[]> {
     },
   });
   return rows.map(serializeSummary);
+}
+
+/** 메인 대시보드 표시 카테고리별 상품 섹션. CategoryOnProduct include로 N+1을 피한다. */
+export async function getDashboardCategorySections(
+  limitPerCategory = 8,
+): Promise<DashboardCategorySection[]> {
+  const categories = await prisma.category.findMany({
+    where: { isActive: true, showOnDashboard: true },
+    orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      products: {
+        where: { product: { status: 'active', deletedAt: null } },
+        orderBy: [{ sortOrder: 'asc' }, { productId: 'desc' }],
+        take: limitPerCategory,
+        select: {
+          product: {
+            select: {
+              id: true,
+              sku: true,
+              slug: true,
+              name: true,
+              summary: true,
+              price: true,
+              salePrice: true,
+              status: true,
+              thumbnail: true,
+              soldCount: true,
+              viewCount: true,
+              brand: { select: { id: true, name: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  return categories.map((category) => ({
+    category: {
+      id: category.id.toString(),
+      name: category.name,
+      slug: category.slug,
+    },
+    products: category.products.map((relation) => serializeSummary(relation.product)),
+  }));
 }
 
 /** 상품 ID 기준 활성 SKU 목록. options API 에서 사용. */

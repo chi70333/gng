@@ -8,17 +8,23 @@ import {
   clearCart,
   deleteCartItems,
   getCart,
+  getOrderReadyItem,
   type CartIdentity,
   type CartItem,
 } from '@/server/services/cart.service';
 import { calculateCouponDiscount, markCouponUsed } from '@/server/services/coupon.service';
 import { createPointLedgerEntry, getPointBalance } from '@/server/services/point-ledger.service';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '@/lib/errors';
+import { createLegacyOrderCode } from '@/lib/legacy-order-code';
 import type { CreateOrderInput } from '@/schemas/order';
 
 type CreatedOrder = {
   orderNo: string;
   total: string;
+};
+
+type CreateOrderOptions = {
+  clientIp?: string | null;
 };
 
 type OrderReleaseTarget = {
@@ -50,19 +56,23 @@ const FINALIZED_STOCK_STATUSES = new Set([
 ]);
 const TERMINAL_REVERSAL_STATUSES = new Set(['cancelled', 'refunded']);
 
-function createOrderNo(): string {
-  const now = new Date();
-  const stamp = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0'),
-    String(now.getHours()).padStart(2, '0'),
-    String(now.getMinutes()).padStart(2, '0'),
-    String(now.getSeconds()).padStart(2, '0'),
-  ].join('');
-  return `GNG${stamp}${Math.floor(Math.random() * 10000)
-    .toString()
-    .padStart(4, '0')}`;
+async function createUniqueLegacyOrderNo(
+  tx: Prisma.TransactionClient,
+  clientIp?: string | null,
+): Promise<string> {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const orderNo = createLegacyOrderCode({ clientIp });
+    const exists = await tx.order.findFirst({
+      where: {
+        OR: [{ orderNo }, { legacyTradeCode: orderNo }],
+      },
+      select: { id: true },
+    });
+
+    if (!exists) return orderNo;
+  }
+
+  throw new ConflictError('주문번호 생성에 실패했습니다. 다시 시도해 주세요.');
 }
 
 function getPaymentProvider(method: string): string {
@@ -262,12 +272,12 @@ export async function transitionOrderStatus(
   });
 }
 
-export async function createOrderFromCart(
+async function createOrderFromItems(
   identity: CartIdentity,
   input: CreateOrderInput,
+  orderItems: CartItem[],
+  options: CreateOrderOptions = {},
 ): Promise<CreatedOrder> {
-  const cart = await getCart(identity);
-  const orderItems = getOrderItems(cart.items, input.selectedSkuIds);
   if (orderItems.length === 0) {
     throw new ValidationError('Cart is empty.');
   }
@@ -279,7 +289,7 @@ export async function createOrderFromCart(
   const shippingBaseFee = getShippingBaseFee(subtotal);
   const shippingExtraFee = getRemoteAreaShippingFee(input.zipCode);
   const shippingFee = shippingBaseFee.plus(shippingExtraFee);
-  const orderNo = createOrderNo();
+  let orderNo = '';
 
   const user =
     identity.type === 'user'
@@ -300,6 +310,7 @@ export async function createOrderFromCart(
   let finalTotal = subtotal.plus(shippingFee);
 
   await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    orderNo = await createUniqueLegacyOrderNo(tx, options.clientIp);
     let discount = new Decimal(0);
     let couponIssueId: bigint | null = null;
 
@@ -345,6 +356,7 @@ export async function createOrderFromCart(
     const order = await tx.order.create({
       data: {
         orderNo,
+        legacyTradeCode: orderNo,
         userId,
         status: 'pending',
         subtotal,
@@ -444,6 +456,18 @@ export async function createOrderFromCart(
     }
   });
 
+  return { orderNo, total: finalTotal.toString() };
+}
+
+export async function createOrderFromCart(
+  identity: CartIdentity,
+  input: CreateOrderInput,
+  options: CreateOrderOptions = {},
+): Promise<CreatedOrder> {
+  const cart = await getCart(identity);
+  const orderItems = getOrderItems(cart.items, input.selectedSkuIds);
+  const order = await createOrderFromItems(identity, input, orderItems, options);
+
   if (input.selectedSkuIds) {
     await deleteCartItems(
       identity,
@@ -452,7 +476,21 @@ export async function createOrderFromCart(
   } else {
     await clearCart(identity);
   }
-  return { orderNo, total: finalTotal.toString() };
+
+  return order;
+}
+
+export async function createOrderFromDirectItem(input: {
+  identity: CartIdentity;
+  orderInput: CreateOrderInput;
+  skuId: string;
+  quantity: number;
+  clientIp?: string | null;
+}): Promise<CreatedOrder> {
+  const checkoutItem = await getOrderReadyItem(input.skuId, input.quantity);
+  return createOrderFromItems(input.identity, input.orderInput, [checkoutItem], {
+    clientIp: input.clientIp,
+  });
 }
 
 export async function cancelUserOrder(input: {

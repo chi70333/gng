@@ -34,14 +34,14 @@ function SortSelectInner({ currentSort }: SortSelectProps) {
 
   return (
     <div className="flex items-center gap-2">
-      <label htmlFor="sort-select" className="text-sm text-neutral-500 shrink-0">
+      <label htmlFor="sort-select" className="shrink-0 text-sm text-neutral-500">
         정렬
       </label>
       <select
         id="sort-select"
         value={currentSort}
         onChange={(e) => handleChange(e.target.value as SortValue)}
-        className="h-9 pl-3 pr-8 text-sm bg-white border border-neutral-200 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-neutral-300"
+        className="h-11 cursor-pointer appearance-none rounded-lg border border-neutral-200 bg-white pl-3 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-300"
       >
         {SORT_OPTIONS.map((opt) => (
           <option key={opt.value} value={opt.value}>

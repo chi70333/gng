@@ -51,13 +51,15 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
               ? '소셜 로그인이 아직 설정되지 않았습니다.'
               : searchParams.error === 'Configuration'
                 ? '간편 로그인 설정을 확인하는 중입니다. 잠시 후 다시 시도해 주세요.'
-              : searchParams.error === 'social_expired'
-                ? '간편 회원가입 시간이 만료되었습니다. 다시 로그인해 주세요.'
-                : searchParams.error === 'AccessDenied'
-                  ? '간편 로그인 계정 확인이 필요합니다. 다시 시도해 주세요.'
-                  : searchParams.error === 'unknown'
-                    ? '로그인에 실패했습니다. 다시 시도해 주세요.'
-                    : null;
+                : searchParams.error === 'dev_kakao'
+                  ? '개발용 카카오 로그인 계정을 찾을 수 없습니다.'
+                  : searchParams.error === 'social_expired'
+                    ? '간편 회원가입 시간이 만료되었습니다. 다시 로그인해 주세요.'
+                    : searchParams.error === 'AccessDenied'
+                      ? '간편 로그인 계정 확인이 필요합니다. 다시 시도해 주세요.'
+                      : searchParams.error === 'unknown'
+                        ? '로그인에 실패했습니다. 다시 시도해 주세요.'
+                        : null;
 
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-8rem)] w-full max-w-md flex-col justify-center px-4 py-8">

@@ -23,6 +23,11 @@ import {
   sanitizeCallbackUrl,
 } from '@/server/services/social-pending.service';
 
+if (process.env.NODE_ENV !== 'production') {
+  delete process.env.AUTH_URL;
+  delete process.env.NEXTAUTH_URL;
+}
+
 function isSocialProvider(provider: string): provider is SocialProvider {
   return provider === 'kakao' || provider === 'naver';
 }
@@ -46,6 +51,8 @@ function asOptionalNumber(value: unknown): number | undefined {
 }
 
 function canonicalSiteOrigin(): string | null {
+  if (process.env.NODE_ENV !== 'production') return null;
+
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
   if (!siteUrl) return null;
 
@@ -60,6 +67,45 @@ function canonicalSiteOrigin(): string | null {
 
 function isSafeRelativePath(value: string): boolean {
   return value.startsWith('/') && !value.startsWith('//');
+}
+
+const developmentKakaoLoginId = 'kakao-4852070309';
+const developmentKakaoProviderUid = '4852070309';
+
+async function verifyDevelopmentKakaoUser() {
+  if (process.env.NODE_ENV !== 'development') return null;
+
+  const user = await prisma.user.findFirst({
+    where: {
+      status: 'active',
+      OR: [
+        { loginId: developmentKakaoLoginId },
+        {
+          socialAccounts: {
+            some: {
+              provider: 'kakao',
+              providerUid: developmentKakaoProviderUid,
+            },
+          },
+        },
+      ],
+    },
+    select: { id: true, email: true, name: true },
+  });
+
+  if (!user) return null;
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date(), loginCount: { increment: 1 } },
+  });
+
+  return {
+    id: user.id.toString(),
+    email: user.email,
+    name: user.name,
+    userKind: 'member' as const,
+  };
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -122,6 +168,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         };
       },
     }),
+    ...(process.env.NODE_ENV === 'development'
+      ? [
+          Credentials({
+            id: 'development-kakao',
+            credentials: {},
+            async authorize() {
+              return verifyDevelopmentKakaoUser();
+            },
+          }),
+        ]
+      : []),
     ...(process.env.KAKAO_CLIENT_ID
       ? [
           Kakao({

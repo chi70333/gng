@@ -169,10 +169,12 @@ describe('admin schemas', () => {
     const parsed = adminOrderListQuerySchema.parse({
       point_min: '1000',
       point_max: '',
+      exception: 'mileage-not-2000000',
     });
 
     expect(parsed.point_min).toBe(1000);
     expect(parsed.point_max).toBeUndefined();
+    expect(parsed.exception).toBe('mileage-not-2000000');
   });
 
   it('allows positive and negative point adjustments', () => {

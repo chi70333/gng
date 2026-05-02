@@ -4,7 +4,15 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Prisma } from '@prisma/client';
-import { CalendarDays, Check, Download, Filter, RotateCcw, Search } from 'lucide-react';
+import {
+  CalendarDays,
+  Check,
+  CircleAlert,
+  Download,
+  Filter,
+  RotateCcw,
+  Search,
+} from 'lucide-react';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
 import { formatKRW, formatNumber } from '@/lib/format';
@@ -28,7 +36,11 @@ import {
   adminPrimaryButtonClass,
   adminSecondaryButtonClass,
 } from '@/components/admin/AdminUI';
-import { adminOrderListQuerySchema } from '@/schemas/admin-order';
+import {
+  ADMIN_ORDER_MILEAGE_EXCEPTION_QUERY,
+  ADMIN_ORDER_MILEAGE_EXCEPTION_VALUE,
+  adminOrderListQuerySchema,
+} from '@/schemas/admin-order';
 import { bulkUpdateAdminOrders, updateAdminOrderStatus } from '../../actions';
 
 export const dynamic = 'force-dynamic';
@@ -82,6 +94,7 @@ type OrderSearchParams = {
   fis?: string;
   point_min?: string;
   point_max?: string;
+  exception?: string;
   trade_list_cnt?: string;
   page?: string;
   sort?: string;
@@ -242,6 +255,10 @@ function buildPointsUsedWhere(
   };
 }
 
+function isMileageExceptionQuery(exception: string | undefined): boolean {
+  return exception === ADMIN_ORDER_MILEAGE_EXCEPTION_QUERY;
+}
+
 function readJsonString(value: unknown, keys: string[]): string {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
   const record = value as Record<string, unknown>;
@@ -276,11 +293,18 @@ export default async function AdminOrdersPage({
   searchParams: OrderSearchParams;
 }) {
   await requireAdmin('order.read');
-  const query = adminOrderListQuerySchema.parse(searchParams);
+  const query = adminOrderListQuerySchema.parse(
+    isMileageExceptionQuery(searchParams.exception) && searchParams.serhs == null
+      ? { ...searchParams, serhs: '0' }
+      : searchParams,
+  );
   const sortState = parseOrderSort(searchParams);
   const { startParts, endParts, start, endExclusive } = getDateRange(query);
 
   const and: Prisma.OrderWhereInput[] = [{ deletedAt: null }];
+  if (query.exception === ADMIN_ORDER_MILEAGE_EXCEPTION_QUERY) {
+    and.push({ pointsUsed: { not: ADMIN_ORDER_MILEAGE_EXCEPTION_VALUE } });
+  }
   if (query.status !== '-' && query.status !== '11') and.push({ status: query.status });
   if (query.serhs) and.push({ createdAt: { gte: start, lt: endExclusive } });
 
@@ -326,7 +350,13 @@ export default async function AdminOrdersPage({
       },
     }),
     prisma.order.count({
-      where: { deletedAt: null, createdAt: { gte: todayStart, lt: todayEnd } },
+      where: {
+        deletedAt: null,
+        createdAt: { gte: todayStart, lt: todayEnd },
+        ...(query.exception === ADMIN_ORDER_MILEAGE_EXCEPTION_QUERY
+          ? { pointsUsed: { not: ADMIN_ORDER_MILEAGE_EXCEPTION_VALUE } }
+          : {}),
+      },
     }),
   ]);
   const hasNext = orderRows.length > pageSize;
@@ -343,6 +373,9 @@ export default async function AdminOrdersPage({
       : [0, { _sum: { total: null, subtotal: null, pointsUsed: null } }];
 
   const params = new URLSearchParams();
+  if (query.exception === ADMIN_ORDER_MILEAGE_EXCEPTION_QUERY) {
+    params.set('exception', ADMIN_ORDER_MILEAGE_EXCEPTION_QUERY);
+  }
   appendParams(params, 'card', query.card);
   appendParams(params, 'paym', query.paym);
   if (query.status !== '-') params.set('status', query.status);
@@ -365,6 +398,10 @@ export default async function AdminOrdersPage({
   }
   const baseHref = `/admin/orders?${params.toString()}`;
   const exportHref = `/api/admin/orders/export?${params.toString()}`;
+  const isMileageException = query.exception === ADMIN_ORDER_MILEAGE_EXCEPTION_QUERY;
+  const resetHref = isMileageException
+    ? `/admin/orders?exception=${ADMIN_ORDER_MILEAGE_EXCEPTION_QUERY}`
+    : '/admin/orders';
   const totalAmount = totals._sum.total ?? new Prisma.Decimal(0);
   const mileageIncludedTotal = totalAmount.plus(totals._sum.pointsUsed ?? 0);
   const getSortHref = (sort: string, dir: AdminSortDirection) => {
@@ -378,7 +415,7 @@ export default async function AdminOrdersPage({
     }
     nextParams.delete('page');
     const nextQuery = nextParams.toString();
-    return nextQuery ? `/admin/orders?${nextQuery}` : '/admin/orders';
+    return nextQuery ? `/admin/orders?${nextQuery}` : resetHref;
   };
   const today = new Date();
   const todayParts = datePartsFrom(today);
@@ -434,10 +471,11 @@ export default async function AdminOrdersPage({
   return (
     <div className="min-w-0 space-y-4">
       <AdminPageHeader
-        title="주문 관리"
+        title={isMileageException ? '예외주문' : '주문 관리'}
         description={
           <>
-            오늘 주문 <span className="font-bold text-blue-700">{formatNumber(todayCount)}건</span>
+            {isMileageException ? '오늘 예외주문' : '오늘 주문'}{' '}
+            <span className="font-bold text-blue-700">{formatNumber(todayCount)}건</span>
           </>
         }
         actions={
@@ -453,13 +491,18 @@ export default async function AdminOrdersPage({
         description={
           activeFilterCount > 0
             ? `${formatNumber(activeFilterCount)}개 조건 적용 중`
-            : '전체 주문 기준'
+            : isMileageException
+              ? '마일리지 2,000,000원 사용 주문 제외'
+              : '전체 주문 기준'
         }
         icon={Filter}
         bodyClassName="p-0"
       >
         <form className="p-3 sm:p-4" method="get">
-          <input type="hidden" name="serhs" value="1" />
+          <input type="hidden" name="serhs" value={isMileageException ? query.serhs : 1} />
+          {isMileageException ? (
+            <input type="hidden" name="exception" value={ADMIN_ORDER_MILEAGE_EXCEPTION_QUERY} />
+          ) : null}
           <input type="hidden" name="fis" value="2" />
           <input type="hidden" name="trade_list_cnt" value={pageSize} />
 
@@ -534,6 +577,7 @@ export default async function AdminOrdersPage({
                 <div className="flex flex-wrap items-center gap-1.5">
                   {periodShortcuts.map((shortcut) => {
                     const isActive =
+                      Boolean(query.serhs) &&
                       sameDateParts(startParts, shortcut.start) &&
                       sameDateParts(endParts, shortcut.end);
                     return (
@@ -698,7 +742,7 @@ export default async function AdminOrdersPage({
                 검색
               </button>
               {hasFilters ? (
-                <Link href="/admin/orders" className={`${adminSecondaryButtonClass} h-11 px-4`}>
+                <Link href={resetHref} className={`${adminSecondaryButtonClass} h-11 px-4`}>
                   <RotateCcw size={16} />
                   초기화
                 </Link>
@@ -713,6 +757,7 @@ export default async function AdminOrdersPage({
         action={bulkUpdateAdminOrders}
         className="flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 bg-white p-3 text-xs shadow-[0_8px_24px_rgba(15,23,42,0.045)] ring-1 ring-white"
       >
+        <input type="hidden" name="redirectTo" value={baseHref} />
         <input type="hidden" name="card" value={query.card} />
         <input type="hidden" name="paym" value={query.paym} />
         <input type="hidden" name="status" value={query.status} />
@@ -731,6 +776,9 @@ export default async function AdminOrdersPage({
         ) : null}
         {query.point_max != null ? (
           <input type="hidden" name="point_max" value={query.point_max} />
+        ) : null}
+        {isMileageException ? (
+          <input type="hidden" name="exception" value={ADMIN_ORDER_MILEAGE_EXCEPTION_QUERY} />
         ) : null}
         <input type="hidden" name="trade_list_cnt" value={pageSize} />
         <span className="font-bold text-neutral-700">선택 주문</span>
@@ -1039,6 +1087,12 @@ export default async function AdminOrdersPage({
       </AdminSection>
 
       <div className="text-right text-sm font-bold">
+        {isMileageException ? (
+          <span className="mr-2 inline-flex items-center gap-1 text-amber-700">
+            <CircleAlert size={15} />
+            2,000,000원 사용 주문 제외
+          </span>
+        ) : null}
         주문건수: {formatNumber(total)}건 | 합계금액: {formatKRW(totalAmount.toString())} | 마일리지
         포함: {formatKRW(mileageIncludedTotal.toString())}
       </div>

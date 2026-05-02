@@ -7,6 +7,7 @@ import { createOrderFromCart } from '@/server/services/order.service';
 import type { CartIdentity } from '@/server/services/cart.service';
 import { createOrderSchema } from '@/schemas/order';
 import { toApiError } from '@/lib/errors';
+import { legacyClientIpFromHeaders } from '@/lib/legacy-order-code';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,7 +46,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const data = await createOrderFromCart(identity, parsed.data);
+    const data = await createOrderFromCart(identity, parsed.data, {
+      clientIp: legacyClientIpFromHeaders(req.headers),
+    });
     return NextResponse.json(
       { ok: true, data },
       { status: 201, headers: { 'Cache-Control': 'no-store' } },

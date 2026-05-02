@@ -11,6 +11,7 @@ export const TTL = {
   CATEGORY_TREE: 300,   // 카테고리 트리 5m
   BANNER: 300,          // 배너 5m
   BEST_PRODUCTS: 300,   // 베스트/신상 5m
+  DASHBOARD_PRODUCTS: 300, // 메인 카테고리 섹션 5m
   FILTER_FACETS: 60,    // 필터 패싯 60s
 } as const;
 
@@ -20,6 +21,7 @@ export const TAGS = {
   productLegacy: (legacyId: string) => `product:legacy:${legacyId}`,
   productList: (categorySlug: string) => `product-list:${categorySlug}`,
   categoryTree: 'category-tree' as const,
+  dashboardCategorySections: 'dashboard-category-sections' as const,
   bestProducts: 'best-products' as const,
   newProducts: 'new-products' as const,
   filterFacets: (categorySlug: string) => `filter:${categorySlug}`,

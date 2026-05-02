@@ -14,4 +14,5 @@ export const adminCategoryFormSchema = z.object({
   depth: z.coerce.number().int().min(0).max(5).default(0),
   sortOrder: z.coerce.number().int().min(0).max(999999).default(0),
   isActive: z.coerce.boolean().default(false),
+  showOnDashboard: z.coerce.boolean().default(false),
 });

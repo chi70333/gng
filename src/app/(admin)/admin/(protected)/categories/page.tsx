@@ -43,6 +43,7 @@ const CATEGORY_SORT_KEYS = [
   'slug',
   'sortOrder',
   'isActive',
+  'showOnDashboard',
   'products',
 ] as const;
 
@@ -60,6 +61,7 @@ type AdminCategory = {
   depth: number;
   sortOrder: number;
   isActive: boolean;
+  showOnDashboard: boolean;
   _count: { products: number };
 };
 
@@ -239,6 +241,7 @@ export default async function AdminCategoriesPage({
       depth: true,
       sortOrder: true,
       isActive: true,
+      showOnDashboard: true,
       _count: { select: { products: true } },
     },
   });
@@ -263,12 +266,18 @@ export default async function AdminCategoriesPage({
           return compareAdminValues(a.sortOrder, b.sortOrder, sortState.dir);
         if (effectiveSort === 'isActive')
           return compareAdminValues(Number(a.isActive), Number(b.isActive), sortState.dir);
+        if (effectiveSort === 'showOnDashboard')
+          return compareAdminValues(
+            Number(a.showOnDashboard),
+            Number(b.showOnDashboard),
+            sortState.dir,
+          );
         return compareAdminValues(a._count.products, b._count.products, sortState.dir);
       })
     : treeItems.map((item) => item.category);
   const activeCount = categories.filter((category) => category.isActive).length;
+  const dashboardCount = categories.filter((category) => category.showOnDashboard).length;
   const rootCount = treeItems.filter((item) => item.level === 0).length;
-  const totalProducts = categories.reduce((sum, category) => sum + category._count.products, 0);
   const maxLevel = treeItems.reduce((max, item) => Math.max(max, item.level), 0);
   const params = new URLSearchParams();
   if (sortState.sort) {
@@ -292,8 +301,8 @@ export default async function AdminCategoriesPage({
           icon={EyeOff}
         />
         <CategoryMetric
-          label="연결 상품"
-          value={formatNumber(totalProducts)}
+          label="대시보드 표시"
+          value={formatNumber(dashboardCount)}
           icon={PackageSearch}
         />
       </div>
@@ -315,6 +324,14 @@ export default async function AdminCategoriesPage({
                   type="checkbox"
                   name="isActive"
                   defaultChecked
+                  className="h-5 w-5 rounded border-neutral-300 accent-neutral-900"
+                />
+              </label>
+              <label className="flex min-h-11 items-center justify-between gap-3 rounded border border-neutral-200 bg-neutral-50 px-3 text-sm font-bold text-neutral-700">
+                대시보드 표시
+                <input
+                  type="checkbox"
+                  name="showOnDashboard"
                   className="h-5 w-5 rounded border-neutral-300 accent-neutral-900"
                 />
               </label>
@@ -398,6 +415,13 @@ export default async function AdminCategoriesPage({
               sortKey: 'isActive',
             },
             {
+              key: 'dashboard',
+              label: '대시보드',
+              align: 'center',
+              widthClassName: 'w-28',
+              sortKey: 'showOnDashboard',
+            },
+            {
               key: 'products',
               label: '상품',
               align: 'right',
@@ -409,7 +433,7 @@ export default async function AdminCategoriesPage({
           rows={sortedCategories}
           rowKey={categoryId}
           emptyText="등록된 카테고리가 없습니다."
-          minWidthClassName="min-w-[1080px]"
+          minWidthClassName="min-w-[1160px]"
           currentSortKey={sortState.sort}
           currentSortDirection={sortState.dir}
           getSortHref={createAdminSortHref('/admin/categories', params)}
@@ -496,6 +520,18 @@ export default async function AdminCategoriesPage({
                     </label>
                   </div>
                 </td>
+                <td className={`${adminGridCellClass} text-center`}>
+                  <label className="inline-flex min-h-7 items-center text-xs font-bold text-neutral-500">
+                    <input
+                      form={rowFormId}
+                      type="checkbox"
+                      name="showOnDashboard"
+                      defaultChecked={category.showOnDashboard}
+                      className="mr-1 h-4 w-4 rounded border-neutral-300 accent-neutral-900"
+                    />
+                    표시
+                  </label>
+                </td>
                 <td className={`${adminGridCellClass} text-right font-bold`}>
                   {formatNumber(category._count.products)}
                 </td>
@@ -575,7 +611,7 @@ export default async function AdminCategoriesPage({
                         {formatNumber(category._count.products)}
                       </AdminMobileField>
                     </dl>
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="grid gap-2">
                       <label className="inline-flex min-h-11 items-center text-sm font-bold text-neutral-700">
                         <input
                           type="checkbox"
@@ -585,6 +621,17 @@ export default async function AdminCategoriesPage({
                         />
                         쇼핑몰 노출
                       </label>
+                      <label className="inline-flex min-h-11 items-center text-sm font-bold text-neutral-700">
+                        <input
+                          type="checkbox"
+                          name="showOnDashboard"
+                          defaultChecked={category.showOnDashboard}
+                          className="mr-2 h-5 w-5 rounded border-neutral-300 accent-neutral-900"
+                        />
+                        대시보드 표시
+                      </label>
+                    </div>
+                    <div className="flex justify-end">
                       <button className={`${adminGridButtonClass} h-10 px-3`}>
                         <Save size={15} />
                         저장
