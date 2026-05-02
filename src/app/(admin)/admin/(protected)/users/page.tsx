@@ -37,6 +37,8 @@ import {
 import { adminUserListQuerySchema } from '@/schemas/admin-user';
 import { bulkUpdateAdminUsers, importAdminUserMileageExcel } from '../../actions';
 import { AdminUserMileageAdjustButton } from './AdminUserMileageAdjustButton';
+import { AdminUserMileageResetAllButton } from './AdminUserMileageResetAllButton';
+import { AdminUserMileageUploadAlert } from './AdminUserMileageUploadAlert';
 import { AdminUserMileageUploadButton } from './AdminUserMileageUploadButton';
 
 export const dynamic = 'force-dynamic';
@@ -56,6 +58,7 @@ type AdminUsersSearchParams = {
   mileageUpdated?: string;
   mileageImported?: string;
   mileageSkipped?: string;
+  mileageUploadAlert?: string;
   bulkError?: string;
   sort?: string;
   dir?: string;
@@ -228,11 +231,13 @@ export default async function AdminUsersPage({
   const mileageSkipped = Number(searchParams.mileageSkipped ?? 0) || 0;
   const deleted = Number(searchParams.deleted ?? 0) || 0;
   const bulkError = searchParams.bulkError?.trim() ?? '';
+  const mileageUploadAlert = searchParams.mileageUploadAlert?.trim() ?? '';
   const getSortHref = (sort: string, dir: AdminUserSortDirection) =>
     buildAdminUserSortHref('/admin/users', params, sort as AdminUserSortKey, dir);
 
   return (
     <div className="w-full space-y-4">
+      <AdminUserMileageUploadAlert message={mileageUploadAlert} />
       <AdminPageHeader
         title="회원 관리"
         description={`총 ${formatNumber(total)}명, 총 ${formatNumber(totalPages)}페이지를 조회합니다.`}
@@ -294,7 +299,7 @@ export default async function AdminUsersPage({
       >
         <input type="hidden" name="redirectTo" value={currentHref} />
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-          <div className="grid gap-2 md:grid-cols-[auto_150px_minmax(190px,1fr)_auto_auto] lg:min-w-0 lg:flex-1">
+          <div className="grid gap-2 md:grid-cols-[auto_150px_minmax(190px,1fr)_auto_auto_auto] lg:min-w-0 lg:flex-1">
             <span className="flex h-10 items-center whitespace-nowrap font-bold text-neutral-700">
               선택 마일리지
             </span>
@@ -328,6 +333,7 @@ export default async function AdminUsersPage({
               <RotateCcw size={17} />
               초기화
             </button>
+            <AdminUserMileageResetAllButton />
           </div>
           <button
             name="intent"

@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
 import { adminUserListQuerySchema } from '@/schemas/admin-user';
+import { createXlsxWorkbook } from '@/lib/xlsx';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,14 +59,6 @@ const userExportSelect = {
 
 type UserExportRow = Prisma.UserGetPayload<{ select: typeof userExportSelect }>;
 
-function escapeCell(value: string | number | null | undefined): string {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 function buildUserWhere(
   query: ReturnType<typeof adminUserListQuerySchema.parse>,
 ): Prisma.UserWhereInput {
@@ -110,9 +103,12 @@ async function buildOrderTotalMap(users: UserExportRow[]): Promise<Map<string, s
   );
 }
 
-function buildUserExportRow(user: UserExportRow, totalByUserId: Map<string, string>): string {
+function buildUserExportRow(
+  user: UserExportRow,
+  totalByUserId: Map<string, string>,
+): (string | number)[] {
   const address = user.addresses[0];
-  const values = [
+  return [
     memberType(user.status, user.grade?.name),
     user.loginId ?? '',
     '',
@@ -133,12 +129,10 @@ function buildUserExportRow(user: UserExportRow, totalByUserId: Map<string, stri
     '',
     '',
   ];
-
-  return `<tr>${values.map((value) => `<td>${escapeCell(value)}</td>`).join('')}</tr>`;
 }
 
-async function buildUserExportRows(where: Prisma.UserWhereInput): Promise<string> {
-  const rows: string[] = [];
+async function buildUserExportRows(where: Prisma.UserWhereInput): Promise<(string | number)[][]> {
+  const rows: (string | number)[][] = [];
   let skip = 0;
 
   while (true) {
@@ -159,23 +153,22 @@ async function buildUserExportRows(where: Prisma.UserWhereInput): Promise<string
     skip += users.length;
   }
 
-  return rows.join('');
+  return rows;
 }
 
 export async function GET(request: Request) {
   await requireAdmin('user.read');
   const searchParams = Object.fromEntries(new URL(request.url).searchParams);
   const query = adminUserListQuerySchema.parse(searchParams);
-  const header = `<tr>${LEGACY_MEMBER_EXCEL_COLUMNS.map((column) => `<td>${escapeCell(column)}</td>`).join('')}</tr>`;
   const rows = await buildUserExportRows(buildUserWhere(query));
-  const html = `<html><head><meta charset="utf-8" /></head><body><table>${header}${rows}</table></body></html>`;
+  const xlsx = createXlsxWorkbook([LEGACY_MEMBER_EXCEL_COLUMNS, ...rows], '회원');
   const now = new Date();
   const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
 
-  return new NextResponse(html, {
+  return new NextResponse(new Uint8Array(xlsx), {
     headers: {
-      'Content-Type': 'application/vnd.ms-excel; charset=utf-8',
-      'Content-Disposition': `attachment; filename="member${stamp}.xls"`,
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="member${stamp}.xlsx"`,
       'Cache-Control': 'no-store',
     },
   });

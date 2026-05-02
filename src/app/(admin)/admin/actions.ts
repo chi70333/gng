@@ -1,6 +1,6 @@
 'use server';
 
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/server/db';
@@ -31,6 +31,7 @@ import {
 } from '@/schemas/admin-order';
 import {
   adminUserBulkPointFormSchema,
+  adminUserBulkPointResetAllFormSchema,
   adminUserBulkDeleteFormSchema,
   adminUserMessageFormSchema,
   adminUserPointFormSchema,
@@ -116,6 +117,18 @@ function firstFormIssueMessage(error: { issues: { message: string }[] }): string
   return error.issues[0]?.message ?? '요청 내용을 확인해주세요.';
 }
 
+function mileageUploadAlertMessage(errors: string[], title: string): string {
+  const visibleErrors = errors.slice(0, 5);
+  const remainingCount = Math.max(0, errors.length - visibleErrors.length);
+  const lines = [title, ...visibleErrors];
+
+  if (remainingCount > 0) {
+    lines.push(`외 ${remainingCount}건의 오류가 더 있습니다.`);
+  }
+
+  return lines.join('\n');
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -136,6 +149,84 @@ function adminMileageErrorMessage(error: unknown): string {
   return '마일리지 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
 }
 
+const ADMIN_MILEAGE_RESET_ALL_BATCH_SIZE = 200;
+
+async function createBulkPointLedgerEntries(
+  tx: Prisma.TransactionClient,
+  input: {
+    userIds: bigint[];
+    intent: 'mileage-grant' | 'mileage-reset';
+    delta: number;
+    reason: string;
+  },
+): Promise<{ updated: number; skipped: number }> {
+  const users = await tx.user.findMany({
+    where: {
+      id: { in: input.userIds },
+      deletedAt: null,
+    },
+    select: {
+      id: true,
+      pointHistories: {
+        orderBy: { id: 'desc' },
+        take: 1,
+        select: { balance: true },
+      },
+    },
+  });
+
+  if (users.length === 0) {
+    return { updated: 0, skipped: input.userIds.length };
+  }
+
+  const rows = users.map((user) => {
+    const previousBalance = user.pointHistories[0]?.balance ?? 0;
+    const nextBalance =
+      input.intent === 'mileage-reset' ? 0 : previousBalance + input.delta;
+
+    if (nextBalance < 0) {
+      throw new Error('POINT_BALANCE_NEGATIVE');
+    }
+
+    return {
+      userId: user.id,
+      delta: nextBalance - previousBalance,
+      balance: nextBalance,
+      reason: input.reason,
+    };
+  });
+
+  await tx.userPointHistory.createMany({
+    data: rows,
+  });
+
+  return {
+    updated: rows.length,
+    skipped: input.userIds.length - rows.length,
+  };
+}
+
+async function findAdminUserIdsWithMileageBalance(): Promise<bigint[]> {
+  // Raw SQL is used to find only users whose latest point-ledger balance is nonzero;
+  // Prisma cannot filter by the latest related row without over-fetching all histories.
+  const rows = await prisma.$queryRaw<{ id: bigint }[]>(Prisma.sql`
+    SELECT u."id"
+    FROM "User" u
+    LEFT JOIN LATERAL (
+      SELECT h."balance"
+      FROM "UserPointHistory" h
+      WHERE h."userId" = u."id"
+      ORDER BY h."id" DESC
+      LIMIT 1
+    ) latest ON TRUE
+    WHERE u."deletedAt" IS NULL
+      AND COALESCE(latest."balance", 0) <> 0
+    ORDER BY u."id" ASC
+  `);
+
+  return rows.map((row) => row.id);
+}
+
 function collectProductImages(formData: FormData) {
   const urls = formData
     .getAll('imageUrls')
@@ -152,6 +243,82 @@ function collectProductImages(formData: FormData) {
     key: keys[index] ?? '',
     alt: alts[index] ?? '',
   }));
+}
+
+function splitOptionValues(valueText: string): string[] {
+  return [
+    ...new Set(
+      valueText
+        .split(/[\n,]/)
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function collectProductOptions(formData: FormData) {
+  const names = formData
+    .getAll('optionNames')
+    .map((value) => (typeof value === 'string' ? value.trim() : ''));
+  const valueTexts = formData
+    .getAll('optionValueTexts')
+    .map((value) => (typeof value === 'string' ? value : ''));
+
+  return names
+    .map((name, index) => ({
+      name,
+      values: splitOptionValues(valueTexts[index] ?? ''),
+    }))
+    .filter((option) => option.name !== '' || option.values.length > 0);
+}
+
+function parseSkuOptionValues(value: string): Record<string, string> | null {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!isRecord(parsed)) return null;
+    const entries = Object.entries(parsed).filter(
+      (entry): entry is [string, string] =>
+        typeof entry[0] === 'string' &&
+        entry[0].trim() !== '' &&
+        typeof entry[1] === 'string' &&
+        entry[1].trim() !== '',
+    );
+    return entries.length > 0 ? Object.fromEntries(entries) : null;
+  } catch {
+    return null;
+  }
+}
+
+function collectProductSkus(formData: FormData) {
+  const optionValues = formData
+    .getAll('skuOptionValues')
+    .map((value) => (typeof value === 'string' ? parseSkuOptionValues(value) : null));
+  const codes = formData
+    .getAll('skuCodes')
+    .map((value) => (typeof value === 'string' ? value : ''));
+  const priceDeltas = formData
+    .getAll('skuPriceDeltas')
+    .map((value) => (typeof value === 'string' ? value : '0'));
+  const stocks = formData
+    .getAll('skuStocks')
+    .map((value) => (typeof value === 'string' ? value : '0'));
+  const isActives = formData
+    .getAll('skuIsActives')
+    .map((value) => (typeof value === 'string' ? value === '1' : true));
+
+  return optionValues
+    .map((values, index) =>
+      values
+        ? {
+            code: codes[index] ?? '',
+            optionValues: values,
+            priceDelta: priceDeltas[index] ?? '0',
+            stock: stocks[index] ?? '0',
+            isActive: isActives[index] ?? true,
+          }
+        : null,
+    )
+    .filter((sku): sku is NonNullable<typeof sku> => sku !== null);
 }
 
 function collectDescriptionImageKeys(formData: FormData): string[] {
@@ -247,6 +414,149 @@ function buildProductAttributes(
     ...base,
     legacyAdmin,
   } as Prisma.InputJsonObject;
+}
+
+function skuCombinationKey(optionValues: Record<string, string>): string {
+  return Object.keys(optionValues)
+    .sort()
+    .map((key) => `${key}:${optionValues[key]}`)
+    .join('|');
+}
+
+function generatedSkuCode(productSku: string, index: number): string {
+  return `${productSku}-${String(index + 1).padStart(3, '0')}`;
+}
+
+function optionValuesFromJson(value: Prisma.JsonValue): Record<string, string> | null {
+  if (!isRecord(value)) return null;
+  const entries = Object.entries(value).filter(
+    (entry): entry is [string, string] =>
+      typeof entry[0] === 'string' && typeof entry[1] === 'string',
+  );
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
+}
+
+async function syncProductOptionsAndSkus(
+  tx: Prisma.TransactionClient,
+  input: {
+    productId: bigint;
+    productSku: string;
+    options: { name: string; values: string[] }[];
+    skus: {
+      code?: string;
+      optionValues: Record<string, string>;
+      priceDelta: string;
+      stock: number;
+      isActive: boolean;
+    }[];
+    effectiveStock: number;
+    useUnlimitedStock: boolean;
+  },
+) {
+  if (input.options.length === 0) {
+    const defaultCode = `${input.productSku}-DEFAULT`;
+    const existingSkus = await tx.productSku.findMany({
+      where: { productId: input.productId },
+      select: { id: true, code: true },
+      orderBy: { id: 'asc' },
+    });
+    const defaultSku =
+      existingSkus.find((sku) => sku.code === defaultCode) ?? existingSkus[0] ?? null;
+
+    if (defaultSku) {
+      await tx.productSku.updateMany({
+        where: { productId: input.productId, id: { not: defaultSku.id } },
+        data: { isActive: false },
+      });
+      await tx.productSku.update({
+        where: { id: defaultSku.id },
+        data: {
+          code: defaultCode,
+          optionValues: {},
+          priceDelta: '0',
+          stock: input.effectiveStock,
+          isActive: true,
+        },
+      });
+    } else {
+      await tx.productSku.create({
+        data: {
+          productId: input.productId,
+          code: defaultCode,
+          optionValues: {},
+          priceDelta: '0',
+          stock: input.effectiveStock,
+          isActive: true,
+        },
+      });
+    }
+
+    await tx.productOption.deleteMany({ where: { productId: input.productId } });
+    return;
+  }
+
+  await tx.productOption.deleteMany({ where: { productId: input.productId } });
+  await tx.productOption.createMany({
+    data: input.options.map((option, index) => ({
+      productId: input.productId,
+      name: option.name,
+      values: option.values,
+      sortOrder: index + 1,
+    })),
+  });
+
+  const existingSkus = await tx.productSku.findMany({
+    where: { productId: input.productId },
+    select: { id: true, code: true, optionValues: true },
+    orderBy: { id: 'asc' },
+  });
+  const byCombination = new Map(
+    existingSkus
+      .map((sku) => {
+        const optionValues = optionValuesFromJson(sku.optionValues);
+        return optionValues ? [skuCombinationKey(optionValues), sku] : null;
+      })
+      .filter((entry): entry is [string, (typeof existingSkus)[number]] => entry !== null),
+  );
+  const byCode = new Map(existingSkus.map((sku) => [sku.code, sku]));
+  const touchedSkuIds = new Set<bigint>();
+
+  for (const [index, sku] of input.skus.entries()) {
+    const code = optionalString(sku.code) ?? generatedSkuCode(input.productSku, index);
+    const stock = input.useUnlimitedStock ? input.effectiveStock : sku.stock;
+    const target = byCombination.get(skuCombinationKey(sku.optionValues)) ?? byCode.get(code);
+    if (target) {
+      touchedSkuIds.add(target.id);
+      await tx.productSku.update({
+        where: { id: target.id },
+        data: {
+          code,
+          optionValues: sku.optionValues,
+          priceDelta: sku.priceDelta,
+          stock,
+          isActive: sku.isActive,
+        },
+      });
+    } else {
+      const created = await tx.productSku.create({
+        data: {
+          productId: input.productId,
+          code,
+          optionValues: sku.optionValues,
+          priceDelta: sku.priceDelta,
+          stock,
+          isActive: sku.isActive,
+        },
+        select: { id: true },
+      });
+      touchedSkuIds.add(created.id);
+    }
+  }
+
+  await tx.productSku.updateMany({
+    where: { productId: input.productId, id: { notIn: [...touchedSkuIds] } },
+    data: { isActive: false },
+  });
 }
 
 type ProductCategoryForRevalidation = {
@@ -382,12 +692,21 @@ export async function saveAdminProduct(formData: FormData) {
     quantityDiscountVisible: formString(formData, 'quantityDiscountVisible'),
     mainImageIndex: formString(formData, 'mainImageIndex'),
     images: collectProductImages(formData),
+    options: collectProductOptions(formData),
+    skus: collectProductSkus(formData),
   });
   const description = sanitizeProductDescriptionHtml(optionalString(parsed.description));
   const descriptionImageKeys = collectDescriptionImageKeys(formData);
   const mainImage = parsed.images[parsed.mainImageIndex] ?? parsed.images[0];
   const thumbnail = mainImage?.url ?? '';
   const effectiveStock = parsed.useStock === '1' ? 999999 : parsed.stock;
+  const optionStock = parsed.skus.reduce((sum, sku) => sum + (sku.isActive ? sku.stock : 0), 0);
+  const legacyStock =
+    parsed.options.length > 0
+      ? parsed.useStock === '1'
+        ? effectiveStock
+        : optionStock
+      : parsed.stock;
   const legacyAdmin: Prisma.InputJsonObject = {
     display: parsed.display,
     isEmpty: parsed.isEmpty,
@@ -402,7 +721,7 @@ export async function saveAdminProduct(formData: FormData) {
     importFlag: parsed.importFlag,
     quantityDiscountVisible: parsed.quantityDiscountVisible,
     useStock: parsed.useStock,
-    stock: parsed.stock,
+    stock: legacyStock,
   };
 
   const product = await prisma.$transaction(async (tx) => {
@@ -444,24 +763,18 @@ export async function saveAdminProduct(formData: FormData) {
             status: parsed.status,
             thumbnail,
             attributes,
-            skus: {
-              create: {
-                code: `${parsed.sku}-DEFAULT`,
-                optionValues: {},
-                stock: effectiveStock,
-                isActive: true,
-              },
-            },
           },
           select: { id: true, slug: true },
         });
 
-    if (parsed.id) {
-      await tx.productSku.updateMany({
-        where: { productId: saved.id },
-        data: { stock: effectiveStock },
-      });
-    }
+    await syncProductOptionsAndSkus(tx, {
+      productId: saved.id,
+      productSku: parsed.sku,
+      options: parsed.options,
+      skus: parsed.skus,
+      effectiveStock,
+      useUnlimitedStock: parsed.useStock === '1',
+    });
 
     await tx.productImage.deleteMany({ where: { productId: saved.id } });
     await tx.productImage.createMany({
@@ -703,9 +1016,7 @@ type ProductForDeletion = Prisma.ProductGetPayload<{
   };
 }>;
 
-async function deleteAdminProductsInternal(
-  productIds: bigint[],
-): Promise<ProductForDeletion[]> {
+async function deleteAdminProductsInternal(productIds: bigint[]): Promise<ProductForDeletion[]> {
   const deletedAt = new Date();
 
   const products = await prisma.product.findMany({
@@ -750,11 +1061,15 @@ export async function deleteAdminProduct(formData: FormData) {
   });
   const deletedProducts = await deleteAdminProductsInternal([parsed.productId]);
   if (deletedProducts.length === 0) {
-    redirectWithAdminProductsResult(parsed.redirectTo, { bulkError: '삭제할 상품을 찾지 못했습니다.' });
+    redirectWithAdminProductsResult(parsed.redirectTo, {
+      bulkError: '삭제할 상품을 찾지 못했습니다.',
+    });
   }
   const deletedProduct = deletedProducts[0];
   if (!deletedProduct) {
-    redirectWithAdminProductsResult(parsed.redirectTo, { bulkError: '삭제할 상품을 찾지 못했습니다.' });
+    redirectWithAdminProductsResult(parsed.redirectTo, {
+      bulkError: '삭제할 상품을 찾지 못했습니다.',
+    });
   }
   await writeAdminAuditLog({
     admin,
@@ -767,10 +1082,7 @@ export async function deleteAdminProduct(formData: FormData) {
       categoryIds: deletedProduct.categories.map((item) => item.category.id.toString()),
     },
   });
-  redirectWithAdminProductsResult(
-    parsed.redirectTo,
-    { deleted: 1 },
-  );
+  redirectWithAdminProductsResult(parsed.redirectTo, { deleted: 1 });
 }
 
 export async function bulkDeleteAdminProducts(formData: FormData) {
@@ -1048,7 +1360,7 @@ async function deleteAdminUsers(
 export async function bulkDeleteAdminUsers(formData: FormData) {
   const admin = await requireAdmin('user.write');
   const parsed = adminUserBulkDeleteFormSchema.safeParse({
-    userIds: selectedBigInts(formData, 'userId'),
+    userIds: uniqueBigInts(selectedBigInts(formData, 'userId')),
   });
   if (!parsed.success) {
     redirectWithAdminUsersResult(undefined, { bulkError: firstFormIssueMessage(parsed.error) });
@@ -1066,7 +1378,7 @@ export async function bulkUpdateAdminUsers(formData: FormData) {
 
   if (intent === 'delete') {
     const parsed = adminUserBulkDeleteFormSchema.safeParse({
-      userIds: selectedBigInts(formData, 'userId'),
+      userIds: uniqueBigInts(selectedBigInts(formData, 'userId')),
     });
     if (!parsed.success) {
       redirectWithAdminUsersResult(redirectTo, { bulkError: firstFormIssueMessage(parsed.error) });
@@ -1076,9 +1388,57 @@ export async function bulkUpdateAdminUsers(formData: FormData) {
     redirectWithAdminUsersResult(redirectTo, { deleted });
   }
 
+  if (intent === 'mileage-reset-all') {
+    const parsed = adminUserBulkPointResetAllFormSchema.safeParse({
+      intent,
+      confirm: formString(formData, 'bulkMileageResetAllConfirm'),
+      reason: formString(formData, 'bulkMileageReason'),
+    });
+    if (!parsed.success) {
+      redirectWithAdminUsersResult(redirectTo, { bulkError: firstFormIssueMessage(parsed.error) });
+    }
+
+    const reason = optionalString(parsed.data.reason) ?? '관리자 마일리지 전체 초기화';
+    let userIds: bigint[] = [];
+
+    try {
+      userIds = await findAdminUserIdsWithMileageBalance();
+      for (let index = 0; index < userIds.length; index += ADMIN_MILEAGE_RESET_ALL_BATCH_SIZE) {
+        const batch = userIds.slice(index, index + ADMIN_MILEAGE_RESET_ALL_BATCH_SIZE);
+        await prisma.$transaction(async (tx) => {
+          for (const userId of batch) {
+            await createPointLedgerBalanceEntry(tx, {
+              userId,
+              targetBalance: 0,
+              reason,
+            });
+          }
+        });
+      }
+    } catch (err) {
+      logger.error({ err, action: 'user.points.bulk.reset_all' }, 'admin all mileage reset failed');
+      redirectWithAdminUsersResult(redirectTo, { bulkError: adminMileageErrorMessage(err) });
+    }
+
+    await writeAdminAuditLog({
+      admin,
+      action: 'user.points.bulk.reset_all',
+      entity: 'User',
+      payload: {
+        updated: userIds.length,
+        reason,
+      },
+    });
+    revalidatePath('/admin/users');
+    redirectWithAdminUsersResult(redirectTo, {
+      mileageUpdated: userIds.length,
+      mileageSkipped: 0,
+    });
+  }
+
   const parsed = adminUserBulkPointFormSchema.safeParse({
     intent,
-    userIds: selectedBigInts(formData, 'userId'),
+    userIds: uniqueBigInts(selectedBigInts(formData, 'userId')),
     delta: formString(formData, 'bulkMileageAmount'),
     reason: formString(formData, 'bulkMileageReason'),
   });
@@ -1092,30 +1452,24 @@ export async function bulkUpdateAdminUsers(formData: FormData) {
       ? '관리자 마일리지 일괄 초기화'
       : '관리자 마일리지 일괄 부여');
 
+  let result: { updated: number; skipped: number };
   try {
-    await prisma.$transaction(async (tx) => {
-      for (const userId of pointForm.userIds) {
-        if (pointForm.intent === 'mileage-reset') {
-          await createPointLedgerBalanceEntry(tx, {
-            userId,
-            targetBalance: 0,
-            reason,
-          });
-        } else {
-          await createPointLedgerEntry(tx, {
-            userId,
-            delta: pointForm.delta ?? 0,
-            reason,
-          });
-        }
-      }
-    });
+    result = await prisma.$transaction((tx) =>
+      createBulkPointLedgerEntries(tx, {
+        userIds: pointForm.userIds,
+        intent: pointForm.intent,
+        delta: pointForm.delta ?? 0,
+        reason,
+      }),
+    );
   } catch (err) {
     logger.error(
       {
         err,
         action:
-          pointForm.intent === 'mileage-reset' ? 'user.points.bulk.reset' : 'user.points.bulk.grant',
+          pointForm.intent === 'mileage-reset'
+            ? 'user.points.bulk.reset'
+            : 'user.points.bulk.grant',
       },
       'admin bulk mileage update failed',
     );
@@ -1135,8 +1489,8 @@ export async function bulkUpdateAdminUsers(formData: FormData) {
   });
   revalidatePath('/admin/users');
   redirectWithAdminUsersResult(redirectTo, {
-    mileageUpdated: pointForm.userIds.length,
-    mileageSkipped: 0,
+    mileageUpdated: result.updated,
+    mileageSkipped: result.skipped,
   });
 }
 
@@ -1150,6 +1504,20 @@ function uniqueBigInts(values: (bigint | undefined)[]): bigint[] {
     if (value) unique.set(value.toString(), value);
   });
   return [...unique.values()];
+}
+
+function socialLoginIdParts(loginId: string): { provider: string; providerUid: string } | null {
+  const match = /^(kakao|naver|google|apple)-(.+)$/i.exec(loginId.trim());
+  if (!match) return null;
+  return {
+    provider: match[1]?.toLowerCase() ?? '',
+    providerUid: match[2] ?? '',
+  };
+}
+
+function canonicalSocialLoginId(loginId: string): string | null {
+  const social = socialLoginIdParts(loginId);
+  return social ? `${social.provider}-${social.providerUid}` : null;
 }
 
 function userLookupKey(record: MileageUploadRecord): string {
@@ -1179,8 +1547,13 @@ export async function importAdminUserMileageExcel(formData: FormData) {
 
   const parsed = parseMileageSpreadsheet(file.name, await file.arrayBuffer());
   if (parsed.records.length === 0) {
+    const bulkError = parsed.errors[0] ?? '반영할 마일리지 데이터가 없습니다.';
     redirectWithAdminUsersResult(redirectTo, {
-      bulkError: parsed.errors[0] ?? '반영할 마일리지 데이터가 없습니다.',
+      bulkError,
+      mileageUploadAlert: mileageUploadAlertMessage(
+        [bulkError],
+        '엑셀 업로드 오류가 발생해 마일리지를 반영하지 못했습니다.',
+      ),
     });
   }
 
@@ -1188,10 +1561,25 @@ export async function importAdminUserMileageExcel(formData: FormData) {
   const userIds = uniqueBigInts(parsed.records.map((record) => record.userId));
   const loginIds = uniqueStrings(parsed.records.map((record) => record.loginId));
   const emails = uniqueStrings(parsed.records.map((record) => record.email?.toLowerCase()));
+  const socialLoginIds = loginIds
+    .map((loginId) => socialLoginIdParts(loginId))
+    .filter((value): value is { provider: string; providerUid: string } => value !== null);
 
   if (userIds.length > 0) lookupOr.push({ id: { in: userIds } });
   if (loginIds.length > 0) lookupOr.push({ loginId: { in: loginIds } });
   if (emails.length > 0) lookupOr.push({ email: { in: emails } });
+  if (socialLoginIds.length > 0) {
+    lookupOr.push({
+      socialAccounts: {
+        some: {
+          OR: socialLoginIds.map((social) => ({
+            provider: social.provider,
+            providerUid: social.providerUid,
+          })),
+        },
+      },
+    });
+  }
 
   let skipped = parsed.skipped;
   let updated = 0;
@@ -1199,7 +1587,12 @@ export async function importAdminUserMileageExcel(formData: FormData) {
   try {
     const users = await prisma.user.findMany({
       where: { deletedAt: null, OR: lookupOr },
-      select: { id: true, loginId: true, email: true },
+      select: {
+        id: true,
+        loginId: true,
+        email: true,
+        socialAccounts: { select: { provider: true, providerUid: true } },
+      },
     });
     const byId = new Map(users.map((user) => [user.id.toString(), user]));
     const byLoginId = new Map(
@@ -1208,6 +1601,12 @@ export async function importAdminUserMileageExcel(formData: FormData) {
         .map((user) => [user.loginId, user]),
     );
     const byEmail = new Map(users.map((user) => [user.email.toLowerCase(), user]));
+    const bySocialLoginId = new Map<string, (typeof users)[number]>();
+    users.forEach((user) => {
+      user.socialAccounts.forEach((account) => {
+        bySocialLoginId.set(`${account.provider}-${account.providerUid}`, user);
+      });
+    });
     const appliedRows = new Set<string>();
 
     await prisma.$transaction(async (tx) => {
@@ -1222,6 +1621,9 @@ export async function importAdminUserMileageExcel(formData: FormData) {
         const user =
           (record.userId ? byId.get(record.userId.toString()) : undefined) ??
           (record.loginId ? byLoginId.get(record.loginId) : undefined) ??
+          (record.loginId
+            ? bySocialLoginId.get(canonicalSocialLoginId(record.loginId) ?? record.loginId)
+            : undefined) ??
           (record.email ? byEmail.get(record.email.toLowerCase()) : undefined);
 
         if (!user) {
@@ -1262,10 +1664,17 @@ export async function importAdminUserMileageExcel(formData: FormData) {
     },
   });
   revalidatePath('/admin/users');
-  redirectWithAdminUsersResult(redirectTo, {
+  const resultParams: Record<string, string | number> = {
     mileageImported: updated,
     mileageSkipped: skipped,
-  });
+  };
+  if (parsed.errors.length > 0) {
+    resultParams.mileageUploadAlert = mileageUploadAlertMessage(
+      parsed.errors,
+      '엑셀 값 오류가 있어 일부 행을 건너뛰었습니다.',
+    );
+  }
+  redirectWithAdminUsersResult(redirectTo, resultParams);
 }
 
 export async function adjustAdminUserPoints(formData: FormData) {

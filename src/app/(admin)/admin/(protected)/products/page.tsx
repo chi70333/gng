@@ -5,7 +5,16 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Prisma } from '@prisma/client';
-import { Download, ImageOff, Plus, RotateCcw, Search, Trash2, Upload } from 'lucide-react';
+import {
+  Download,
+  FileDown,
+  ImageOff,
+  Plus,
+  RotateCcw,
+  Search,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
 import { formatKRW, formatNumber } from '@/lib/format';
@@ -321,6 +330,13 @@ export default async function AdminProductsPage({
             상품 CSV 파일을 업로드해 상품 정보를 일괄 등록합니다.
           </p>
           <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+            <Link
+              href="/api/admin/products/import-template"
+              className={`${adminSecondaryButtonClass} h-11`}
+            >
+              <FileDown size={18} />
+              양식 CSV
+            </Link>
             <input
               type="file"
               name="csvFile"

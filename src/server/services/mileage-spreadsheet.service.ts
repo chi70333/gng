@@ -27,17 +27,17 @@ type HeaderField = 'userId' | 'loginId' | 'email' | 'amount' | 'mode' | 'reason'
 const MAX_UPLOAD_ROWS = 1000;
 
 const defaultHeaderIndexes: Record<HeaderField, number> = {
-  userId: 0,
-  loginId: 1,
-  email: 2,
-  amount: 3,
-  mode: 4,
-  reason: 5,
+  userId: -1,
+  loginId: 0,
+  email: -1,
+  amount: 1,
+  mode: 2,
+  reason: 3,
 };
 
 const headerAliases: Record<HeaderField, string[]> = {
-  userId: ['회원id', '회원번호', '회원코드', 'userid', 'id'],
-  loginId: ['아이디', '로그인아이디', 'loginid', 'memberid'],
+  userId: ['회원id', '회원번호', '회원코드', '내부회원id', 'internalid'],
+  loginId: ['id', '아이디', '로그인아이디', 'loginid', 'memberid', 'userid'],
   email: ['이메일', 'email', 'mail'],
   amount: ['마일리지', '적립금', '금액', 'amount', 'point', 'points', 'mileage'],
   mode: ['처리방식', '작업', '구분', 'mode', 'type'],
@@ -55,11 +55,11 @@ const mileageRowSchema = z
     reason: z.string().trim().min(1).max(200),
   })
   .superRefine((row, ctx) => {
-    if (!row.userId && !row.loginId && !row.email) {
+    if (!row.loginId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: '회원ID, 아이디, 이메일 중 하나는 필요합니다.',
-        path: ['userId'],
+        message: 'ID는 반드시 입력해주세요.',
+        path: ['loginId'],
       });
     }
 

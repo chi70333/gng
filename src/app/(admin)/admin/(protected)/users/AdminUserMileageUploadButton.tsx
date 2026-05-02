@@ -150,7 +150,7 @@ export function AdminUserMileageUploadButton({ action, redirectTo }: Props) {
                     파일을 끌어오거나 클릭해서 선택
                   </p>
                   <p className="text-xs font-semibold text-neutral-500">
-                    회원ID, 아이디, 이메일 중 하나와 마일리지, 처리방식을 입력한 파일
+                    ID, 마일리지, 처리방식, 사유를 입력한 파일
                   </p>
                   {fileName ? (
                     <p className="mt-2 break-all rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs font-bold text-neutral-700">

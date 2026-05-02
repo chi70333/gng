@@ -12,8 +12,8 @@ describe('parseMileageSpreadsheet', () => {
       'mileage.csv',
       bufferFromText(
         [
-          '회원ID,아이디,이메일,마일리지,처리방식,사유',
-          '12,member01,member01@example.com,"1,500",부여,행사 지급',
+          'ID,마일리지,처리방식,사유',
+          'kakao-1231212412,"1,500",부여,행사 지급',
         ].join('\n'),
       ),
     );
@@ -22,9 +22,7 @@ describe('parseMileageSpreadsheet', () => {
     expect(result.records).toEqual([
       {
         rowNumber: 2,
-        userId: 12n,
-        loginId: 'member01',
-        email: 'member01@example.com',
+        loginId: 'kakao-1231212412',
         amount: 1500,
         mode: 'grant',
         reason: '행사 지급',
@@ -38,8 +36,8 @@ describe('parseMileageSpreadsheet', () => {
       bufferFromText(
         [
           '<html><body><table>',
-          '<tr><td>회원ID</td><td>아이디</td><td>이메일</td><td>마일리지</td><td>처리방식</td><td>사유</td></tr>',
-          '<tr><td>13</td><td>member02</td><td>member02@example.com</td><td></td><td>초기화</td><td></td></tr>',
+          '<tr><td>ID</td><td>마일리지</td><td>처리방식</td><td>사유</td></tr>',
+          '<tr><td>member02</td><td></td><td>초기화</td><td></td></tr>',
           '</table></body></html>',
         ].join(''),
       ),
@@ -48,9 +46,7 @@ describe('parseMileageSpreadsheet', () => {
     expect(result.skipped).toBe(0);
     expect(result.records[0]).toMatchObject({
       rowNumber: 2,
-      userId: 13n,
       loginId: 'member02',
-      email: 'member02@example.com',
       mode: 'reset',
       reason: '관리자 마일리지 엑셀 초기화',
     });
@@ -64,7 +60,7 @@ describe('parseMileageSpreadsheet', () => {
 
     expect(result.records).toHaveLength(0);
     expect(result.skipped).toBe(1);
-    expect(result.errors[0]).toContain('회원ID, 아이디, 이메일');
+    expect(result.errors[0]).toContain('ID는 반드시 입력');
   });
 
   it('returns a user-facing error for unreadable Excel uploads', () => {

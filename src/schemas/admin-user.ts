@@ -48,6 +48,17 @@ export const adminUserBulkPointFormSchema = z
     }
   });
 
+export const adminUserBulkPointResetAllFormSchema = z.object({
+  intent: z.literal('mileage-reset-all'),
+  confirm: z
+    .string()
+    .trim()
+    .refine((value) => value === '전체 초기화', {
+      message: '전체 초기화하려면 확인 후 다시 시도해주세요.',
+    }),
+  reason: z.string().trim().max(200).optional(),
+});
+
 export const adminUserPointFormSchema = z.object({
   userId: z.coerce.bigint(),
   delta: z.coerce.number().int().min(-10000000).max(10000000),

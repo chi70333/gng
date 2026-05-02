@@ -20,6 +20,22 @@ const imageRowSchema = z.object({
   alt: z.string().trim().max(200).optional().or(z.literal('')),
 });
 
+const productOptionRowSchema = z.object({
+  name: z.string().trim().min(1, '옵션명을 입력해주세요.').max(50),
+  values: z
+    .array(z.string().trim().min(1).max(80))
+    .min(1, '옵션값을 1개 이상 입력해주세요.')
+    .max(50, '옵션값은 옵션당 50개까지 입력할 수 있습니다.'),
+});
+
+const productSkuRowSchema = z.object({
+  code: z.string().trim().max(120).optional().or(z.literal('')),
+  optionValues: z.record(z.string().trim().min(1)),
+  priceDelta: moneyString.default('0'),
+  stock: z.coerce.number().int().min(0).max(999999),
+  isActive: z.boolean().default(true),
+});
+
 export const adminProductStatusSchema = z.enum(['draft', 'active', 'sold_out', 'hidden']);
 
 const emptyStringToUndefined = (value: unknown) => (value === '' ? undefined : value);
@@ -67,7 +83,10 @@ export const adminProductFormSchema = z
       .trim()
       .min(2)
       .max(160)
-      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug는 영문 소문자, 숫자, 하이픈만 사용할 수 있습니다.'),
+      .regex(
+        /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+        'slug는 영문 소문자, 숫자, 하이픈만 사용할 수 있습니다.',
+      ),
     name: z.string().trim().min(1, '상품명을 입력해주세요.').max(200),
     summary: z.string().trim().max(500).optional().or(z.literal('')),
     description: z.string().trim().max(50000).optional().or(z.literal('')),
@@ -94,9 +113,17 @@ export const adminProductFormSchema = z
       .array(imageRowSchema)
       .default([])
       .transform((rows) => rows.filter((row) => row.url !== '')),
+    options: z
+      .array(productOptionRowSchema)
+      .max(3, '옵션은 최대 3개까지 등록할 수 있습니다.')
+      .default([]),
+    skus: z
+      .array(productSkuRowSchema)
+      .max(120, '옵션 조합은 최대 120개까지 등록할 수 있습니다.')
+      .default([]),
   })
   .superRefine((value, ctx) => {
-    if (value.useStock === '2') {
+    if (value.useStock === '2' && value.options.length === 0) {
       if (value.stock < 1) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -143,6 +170,82 @@ export const adminProductFormSchema = z
         message: '대표 이미지를 다시 선택해주세요.',
       });
     }
+
+    if (value.options.length === 0) return;
+
+    const optionNames = value.options.map((option) => option.name);
+    if (new Set(optionNames).size !== optionNames.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['options'],
+        message: '옵션명은 중복될 수 없습니다.',
+      });
+    }
+
+    const expectedCount = value.options.reduce((count, option) => count * option.values.length, 1);
+    if (value.skus.length !== expectedCount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['skus'],
+        message: '옵션 조합을 다시 확인해주세요.',
+      });
+      return;
+    }
+
+    const valuesByName = new Map(
+      value.options.map((option) => [option.name, new Set(option.values)]),
+    );
+    const seenCombinations = new Set<string>();
+    const seenCodes = new Set<string>();
+
+    value.skus.forEach((sku, index) => {
+      const keys = Object.keys(sku.optionValues);
+      const sameKeys =
+        keys.length === optionNames.length &&
+        optionNames.every((optionName) => keys.includes(optionName));
+      if (!sameKeys) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['skus', index, 'optionValues'],
+          message: '옵션 조합 값이 옵션 목록과 일치하지 않습니다.',
+        });
+        return;
+      }
+
+      for (const optionName of optionNames) {
+        const selectedValue = sku.optionValues[optionName];
+        if (!selectedValue || !valuesByName.get(optionName)?.has(selectedValue)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['skus', index, 'optionValues'],
+            message: '등록되지 않은 옵션값이 포함되어 있습니다.',
+          });
+        }
+      }
+
+      const combinationKey = optionNames
+        .map((optionName) => `${optionName}:${sku.optionValues[optionName]}`)
+        .join('|');
+      if (seenCombinations.has(combinationKey)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['skus', index, 'optionValues'],
+          message: '옵션 조합이 중복되었습니다.',
+        });
+      }
+      seenCombinations.add(combinationKey);
+
+      if (sku.code) {
+        if (seenCodes.has(sku.code)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['skus', index, 'code'],
+            message: 'SKU 코드가 중복되었습니다.',
+          });
+        }
+        seenCodes.add(sku.code);
+      }
+    });
   });
 
 export type AdminProductFormInput = z.infer<typeof adminProductFormSchema>;

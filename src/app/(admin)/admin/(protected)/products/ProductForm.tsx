@@ -3,6 +3,7 @@ import type {
   CategoryOnProduct,
   Product,
   ProductImage,
+  ProductOption,
   ProductSku,
 } from '@prisma/client';
 import type { ReactNode } from 'react';
@@ -18,6 +19,7 @@ import {
 import { FormattedNumberInput } from '@/components/ui/FormattedNumberInput';
 import { ProductDescriptionEditor } from './ProductDescriptionEditor';
 import { ProductImageFields } from './ProductImageFields';
+import { ProductOptionFields } from './ProductOptionFields';
 
 type ProductForForm =
   | (Pick<
@@ -35,7 +37,8 @@ type ProductForForm =
       | 'thumbnail'
       | 'attributes'
     > & {
-      skus: Pick<ProductSku, 'stock'>[];
+      options: Pick<ProductOption, 'name' | 'values' | 'sortOrder'>[];
+      skus: Pick<ProductSku, 'code' | 'optionValues' | 'priceDelta' | 'stock' | 'isActive'>[];
       categories: Pick<CategoryOnProduct, 'categoryId'>[];
       images: Pick<ProductImage, 'url' | 'alt' | 'sortOrder' | 'isMain'>[];
     })
@@ -344,6 +347,21 @@ export function ProductForm({
             <ProductImageFields
               initialImages={images}
               initialMainIndex={mainImageIndex >= 0 ? mainImageIndex : 0}
+            />
+          </Section>
+
+          <Section
+            title="상품 옵션"
+            description="색상, 규격처럼 고객이 선택할 값을 입력하고 조합별 재고를 연결합니다."
+          >
+            <ProductOptionFields
+              initialOptions={
+                product?.options
+                  .slice()
+                  .sort((a, b) => a.sortOrder - b.sortOrder)
+                  .map((option) => ({ name: option.name, values: option.values })) ?? []
+              }
+              initialSkus={product?.skus ?? []}
             />
           </Section>
 

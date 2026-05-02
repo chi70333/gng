@@ -40,7 +40,14 @@ export default async function EditProductPage({ params }: { params: { id: string
         status: true,
         thumbnail: true,
         attributes: true,
-        skus: { select: { stock: true } },
+        options: {
+          orderBy: { sortOrder: 'asc' },
+          select: { name: true, values: true, sortOrder: true },
+        },
+        skus: {
+          orderBy: { id: 'asc' },
+          select: { code: true, optionValues: true, priceDelta: true, stock: true, isActive: true },
+        },
         categories: { select: { categoryId: true } },
         images: {
           orderBy: { sortOrder: 'asc' },

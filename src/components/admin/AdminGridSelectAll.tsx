@@ -10,6 +10,10 @@ type AdminGridSelectAllProps = {
   className?: string;
 };
 
+function isVisibleCheckbox(checkbox: HTMLInputElement): boolean {
+  return checkbox.getClientRects().length > 0;
+}
+
 export function AdminGridSelectAll({
   name,
   formId,
@@ -36,6 +40,7 @@ export function AdminGridSelectAll({
           const formSelector = formId ? `[form="${CSS.escape(formId)}"]` : '';
           const selector = `input[type="checkbox"][name="${CSS.escape(name)}"]${formSelector}`;
           document.querySelectorAll<HTMLInputElement>(selector).forEach((checkbox) => {
+            if (!isVisibleCheckbox(checkbox)) return;
             checkbox.checked = nextChecked;
           });
         }}

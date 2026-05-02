@@ -15,6 +15,7 @@ import { adminOrderListQuerySchema, adminOrderStatusFormSchema } from './admin-o
 import {
   adminUserBulkDeleteFormSchema,
   adminUserBulkPointFormSchema,
+  adminUserBulkPointResetAllFormSchema,
   adminUserListQuerySchema,
   adminUserMessageFormSchema,
   adminUserPointDeleteSchema,
@@ -231,6 +232,22 @@ describe('admin schemas', () => {
         intent: 'mileage-grant',
         userIds: [1n],
         delta: '',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('requires confirmation for all-member mileage reset', () => {
+    expect(
+      adminUserBulkPointResetAllFormSchema.safeParse({
+        intent: 'mileage-reset-all',
+        confirm: '전체 초기화',
+        reason: '관리자 마일리지 전체 초기화',
+      }).success,
+    ).toBe(true);
+    expect(
+      adminUserBulkPointResetAllFormSchema.safeParse({
+        intent: 'mileage-reset-all',
+        confirm: '',
       }).success,
     ).toBe(false);
   });
