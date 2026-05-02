@@ -5,7 +5,6 @@ import type { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '@/server/db';
 import {
-  CART_ITEM_QUANTITY,
   clearCart,
   deleteCartItems,
   getCart,
@@ -274,7 +273,7 @@ export async function createOrderFromCart(
   }
 
   const subtotal = orderItems.reduce(
-    (sum, item) => sum.plus(new Decimal(item.unitPrice)),
+    (sum, item) => sum.plus(new Decimal(item.unitPrice).mul(item.quantity)),
     new Decimal(0),
   );
   const shippingBaseFee = getShippingBaseFee(subtotal);
@@ -332,10 +331,10 @@ export async function createOrderFromCart(
       // `stock - reserved >= quantity` atomically without a read-then-write race.
       const reserved = await tx.$executeRaw`
         UPDATE "ProductSku"
-        SET "reserved" = "reserved" + ${CART_ITEM_QUANTITY}
+        SET "reserved" = "reserved" + ${item.quantity}
         WHERE "id" = ${BigInt(item.skuId)}
           AND "isActive" = true
-          AND "stock" - "reserved" >= ${CART_ITEM_QUANTITY}
+          AND "stock" - "reserved" >= ${item.quantity}
       `;
 
       if (reserved !== 1) {
@@ -389,8 +388,8 @@ export async function createOrderFromCart(
             skuCode: item.skuId,
             optionSummary: item.optionSummary,
             unitPrice: new Decimal(item.unitPrice),
-            quantity: CART_ITEM_QUANTITY,
-            totalPrice: new Decimal(item.unitPrice),
+            quantity: item.quantity,
+            totalPrice: new Decimal(item.unitPrice).mul(item.quantity),
           })),
         },
         payments: {

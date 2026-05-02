@@ -211,7 +211,7 @@ export default function AddToCartPanel({ options, skus }: AddToCartPanelProps) {
         showToast({
           variant: 'success',
           title: '장바구니에 담았습니다.',
-          description: '상품은 1개 단위로만 구매할 수 있습니다.',
+          description: '수량 변경과 주문은 장바구니에서 이어서 할 수 있습니다.',
           action: {
             label: '장바구니 보기',
             onClick: () => router.push('/cart'),

@@ -9,7 +9,6 @@ import { ConflictError, NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 
 export const CART_TTL_SECONDS = 60 * 60 * 24 * 30;
-export const CART_ITEM_QUANTITY = 1;
 
 export type CartIdentity =
   | { type: 'user'; id: string }
@@ -65,9 +64,7 @@ function isCartItem(value: unknown): value is CartItem {
 }
 
 function parseCartItems(value: unknown): CartItem[] {
-  return Array.isArray(value)
-    ? value.filter(isCartItem).map((item) => ({ ...item, quantity: CART_ITEM_QUANTITY }))
-    : [];
+  return Array.isArray(value) ? value.filter(isCartItem) : [];
 }
 
 function summarizeOptions(optionValues: unknown): string | null {
@@ -82,7 +79,7 @@ function summarizeOptions(optionValues: unknown): string | null {
 
 function withSubtotal(items: CartItem[]): Cart {
   const subtotal = items.reduce(
-    (sum, item) => sum.plus(new Decimal(item.unitPrice)),
+    (sum, item) => sum.plus(new Decimal(item.unitPrice).mul(item.quantity)),
     new Decimal(0),
   );
 
@@ -104,7 +101,7 @@ async function readItems(identity: CartIdentity): Promise<CartItem[]> {
   }
 
   try {
-    return parseCartItems(await redis.get<unknown>(cartKey(identity)));
+    return (await redis.get<CartItem[]>(cartKey(identity))) ?? [];
   } catch (err) {
     logger.error({ err }, 'cart Redis get failed');
     return [];
@@ -112,8 +109,6 @@ async function readItems(identity: CartIdentity): Promise<CartItem[]> {
 }
 
 async function writeItems(identity: CartIdentity, items: CartItem[]): Promise<void> {
-  const normalizedItems = items.map((item) => ({ ...item, quantity: CART_ITEM_QUANTITY }));
-
   if (shouldUseDbCartFallback()) {
     await prisma.cartSnapshot.upsert({
       where: { key: cartKey(identity) },
@@ -121,20 +116,20 @@ async function writeItems(identity: CartIdentity, items: CartItem[]): Promise<vo
         key: cartKey(identity),
         identityType: identity.type,
         identityId: identity.id,
-        items: normalizedItems as unknown as Prisma.InputJsonValue,
+        items: items as unknown as Prisma.InputJsonValue,
         expiresAt: new Date(Date.now() + CART_TTL_SECONDS * 1000),
       },
       update: {
         identityType: identity.type,
         identityId: identity.id,
-        items: normalizedItems as unknown as Prisma.InputJsonValue,
+        items: items as unknown as Prisma.InputJsonValue,
         expiresAt: new Date(Date.now() + CART_TTL_SECONDS * 1000),
       },
     });
     return;
   }
 
-  await redis.set(cartKey(identity), normalizedItems, { ex: CART_TTL_SECONDS });
+  await redis.set(cartKey(identity), items, { ex: CART_TTL_SECONDS });
 }
 
 async function hydrateItems(items: CartItem[]): Promise<CartItem[]> {
@@ -168,7 +163,6 @@ async function hydrateItems(items: CartItem[]): Promise<CartItem[]> {
     if (!sku || !sku.isActive || sku.product.status !== 'active' || sku.product.deletedAt) {
       return {
         ...item,
-        quantity: CART_ITEM_QUANTITY,
         isAvailable: false,
         availableQuantity: 0,
         stockMessage: '현재 구매할 수 없는 상품입니다.',
@@ -176,10 +170,9 @@ async function hydrateItems(items: CartItem[]): Promise<CartItem[]> {
     }
 
     const availableQuantity = Math.max(0, sku.stock - sku.reserved);
-    const isAvailable = availableQuantity >= CART_ITEM_QUANTITY;
+    const isAvailable = availableQuantity >= item.quantity;
     return {
       ...item,
-      quantity: CART_ITEM_QUANTITY,
       productId: sku.product.id.toString(),
       slug: sku.product.slug,
       name: sku.product.name,
@@ -204,7 +197,7 @@ export async function getCart(identity: CartIdentity): Promise<Cart> {
 export async function addCartItem(
   identity: CartIdentity,
   skuId: string,
-  _quantity: number,
+  quantity: number,
 ): Promise<Cart> {
   const sku = await prisma.productSku.findUnique({
     where: { id: BigInt(skuId) },
@@ -229,7 +222,7 @@ export async function addCartItem(
   }
 
   const available = sku.stock - sku.reserved;
-  if (available < CART_ITEM_QUANTITY) {
+  if (available < quantity) {
     throw new ConflictError(String(Math.max(0, available)));
   }
 
@@ -237,7 +230,8 @@ export async function addCartItem(
   const existing = items.find((item) => item.skuId === skuId);
 
   if (existing) {
-    existing.quantity = CART_ITEM_QUANTITY;
+    const nextQuantity = Math.min(existing.quantity + quantity, available, 99);
+    existing.quantity = nextQuantity;
   } else {
     items.push({
       skuId,
@@ -247,7 +241,7 @@ export async function addCartItem(
       thumbnail: sku.product.thumbnail,
       optionSummary: summarizeOptions(sku.optionValues),
       unitPrice: (sku.product.salePrice ?? sku.product.price).plus(sku.priceDelta).toString(),
-      quantity: CART_ITEM_QUANTITY,
+      quantity,
       addedAt: new Date().toISOString(),
       isAvailable: true,
       availableQuantity: available,
@@ -310,7 +304,7 @@ export async function updateCartItem(
     if (!sku || !sku.isActive || sku.product.status !== 'active' || sku.product.deletedAt) {
       throw new ConflictError('Product option is not available.');
     }
-    if (available < CART_ITEM_QUANTITY) {
+    if (available < quantity) {
       throw new ConflictError(String(Math.max(0, available)));
     }
   }
@@ -318,9 +312,7 @@ export async function updateCartItem(
   const nextItems =
     quantity === 0
       ? items.filter((item) => item.skuId !== skuId)
-      : items.map((item) =>
-          item.skuId === skuId ? { ...item, quantity: CART_ITEM_QUANTITY } : item,
-        );
+      : items.map((item) => (item.skuId === skuId ? { ...item, quantity } : item));
 
   await writeItems(identity, nextItems);
   return withSubtotal(await hydrateItems(nextItems));
@@ -346,9 +338,9 @@ export async function mergeCart(
   for (const sourceItem of sourceItems) {
     const existing = merged.find((item) => item.skuId === sourceItem.skuId);
     if (existing) {
-      existing.quantity = CART_ITEM_QUANTITY;
+      existing.quantity = Math.min(existing.quantity + sourceItem.quantity, 99);
     } else {
-      merged.push({ ...sourceItem, quantity: CART_ITEM_QUANTITY });
+      merged.push(sourceItem);
     }
   }
 

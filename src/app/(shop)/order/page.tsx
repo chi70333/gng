@@ -158,13 +158,13 @@ function serializeCartItems(items: CartItem[]): OrderPaymentFormProps['cartItems
     thumbnail: item.thumbnail,
     optionSummary: item.optionSummary,
     unitPrice: item.unitPrice,
-    quantity: 1,
+    quantity: item.quantity,
   }));
 }
 
 function calculateSubtotal(items: CartItem[]): Decimal {
   return items.reduce(
-    (sum, item) => sum.plus(new Decimal(item.unitPrice)),
+    (sum, item) => sum.plus(new Decimal(item.unitPrice).mul(item.quantity)),
     new Decimal(0),
   );
 }

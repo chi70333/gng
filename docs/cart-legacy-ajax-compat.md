@@ -12,7 +12,6 @@
 
 - 신규 JSON API `/api/cart`는 `{ ok, data }` 응답을 유지한다.
 - 레거시 어댑터는 같은 Redis 장바구니를 사용하면서 텍스트 응답을 반환한다.
-- 운영 정책상 장바구니와 주문 수량은 항상 `1`로 정규화한다. 중복 담기, 수량 변경, guest→user merge 모두 기존 라인의 수량을 늘리지 않는다.
 - 비회원 쿠키는 `gng_cart_id`, Redis key는 `cart:guest:<cookieId>`, 회원 key는 `cart:user:<email>`이다.
 - Redis write는 `ex: 60 * 60 * 24 * 30`으로 30일 TTL을 건다.
 - 로그인 상태에서 guest cookie가 함께 오면 guest 장바구니를 user 장바구니로 merge하고 guest key를 삭제한다.

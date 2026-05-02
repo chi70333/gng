@@ -1,23 +1,17 @@
 import { z } from 'zod';
 
 const idSchema = z.string().regex(/^\d+$/);
-const singleQuantitySchema = z.coerce.number().int().optional().transform(() => 1);
-const cartUpdateQuantitySchema = z.coerce
-  .number()
-  .int()
-  .min(0)
-  .transform((value) => (value === 0 ? 0 : 1));
 
 export const addCartItemSchema = z.object({
   skuId: idSchema,
-  quantity: singleQuantitySchema,
+  quantity: z.coerce.number().int().min(1).max(99).default(1),
 });
 
 export type AddCartItemInput = z.infer<typeof addCartItemSchema>;
 
 export const updateCartItemSchema = z.object({
   skuId: idSchema,
-  quantity: cartUpdateQuantitySchema,
+  quantity: z.coerce.number().int().min(0).max(99),
 });
 
 export type UpdateCartItemInput = z.infer<typeof updateCartItemSchema>;
@@ -26,7 +20,7 @@ export const legacyCartChangeCountSchema = z.object({
   mode: z.literal('chang_cnt'),
   idx: idSchema,
   tar: z.string().default('cnt'),
-  cnt: singleQuantitySchema,
+  cnt: z.coerce.number().int().min(1).max(99),
 });
 
 export const legacyCartDeleteSchema = z.object({
@@ -41,7 +35,7 @@ export const legacyCartAddSchema = z.object({
   skuId: idSchema.optional(),
   goodsIdx: idSchema.optional(),
   goodsIdxSingle: idSchema.optional(),
-  quantity: singleQuantitySchema,
+  quantity: z.coerce.number().int().min(1).max(99).default(1),
   mode: z.string().optional(),
 });
 

@@ -5,25 +5,19 @@ import { paymentCallbackSchema } from './payment';
 import { createProductQnaSchema } from './product-qna';
 
 describe('cart schemas', () => {
-  it('normalizes add quantity to one and keeps sku ids string-safe for bigint parsing', () => {
+  it('coerces quantity and keeps sku ids string-safe for bigint parsing', () => {
     const parsed = addCartItemSchema.parse({ skuId: '123', quantity: '2' });
 
-    expect(parsed).toEqual({ skuId: '123', quantity: 1 });
+    expect(parsed).toEqual({ skuId: '123', quantity: 2 });
   });
 
-  it('keeps zero as delete for updates and normalizes positive updates to one', () => {
-    expect(addCartItemSchema.parse({ skuId: '123', quantity: 0 })).toEqual({
-      skuId: '123',
-      quantity: 1,
-    });
-    expect(updateCartItemSchema.parse({ skuId: '123', quantity: 0 })).toEqual({
-      skuId: '123',
-      quantity: 0,
-    });
-    expect(updateCartItemSchema.parse({ skuId: '123', quantity: 7 })).toEqual({
-      skuId: '123',
-      quantity: 1,
-    });
+  it('allows zero only for cart item updates', () => {
+    expect(addCartItemSchema.safeParse({ skuId: '123', quantity: 0 }).success).toBe(
+      false,
+    );
+    expect(updateCartItemSchema.safeParse({ skuId: '123', quantity: 0 }).success).toBe(
+      true,
+    );
   });
 });
 
