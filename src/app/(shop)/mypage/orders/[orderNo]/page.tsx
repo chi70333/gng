@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
-import { formatKRW } from '@/lib/format';
+import { formatKRW, formatKoreanDateTime } from '@/lib/format';
 import { getCachedSitePolicy } from '@/server/services/site-policy.service';
 import { cancelOrderAction } from './actions';
 
@@ -197,7 +197,7 @@ export default async function MyOrderDetailPage({ params, searchParams }: Detail
           </span>
         </div>
         <p className="mt-3 text-xs text-neutral-400">
-          주문일 {order.createdAt.toLocaleString('ko-KR')}
+          주문일 {formatKoreanDateTime(order.createdAt)}
         </p>
       </div>
 

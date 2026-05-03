@@ -55,10 +55,10 @@ const mileageRowSchema = z
     reason: z.string().trim().min(1).max(200),
   })
   .superRefine((row, ctx) => {
-    if (!row.loginId) {
+    if (!row.userId && !row.loginId && !row.email) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'ID는 반드시 입력해주세요.',
+        message: '회원 식별자(ID 또는 이메일)는 반드시 입력해주세요.',
         path: ['loginId'],
       });
     }

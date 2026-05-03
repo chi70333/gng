@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
-import { formatKRW, formatNumber } from '@/lib/format';
+import { formatKRW, formatKoreanDateTime, formatNumber } from '@/lib/format';
 import {
   AdminDataGrid,
   type AdminSortDirection,
@@ -920,7 +920,7 @@ export default async function AdminOrdersPage({
                   </Link>
                 </td>
                 <td className={`${adminGridCellClass} text-right text-xs text-neutral-500`}>
-                  {order.createdAt.toLocaleString('ko-KR')}
+                  {formatKoreanDateTime(order.createdAt)}
                 </td>
                 <td className={adminGridCellClass}>
                   <span className="line-clamp-1">{companyName || '-'}</span>
@@ -1054,7 +1054,7 @@ export default async function AdminOrdersPage({
                   <AdminMobileField label="상태">{orderStatusLabel(order.status)}</AdminMobileField>
                   <div className="col-span-2">
                     <AdminMobileField label="주문일시">
-                      {order.createdAt.toLocaleString('ko-KR')}
+                      {formatKoreanDateTime(order.createdAt)}
                     </AdminMobileField>
                   </div>
                   <div className="col-span-2">

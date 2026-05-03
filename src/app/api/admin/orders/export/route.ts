@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
+import { formatKoreanDateTime } from '@/lib/format';
 import {
   ADMIN_ORDER_MILEAGE_EXCEPTION_QUERY,
   ADMIN_ORDER_MILEAGE_EXCEPTION_VALUE,
@@ -226,7 +227,7 @@ export async function GET(request: Request) {
       rows.push(
         [
           order.orderNo,
-          order.createdAt.toLocaleString('ko-KR'),
+          formatKoreanDateTime(order.createdAt),
           buyerLabel,
           paymentLabel(payment?.method),
           receiver,

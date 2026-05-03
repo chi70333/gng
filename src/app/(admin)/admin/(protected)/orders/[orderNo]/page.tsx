@@ -5,7 +5,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
-import { formatKRW } from '@/lib/format';
+import { formatKRW, formatKoreanDateTime } from '@/lib/format';
 import { AdminStatusBadge } from '@/components/admin/AdminStatusBadge';
 import {
   AdminPageHeader,
@@ -74,7 +74,7 @@ export default async function AdminOrderDetailPage({ params }: { params: { order
       <section className="space-y-5">
         <AdminPageHeader
           title={order.orderNo}
-          description={`주문일시 ${order.createdAt.toLocaleString('ko-KR')}`}
+          description={`주문일시 ${formatKoreanDateTime(order.createdAt)}`}
           actions={<AdminStatusBadge status={order.status} />}
         />
 
@@ -143,7 +143,7 @@ export default async function AdminOrderDetailPage({ params }: { params: { order
               order.history.map((history) => (
                 <li key={history.id.toString()} className="text-sm text-neutral-600">
                   {history.fromStatus ? statusLabel(history.fromStatus) : '-'} →{' '}
-                  {statusLabel(history.toStatus)} / {history.createdAt.toLocaleString('ko-KR')}
+                  {statusLabel(history.toStatus)} / {formatKoreanDateTime(history.createdAt)}
                   {history.reason ? ` / ${history.reason}` : ''}
                 </li>
               ))

@@ -14,10 +14,12 @@ import {
   createPointLedgerBalanceEntry,
   createPointLedgerEntry,
 } from '@/server/services/point-ledger.service';
+import { parseMileageSpreadsheet } from '@/server/services/mileage-spreadsheet.service';
 import {
-  parseMileageSpreadsheet,
-  type MileageUploadRecord,
-} from '@/server/services/mileage-spreadsheet.service';
+  resolveMileageImportOperations,
+  socialLoginIdParts,
+  type MileageImportOperation,
+} from '@/server/services/mileage-import.service';
 import { transitionOrderStatus } from '@/server/services/order.service';
 import {
   adminProductFormSchema,
@@ -1516,11 +1518,6 @@ function uniqueStrings(values: (string | undefined)[]): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value)))];
 }
 
-type MileageImportOperation = {
-  userId: bigint;
-  record: MileageUploadRecord;
-};
-
 async function applyMileageImportOperations(
   operations: MileageImportOperation[],
 ): Promise<{ updated: number; skipped: number }> {
@@ -1596,24 +1593,6 @@ function uniqueBigInts(values: (bigint | undefined)[]): bigint[] {
   return [...unique.values()];
 }
 
-function socialLoginIdParts(loginId: string): { provider: string; providerUid: string } | null {
-  const match = /^(kakao|naver|google|apple)-(.+)$/i.exec(loginId.trim());
-  if (!match) return null;
-  return {
-    provider: match[1]?.toLowerCase() ?? '',
-    providerUid: match[2] ?? '',
-  };
-}
-
-function canonicalSocialLoginId(loginId: string): string | null {
-  const social = socialLoginIdParts(loginId);
-  return social ? `${social.provider}-${social.providerUid}` : null;
-}
-
-function userLookupKey(record: MileageUploadRecord): string {
-  return [record.userId?.toString() ?? '', record.loginId ?? '', record.email ?? ''].join('|');
-}
-
 export async function importAdminUserMileageExcel(formData: FormData) {
   const admin = await requireAdmin('user.write');
   const file = formData.get('mileageFile');
@@ -1684,47 +1663,10 @@ export async function importAdminUserMileageExcel(formData: FormData) {
         socialAccounts: { select: { provider: true, providerUid: true } },
       },
     });
-    const byId = new Map(users.map((user) => [user.id.toString(), user]));
-    const byLoginId = new Map(
-      users
-        .filter((user): user is typeof user & { loginId: string } => user.loginId !== null)
-        .map((user) => [user.loginId, user]),
-    );
-    const byEmail = new Map(users.map((user) => [user.email.toLowerCase(), user]));
-    const bySocialLoginId = new Map<string, (typeof users)[number]>();
-    users.forEach((user) => {
-      user.socialAccounts.forEach((account) => {
-        bySocialLoginId.set(`${account.provider}-${account.providerUid}`, user);
-      });
-    });
-    const appliedRows = new Set<string>();
-    const operations: MileageImportOperation[] = [];
+    const resolved = resolveMileageImportOperations(parsed.records, users);
+    skipped += resolved.skipped;
 
-    for (const record of parsed.records) {
-      const lookupKey = userLookupKey(record);
-      if (appliedRows.has(lookupKey)) {
-        skipped += 1;
-        continue;
-      }
-      appliedRows.add(lookupKey);
-
-      const user =
-        (record.userId ? byId.get(record.userId.toString()) : undefined) ??
-        (record.loginId ? byLoginId.get(record.loginId) : undefined) ??
-        (record.loginId
-          ? bySocialLoginId.get(canonicalSocialLoginId(record.loginId) ?? record.loginId)
-          : undefined) ??
-        (record.email ? byEmail.get(record.email.toLowerCase()) : undefined);
-
-      if (!user) {
-        skipped += 1;
-        continue;
-      }
-
-      operations.push({ userId: user.id, record });
-    }
-
-    const result = await applyMileageImportOperations(operations);
+    const result = await applyMileageImportOperations(resolved.operations);
     updated += result.updated;
     skipped += result.skipped;
   } catch (err) {

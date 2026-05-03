@@ -8,7 +8,7 @@ import { unstable_cache } from 'next/cache';
 import { AlertTriangle, Boxes, FileText, PackageCheck, UsersRound } from 'lucide-react';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
-import { formatKRW, formatNumber } from '@/lib/format';
+import { formatKRW, formatKoreanDateTime, formatNumber } from '@/lib/format';
 import {
   AdminDataGrid,
   AdminMobileCard,
@@ -68,6 +68,7 @@ const getAdminStats = unstable_cache(
         select: {
           orderNo: true,
           status: true,
+          pointsUsed: true,
           total: true,
           createdAt: true,
           user: { select: { name: true, phone: true } },
@@ -166,7 +167,7 @@ function paymentLabel(method: string | undefined): string {
 }
 
 function formatDateTime(value: Date | string): string {
-  return new Date(value).toLocaleString('ko-KR');
+  return formatKoreanDateTime(value);
 }
 
 function formatDate(value: Date | string): string {
@@ -230,7 +231,7 @@ export default async function AdminDashboardPage() {
             { key: 'buyer', label: '주문자', widthClassName: 'w-44' },
             { key: 'phone', label: '전화번호', widthClassName: 'w-36' },
             { key: 'payment', label: '결제방법', widthClassName: 'w-28' },
-            { key: 'amount', label: '결제금액', align: 'right', widthClassName: 'w-32' },
+            { key: 'amount', label: '결제금액', align: 'right', widthClassName: 'w-36' },
             { key: 'status', label: '거래상태', widthClassName: 'w-28' },
             { key: 'date', label: '주문날짜', align: 'right', widthClassName: 'w-44' },
           ]}
@@ -263,8 +264,19 @@ export default async function AdminDashboardPage() {
                 <td className={adminGridCellClass}>{buyerName}</td>
                 <td className={adminGridCellClass}>{phone}</td>
                 <td className={adminGridCellClass}>{paymentLabel(payment?.method)}</td>
-                <td className={`${adminGridCellClass} text-right font-extrabold text-neutral-950`}>
-                  {formatKRW(order.total.toString())}
+                <td className={`${adminGridCellClass} text-right`}>
+                  <strong className="block font-extrabold text-neutral-950">
+                    {formatKRW(order.total.toString())}
+                  </strong>
+                  <span
+                    className={
+                      order.pointsUsed > 0
+                        ? 'mt-0.5 block text-[11px] font-semibold text-blue-700'
+                        : 'mt-0.5 block text-[11px] font-medium text-neutral-400'
+                    }
+                  >
+                    마일리지 {formatKRW(order.pointsUsed.toString())}
+                  </span>
                 </td>
                 <td className={adminGridCellClass}>
                   <AdminStatusBadge status={order.status} />
@@ -292,6 +304,15 @@ export default async function AdminDashboardPage() {
                   <AdminMobileField label="주문자">{buyerName}</AdminMobileField>
                   <AdminMobileField label="결제금액" align="right">
                     {formatKRW(order.total.toString())}
+                    <span
+                      className={
+                        order.pointsUsed > 0
+                          ? 'mt-1 block text-xs text-blue-700'
+                          : 'mt-1 block text-xs text-neutral-400'
+                      }
+                    >
+                      마일리지 {formatKRW(order.pointsUsed.toString())}
+                    </span>
                   </AdminMobileField>
                   <AdminMobileField label="결제방법">
                     {paymentLabel(payment?.method)}

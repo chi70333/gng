@@ -52,6 +52,27 @@ describe('parseMileageSpreadsheet', () => {
     });
   });
 
+  it('parses rows identified by email when login ID is empty', () => {
+    const result = parseMileageSpreadsheet(
+      'mileage.csv',
+      bufferFromText(
+        [
+          '이메일,마일리지,처리방식,사유',
+          'member@example.com,1000,부여,이메일 기준 지급',
+        ].join('\n'),
+      ),
+    );
+
+    expect(result.skipped).toBe(0);
+    expect(result.records[0]).toMatchObject({
+      rowNumber: 2,
+      email: 'member@example.com',
+      amount: 1000,
+      mode: 'grant',
+      reason: '이메일 기준 지급',
+    });
+  });
+
   it('skips rows without a member identifier', () => {
     const result = parseMileageSpreadsheet(
       'mileage.csv',
@@ -60,7 +81,7 @@ describe('parseMileageSpreadsheet', () => {
 
     expect(result.records).toHaveLength(0);
     expect(result.skipped).toBe(1);
-    expect(result.errors[0]).toContain('ID는 반드시 입력');
+    expect(result.errors[0]).toContain('회원 식별자');
   });
 
   it('returns a user-facing error for unreadable Excel uploads', () => {
