@@ -10,10 +10,7 @@ import { writeAdminAuditLog } from '@/server/admin/audit';
 import { TAGS } from '@/lib/cache';
 import { logger } from '@/lib/logger';
 import { hashPassword } from '@/server/services/auth.service';
-import {
-  createPointLedgerBalanceEntry,
-  createPointLedgerEntry,
-} from '@/server/services/point-ledger.service';
+import { createPointLedgerEntry } from '@/server/services/point-ledger.service';
 import { parseMileageSpreadsheet } from '@/server/services/mileage-spreadsheet.service';
 import {
   resolveMileageImportOperations,
@@ -157,8 +154,11 @@ function adminMileageErrorMessage(error: unknown): string {
   return '마일리지 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
 }
 
-const ADMIN_MILEAGE_RESET_ALL_BATCH_SIZE = 200;
 const ADMIN_MILEAGE_IMPORT_TRANSACTION_TIMEOUT_MS = 15000;
+
+type AdminMileageResetAllResult = {
+  updated: number;
+};
 
 async function createBulkPointLedgerEntries(
   tx: Prisma.TransactionClient,
@@ -214,25 +214,30 @@ async function createBulkPointLedgerEntries(
   };
 }
 
-async function findAdminUserIdsWithMileageBalance(): Promise<bigint[]> {
-  // Raw SQL is used to find only users whose latest point-ledger balance is nonzero;
-  // Prisma cannot filter by the latest related row without over-fetching all histories.
-  const rows = await prisma.$queryRaw<{ id: bigint }[]>(Prisma.sql`
-    SELECT u."id"
-    FROM "User" u
-    LEFT JOIN LATERAL (
-      SELECT h."balance"
-      FROM "UserPointHistory" h
-      WHERE h."userId" = u."id"
-      ORDER BY h."id" DESC
-      LIMIT 1
-    ) latest ON TRUE
-    WHERE u."deletedAt" IS NULL
-      AND COALESCE(latest."balance", 0) <> 0
-    ORDER BY u."id" ASC
+async function resetAllAdminUserMileageBalances(reason: string): Promise<number> {
+  // Raw SQL keeps all-member reset atomic and bounded: latest balances are read once,
+  // and one reset ledger row is inserted for each active user with a nonzero balance.
+  const rows = await prisma.$queryRaw<AdminMileageResetAllResult[]>(Prisma.sql`
+    WITH inserted AS (
+      INSERT INTO "UserPointHistory" ("userId", "delta", "balance", "reason")
+      SELECT u."id", -latest."balance", 0, ${reason}
+      FROM "User" u
+      JOIN LATERAL (
+        SELECT h."balance"
+        FROM "UserPointHistory" h
+        WHERE h."userId" = u."id"
+        ORDER BY h."id" DESC
+        LIMIT 1
+      ) latest ON TRUE
+      WHERE u."deletedAt" IS NULL
+        AND latest."balance" <> 0
+      RETURNING 1
+    )
+    SELECT COUNT(*)::int AS "updated"
+    FROM inserted
   `);
 
-  return rows.map((row) => row.id);
+  return rows[0]?.updated ?? 0;
 }
 
 function collectProductImages(formData: FormData) {
@@ -1419,22 +1424,10 @@ export async function bulkUpdateAdminUsers(formData: FormData) {
     }
 
     const reason = optionalString(parsed.data.reason) ?? '관리자 마일리지 전체 초기화';
-    let userIds: bigint[] = [];
+    let updated = 0;
 
     try {
-      userIds = await findAdminUserIdsWithMileageBalance();
-      for (let index = 0; index < userIds.length; index += ADMIN_MILEAGE_RESET_ALL_BATCH_SIZE) {
-        const batch = userIds.slice(index, index + ADMIN_MILEAGE_RESET_ALL_BATCH_SIZE);
-        await prisma.$transaction(async (tx) => {
-          for (const userId of batch) {
-            await createPointLedgerBalanceEntry(tx, {
-              userId,
-              targetBalance: 0,
-              reason,
-            });
-          }
-        });
-      }
+      updated = await resetAllAdminUserMileageBalances(reason);
     } catch (err) {
       logger.error({ err, action: 'user.points.bulk.reset_all' }, 'admin all mileage reset failed');
       redirectWithAdminUsersResult(redirectTo, { bulkError: adminMileageErrorMessage(err) });
@@ -1445,13 +1438,13 @@ export async function bulkUpdateAdminUsers(formData: FormData) {
       action: 'user.points.bulk.reset_all',
       entity: 'User',
       payload: {
-        updated: userIds.length,
+        updated,
         reason,
       },
     });
     revalidatePath('/admin/users');
     redirectWithAdminUsersResult(redirectTo, {
-      mileageUpdated: userIds.length,
+      mileageUpdated: updated,
       mileageSkipped: 0,
     });
   }
