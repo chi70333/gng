@@ -24,8 +24,6 @@ export type MileageUploadParseResult = {
 
 type HeaderField = 'userId' | 'loginId' | 'email' | 'amount' | 'mode' | 'reason';
 
-const MAX_UPLOAD_ROWS = 1000;
-
 const defaultHeaderIndexes: Record<HeaderField, number> = {
   userId: -1,
   loginId: 0,
@@ -416,10 +414,10 @@ export function parseMileageSpreadsheet(fileName: string, bytes: ArrayBuffer): M
   if (rows.length === 0) return { records: [], skipped: 0, errors: ['업로드 파일에 데이터가 없습니다.'] };
 
   const { indexes, hasHeader } = indexesFromHeader(rows[0] ?? []);
-  const dataRows = (hasHeader ? rows.slice(1) : rows).slice(0, MAX_UPLOAD_ROWS);
+  const dataRows = hasHeader ? rows.slice(1) : rows;
   const records: MileageUploadRecord[] = [];
   const errors: string[] = [];
-  let skipped = Math.max(0, rows.length - (hasHeader ? 1 : 0) - MAX_UPLOAD_ROWS);
+  let skipped = 0;
 
   dataRows.forEach((row, index) => {
     const rowNumber = index + (hasHeader ? 2 : 1);

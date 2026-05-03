@@ -73,6 +73,36 @@ describe('parseMileageSpreadsheet', () => {
     });
   });
 
+  it('parses mileage uploads with more than 1000 data rows', () => {
+    const rows = ['ID,마일리지,처리방식,사유'];
+    for (let index = 1; index <= 1005; index += 1) {
+      rows.push(`member${index},1000,부여,일괄 지급`);
+    }
+
+    const result = parseMileageSpreadsheet('mileage.csv', bufferFromText(rows.join('\n')));
+
+    expect(result.skipped).toBe(0);
+    expect(result.records).toHaveLength(1005);
+    expect(result.records.at(-1)).toMatchObject({
+      rowNumber: 1006,
+      loginId: 'member1005',
+      amount: 1000,
+    });
+  });
+
+  it('does not skip rows because of an upload row limit', () => {
+    const rows = ['ID,마일리지,처리방식,사유'];
+    for (let index = 1; index <= 10001; index += 1) {
+      rows.push(`member${index},1000,부여,일괄 지급`);
+    }
+
+    const result = parseMileageSpreadsheet('mileage.csv', bufferFromText(rows.join('\n')));
+
+    expect(result.records).toHaveLength(10001);
+    expect(result.skipped).toBe(0);
+    expect(result.errors).toHaveLength(0);
+  });
+
   it('skips rows without a member identifier', () => {
     const result = parseMileageSpreadsheet(
       'mileage.csv',

@@ -42,6 +42,7 @@ export default async function MyOrdersPage() {
           orderNo: true,
           status: true,
           total: true,
+          pointsUsed: true,
           createdAt: true,
           items: {
             take: 1,
@@ -72,6 +73,8 @@ export default async function MyOrdersPage() {
         <ul className="mt-5 space-y-3">
           {user.orders.map((order) => {
             const firstItem = order.items[0];
+            const orderAmount = order.total.plus(order.pointsUsed);
+            const hasMileagePayment = order.pointsUsed > 0;
             return (
               <li key={order.orderNo} className="rounded-lg bg-white p-4">
                 <Link href={`/mypage/orders/${order.orderNo}`} className="block">
@@ -90,9 +93,30 @@ export default async function MyOrdersPage() {
                       {statusLabel(order.status)}
                     </span>
                   </div>
-                  <p className="mt-3 text-sm font-bold text-neutral-900">
-                    {formatKRW(order.total.toString())}
-                  </p>
+                  <div className="mt-3 space-y-1">
+                    <p className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-neutral-500">구매금액</span>
+                      <span className="font-bold text-neutral-900">
+                        {formatKRW(orderAmount.toString())}
+                      </span>
+                    </p>
+                    {hasMileagePayment && (
+                      <>
+                        <p className="flex items-center justify-between gap-3 text-xs">
+                          <span className="text-neutral-500">마일리지 사용</span>
+                          <span className="font-semibold text-blue-700">
+                            -{order.pointsUsed.toLocaleString('ko-KR')} P
+                          </span>
+                        </p>
+                        <p className="flex items-center justify-between gap-3 text-xs">
+                          <span className="text-neutral-500">실결제금액</span>
+                          <span className="font-semibold text-neutral-700">
+                            {formatKRW(order.total.toString())}
+                          </span>
+                        </p>
+                      </>
+                    )}
+                  </div>
                 </Link>
               </li>
             );
