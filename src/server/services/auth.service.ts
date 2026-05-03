@@ -5,6 +5,8 @@ import { createHash, timingSafeEqual } from 'crypto';
 import { prisma } from '@/server/db';
 import { ConflictError } from '@/lib/errors';
 import type { LoginInput, RegisterInput, SocialRegisterInput } from '@/schemas/auth';
+import { logger } from '@/lib/logger';
+import { sendExternalMemberRegisterWebhook } from './external-member-register.service';
 
 type AuthUser = {
   id: string;
@@ -185,6 +187,19 @@ export async function registerSocialUser(
       return created;
     });
 
+    if (input.provider === 'kakao') {
+      try {
+        await sendExternalMemberRegisterWebhook({
+          email: user.email,
+          fullName: user.name,
+          username: legacySocialLoginId(input.provider, input.providerUid),
+          phone,
+        });
+      } catch (err) {
+        logger.error({ err, email: user.email }, 'Kakao member register webhook threw an error');
+      }
+    }
+    
     return { id: user.id.toString(), email: user.email, name: user.name, userKind: 'member' };
   } catch (err) {
     if (
