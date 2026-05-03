@@ -7,6 +7,19 @@ const krw = new Intl.NumberFormat('ko-KR', {
 const number = new Intl.NumberFormat('ko-KR');
 
 type DateValue = Date | string | number | null | undefined;
+type DateTimePartType = Intl.DateTimeFormatPartTypes;
+
+const KOREA_TIME_ZONE = 'Asia/Seoul';
+const koreanDateTime = new Intl.DateTimeFormat('en-CA', {
+  timeZone: KOREA_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+});
 
 function toValidDate(value: DateValue): Date | null {
   if (value == null) return null;
@@ -14,8 +27,14 @@ function toValidDate(value: DateValue): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function padDatePart(value: number): string {
-  return String(value).padStart(2, '0');
+function getKoreanDateTimeParts(date: Date): Record<DateTimePartType, string> {
+  return koreanDateTime.formatToParts(date).reduce(
+    (acc, part) => {
+      acc[part.type] = part.value;
+      return acc;
+    },
+    {} as Record<DateTimePartType, string>,
+  );
 }
 
 export function formatKRW(value: number | string | bigint): string {
@@ -31,23 +50,17 @@ export function formatNumber(value: number | string | bigint): string {
 export function formatKoreanDate(value: DateValue): string {
   const date = toValidDate(value);
   if (!date) return '-';
+  const parts = getKoreanDateTimeParts(date);
 
-  return [
-    date.getFullYear(),
-    padDatePart(date.getMonth() + 1),
-    padDatePart(date.getDate()),
-  ].join('-');
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 export function formatKoreanDateTime(value: DateValue): string {
   const date = toValidDate(value);
   if (!date) return '-';
+  const parts = getKoreanDateTimeParts(date);
 
-  return `${formatKoreanDate(date)} ${[
-    padDatePart(date.getHours()),
-    padDatePart(date.getMinutes()),
-    padDatePart(date.getSeconds()),
-  ].join(':')}`;
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
 export function formatPhone(value: string | null | undefined): string {

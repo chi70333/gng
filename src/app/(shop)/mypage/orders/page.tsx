@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
-import { formatKRW } from '@/lib/format';
+import { formatKRW, formatKoreanDate } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,7 +78,7 @@ export default async function MyOrdersPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-xs text-neutral-400">
-                        {order.createdAt.toLocaleDateString('ko-KR')} / {order.orderNo}
+                        {formatKoreanDate(order.createdAt)} / {order.orderNo}
                       </p>
                       <p className="mt-2 line-clamp-1 text-sm font-semibold text-neutral-900">
                         {firstItem

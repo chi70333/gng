@@ -18,7 +18,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
-import { formatKRW, formatNumber } from '@/lib/format';
+import { formatKRW, formatKoreanDate, formatKoreanDateTime, formatNumber } from '@/lib/format';
 import {
   AdminDataGrid,
   AdminMobileCard,
@@ -61,11 +61,11 @@ function displayPhone(value: string | null): string {
 }
 
 function formatDate(value: Date | null): string {
-  return value ? value.toLocaleDateString('ko-KR') : '이력 없음';
+  return value ? formatKoreanDate(value) : '이력 없음';
 }
 
 function formatDateTime(value: Date | null): string {
-  return value ? value.toLocaleString('ko-KR') : '이력 없음';
+  return value ? formatKoreanDateTime(value) : '이력 없음';
 }
 
 function statusLabel(status: string): string {
@@ -98,7 +98,7 @@ function memberTypeLabel(memberType: string): string {
 }
 
 function agreementLabel(value: Date | null): string {
-  return value ? `동의 (${value.toLocaleDateString('ko-KR')})` : '미동의';
+  return value ? `동의 (${formatKoreanDate(value)})` : '미동의';
 }
 
 function InfoRow({
@@ -262,7 +262,7 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
                     </Link>
                   </td>
                   <td className={`${adminGridCellClass} text-neutral-600`}>
-                    {order.createdAt.toLocaleDateString('ko-KR')}
+                    {formatKoreanDate(order.createdAt)}
                   </td>
                   <td className={adminGridCellClass}>
                     <AdminStatusBadge status={order.status} />
@@ -282,7 +282,7 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
                   </Link>
                   <dl className="mt-3 grid grid-cols-2 gap-2">
                     <AdminMobileField label="주문일">
-                      {order.createdAt.toLocaleDateString('ko-KR')}
+                      {formatKoreanDate(order.createdAt)}
                     </AdminMobileField>
                     <AdminMobileField label="결제금액" align="right">
                       {formatKRW(order.total.toString())}
