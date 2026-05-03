@@ -33,10 +33,11 @@ export async function sendExternalMemberRegisterWebhook(
 
   const response = await fetch(webhookUrl, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-    },
+   headers: {
+  'Content-Type': 'application/json; charset=utf-8',
+  'x-api-key': apiKey,
+},
+
     body: JSON.stringify({
       email: input.email,
       full_name: input.fullName,
