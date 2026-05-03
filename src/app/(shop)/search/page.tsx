@@ -7,8 +7,6 @@ import { Search } from 'lucide-react';
 import ProductGrid from '@/components/shop/ProductGrid';
 import Pagination from '@/components/shop/Pagination';
 import { formatNumber } from '@/lib/format';
-import { auth } from '@/server/auth';
-import { canViewMemberPrice } from '@/server/auth-utils';
 import { searchProducts } from '@/server/services/search.service';
 import { searchQuerySchema } from '@/schemas/search';
 
@@ -95,11 +93,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     );
   }
 
-  const [session, result] = await Promise.all([
-    auth(),
-    searchProducts(parsed.data),
-  ]);
-  const canShowPrice = canViewMemberPrice(session);
+  const result = await searchProducts(parsed.data);
   const baseHref = buildSearchBaseHref(searchParams);
 
   return (
@@ -115,7 +109,6 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       <ProductGrid
         products={result.items}
         priorityCount={4}
-        canShowPrice={canShowPrice}
       />
       <Pagination
         currentPage={result.page}

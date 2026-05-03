@@ -19,8 +19,6 @@ import {
   getCachedCategoryTree,
   getCachedCategoryAncestors,
 } from '@/server/services/category.service';
-import { auth } from '@/server/auth';
-import { canViewMemberPrice } from '@/server/auth-utils';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import type { SortOption } from '@/server/repositories/product.repository';
@@ -85,8 +83,7 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
       : 'new'
   ) as SortOption;
 
-  const [session, category, result, categoryTree, ancestors] = await Promise.all([
-    auth(),
+  const [category, result, categoryTree, ancestors] = await Promise.all([
     getCachedCategoryBySlug(params.slug),
     getCachedProductsByCategory({ categorySlug: params.slug, page, sort }),
     getCachedCategoryTree(),
@@ -94,7 +91,6 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
   ]);
 
   if (!category || !category.isActive) notFound();
-  const canShowPrice = canViewMemberPrice(session);
 
   // 같은 부모를 가진 형제 카테고리 (사이드 네비용)
   const currentTreeCategory = findCategoryInTree(categoryTree, category.id);
@@ -189,7 +185,7 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
           </div>
 
           {/* 상품 그리드 */}
-          <ProductGrid products={result.items} priorityCount={4} canShowPrice={canShowPrice} />
+          <ProductGrid products={result.items} priorityCount={4} />
 
           {/* 페이지네이션 */}
           <Pagination

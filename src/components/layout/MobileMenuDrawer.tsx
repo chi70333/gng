@@ -6,21 +6,21 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { ChevronDown, X, Menu } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { useMemberSession } from '@/hooks/use-member-session';
 import type { SerializedCategory } from '@/server/repositories/category.repository';
 
 type MobileMenuDrawerProps = {
   categories: SerializedCategory[];
-  isAuthenticated: boolean;
   logoutAction: (formData: FormData) => Promise<void>;
 };
 
 export default function MobileMenuDrawer({
   categories,
-  isAuthenticated,
   logoutAction,
 }: MobileMenuDrawerProps) {
   const [open, setOpen] = useState(false);
   const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null);
+  const { isMember } = useMemberSession();
 
   const closeDrawer = () => {
     setOpen(false);
@@ -139,13 +139,13 @@ export default function MobileMenuDrawer({
 
         <div className="shrink-0 space-y-1 border-t px-4 py-4">
           <Link
-            href={isAuthenticated ? '/mypage' : '/login'}
+            href={isMember ? '/mypage' : '/login'}
             onClick={closeDrawer}
             className="flex h-11 items-center text-sm text-neutral-700 hover:text-neutral-900"
           >
-            {isAuthenticated ? '마이페이지' : '로그인'}
+            {isMember ? '마이페이지' : '로그인'}
           </Link>
-          {isAuthenticated ? (
+          {isMember ? (
             <form action={logoutAction}>
               <input type="hidden" name="callbackUrl" value="/" />
               <button

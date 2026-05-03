@@ -6,19 +6,15 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Star, ChevronRight } from 'lucide-react';
 import BreadcrumbNav from '@/components/shop/BreadcrumbNav';
-import AddToCartPanel from '@/components/shop/AddToCartPanel';
 import ProductQnaForm from '@/components/shop/ProductQnaForm';
 import ProductImageGallery from '@/components/shop/ProductImageGallery';
+import ProductMemberPurchasePanel from '@/components/shop/ProductMemberPurchasePanel';
 import ProductViewTracker from '@/components/shop/ProductViewTracker';
 import {
   getCachedProductBySlug,
   getCachedProductMetadataBySlug,
 } from '@/server/services/product.service';
-import { auth } from '@/server/auth';
-import { canViewMemberPrice } from '@/server/auth-utils';
-import { formatKRW } from '@/lib/format';
 import { cn } from '@/lib/cn';
-import type { ProductDetail, ProductSku } from '@/server/repositories/product.repository';
 
 export const revalidate = 60; // ISR 60s
 export const dynamicParams = true;
@@ -48,41 +44,6 @@ function calcDiscountPct(price: string, salePrice: string): number {
   return p > 0 ? Math.round((1 - s / p) * 100) : 0;
 }
 
-function groupSkusByOption(
-  options: ProductDetail['options'],
-  skus: ProductSku[],
-): Map<string, { value: string; available: boolean }[]> {
-  const result = new Map<string, { value: string; available: boolean }[]>();
-  for (const opt of options) {
-    const values = (opt.values as string[]) ?? [];
-    result.set(
-      opt.name,
-      values.map((value) => ({
-        value,
-        available: skus.some(
-          (sku) =>
-            (sku.optionValues as Record<string, string>)[opt.name] === value &&
-            sku.stock - sku.reserved > 0,
-        ),
-      })),
-    );
-  }
-  return result;
-}
-
-function ProductOptions({ product }: { product: ProductDetail }) {
-  if (product.options.length === 0) {
-    return <AddToCartPanel options={product.options} skus={product.skus} />;
-  }
-  const optionMap = groupSkusByOption(product.options, product.skus);
-
-  if (optionMap.size >= 0) {
-    return <AddToCartPanel options={product.options} skus={product.skus} />;
-  }
-
-  return null;
-}
-
 function StarRating({ rating, count }: { rating: number; count: number }) {
   return (
     <div className="flex items-center gap-1.5">
@@ -107,12 +68,8 @@ function StarRating({ rating, count }: { rating: number; count: number }) {
 }
 
 export default async function GoodsDetailPage({ params }: { params: { id: string } }) {
-  const [session, product] = await Promise.all([
-    auth(),
-    getCachedProductBySlug(params.id),
-  ]);
+  const product = await getCachedProductBySlug(params.id);
   if (!product) notFound();
-  const canShowPrice = canViewMemberPrice(session);
 
   const breadcrumbs = [
     ...product.categories.slice(0, 1).map((category) => ({
@@ -134,17 +91,15 @@ export default async function GoodsDetailPage({ params }: { params: { id: string
     description: product.summary ?? product.description ?? undefined,
     sku: product.sku,
     brand: product.brand ? { '@type': 'Brand', name: product.brand.name } : undefined,
-    offers: canShowPrice
-      ? {
-          '@type': 'Offer',
-          price: displayPrice,
-          priceCurrency: 'KRW',
-          availability:
-            product.skus.some((sku) => sku.stock - sku.reserved > 0) || product.skus.length === 0
-              ? 'https://schema.org/InStock'
-              : 'https://schema.org/OutOfStock',
-        }
-      : undefined,
+    offers: {
+      '@type': 'Offer',
+      price: displayPrice,
+      priceCurrency: 'KRW',
+      availability:
+        product.skus.some((sku) => sku.stock - sku.reserved > 0) || product.skus.length === 0
+          ? 'https://schema.org/InStock'
+          : 'https://schema.org/OutOfStock',
+    },
     aggregateRating:
       product.reviewCount > 0
         ? {
@@ -172,7 +127,6 @@ export default async function GoodsDetailPage({ params }: { params: { id: string
           productName={product.name}
           thumbnail={product.thumbnail}
           images={product.images}
-          canShowPrice={canShowPrice}
           discountPct={discountPct}
         />
 
@@ -191,55 +145,13 @@ export default async function GoodsDetailPage({ params }: { params: { id: string
             <StarRating rating={product.avgRating} count={product.reviewCount} />
           )}
 
-          {canShowPrice ? (
-            <div className="space-y-1">
-              {product.salePrice && (
-                <p className="text-sm text-neutral-400 line-through">
-                  {formatKRW(product.price)}
-                </p>
-              )}
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-extrabold text-neutral-900">
-                  {formatKRW(displayPrice)}
-                </span>
-                {discountPct > 0 && (
-                  <span className="text-lg font-bold text-red-500">{discountPct}%</span>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3">
-              <p className="text-sm font-semibold text-neutral-900">회원 전용 가격</p>
-              <p className="mt-1 text-sm text-neutral-500">
-                로그인 후 상품 가격과 구매 옵션을 확인할 수 있습니다.
-              </p>
-            </div>
-          )}
-
-          {product.summary && (
-            <p className="text-sm leading-relaxed text-neutral-600">{product.summary}</p>
-          )}
-
-          {canShowPrice ? (
-            <ProductOptions product={product} />
-          ) : null}
-
-          {!canShowPrice && (
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <button
-                disabled
-                className="flex h-12 cursor-not-allowed items-center justify-center rounded-xl border border-neutral-300 bg-neutral-50 text-sm font-semibold text-neutral-500"
-              >
-                장바구니
-              </button>
-              <Link
-                href="/login"
-                className="flex h-12 items-center justify-center rounded-xl bg-neutral-900 text-sm font-semibold text-white transition-colors hover:bg-neutral-700"
-              >
-                구매하기
-              </Link>
-            </div>
-          )}
+          <ProductMemberPurchasePanel
+            price={product.price}
+            salePrice={product.salePrice}
+            summary={product.summary}
+            options={product.options}
+            skus={product.skus}
+          />
 
           <ul className="space-y-1 border-t border-neutral-100 pt-2 text-xs text-neutral-500">
             <li>무료배송 (일부 상품 제외)</li>

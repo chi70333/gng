@@ -9,15 +9,12 @@ import ProductGrid from '@/components/shop/ProductGrid';
 import type { SerializedCategory } from '@/server/repositories/category.repository';
 import { getCachedDashboardCategorySections } from '@/server/services/product.service';
 import { getCachedCategoryTree } from '@/server/services/category.service';
-import { auth } from '@/server/auth';
-import { canViewMemberPrice } from '@/server/auth-utils';
 import { logger } from '@/lib/logger';
 
 export const revalidate = 60; // ISR 60s
 
 export default async function HomePage() {
-  const [session, dashboardSections, categories] = await Promise.all([
-    auth(),
+  const [dashboardSections, categories] = await Promise.all([
     getCachedDashboardCategorySections(8).catch((err: unknown) => {
       logger.error({ err }, 'HomePage: getDashboardCategorySections failed');
       return [];
@@ -28,12 +25,11 @@ export default async function HomePage() {
     }),
   ]);
 
-  const canShowPrice = canViewMemberPrice(session);
   const rootCategories = categories.filter((category) => category.depth === 0);
 
   return (
     <>
-      <Suspense fallback={<HeaderShell categories={[]} isAuthenticated={false} />}>
+      <Suspense fallback={<HeaderShell categories={[]} />}>
         <Header />
       </Suspense>
       <main className="flex-1">
@@ -90,7 +86,6 @@ export default async function HomePage() {
               <ProductGrid
                 products={section.products}
                 priorityCount={index === 0 ? 4 : 0}
-                canShowPrice={canShowPrice}
               />
             </section>
           ))}

@@ -4,6 +4,7 @@ import { useMemo, useRef, useState, type PointerEvent } from 'react';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight, Package } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { useMemberSession } from '@/hooks/use-member-session';
 import type { ProductImage } from '@/server/repositories/product.repository';
 
 type GalleryImage = Pick<ProductImage, 'id' | 'url' | 'alt' | 'isMain'>;
@@ -12,7 +13,6 @@ type ProductImageGalleryProps = {
   productName: string;
   thumbnail: string | null;
   images: ProductImage[];
-  canShowPrice: boolean;
   discountPct: number;
 };
 
@@ -20,9 +20,9 @@ export default function ProductImageGallery({
   productName,
   thumbnail,
   images,
-  canShowPrice,
   discountPct,
 }: ProductImageGalleryProps) {
+  const { isMember } = useMemberSession();
   const galleryImages = useMemo<GalleryImage[]>(() => {
     if (images.length > 0) return images;
     if (!thumbnail) return [];
@@ -115,7 +115,7 @@ export default function ProductImageGallery({
           </div>
         )}
 
-        {canShowPrice && discountPct > 0 && (
+        {isMember && discountPct > 0 && (
           <span className="absolute left-3 top-3 rounded-lg bg-red-500 px-2 py-1 text-sm font-bold text-white">
             {discountPct}% 할인
           </span>

@@ -8,13 +8,11 @@ interface ProductGridProps {
   products: ProductSummary[];
   /** 첫 두 장 이미지를 eager load (LCP 최적화). */
   priorityCount?: number;
-  canShowPrice?: boolean;
 }
 
 export default function ProductGrid({
   products,
   priorityCount = 2,
-  canShowPrice = false,
 }: ProductGridProps) {
   if (products.length === 0) {
     return (
@@ -31,7 +29,6 @@ export default function ProductGrid({
           <ProductCard
             product={product}
             priority={i < priorityCount}
-            canShowPrice={canShowPrice}
           />
         </li>
       ))}

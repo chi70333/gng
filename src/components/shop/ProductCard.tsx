@@ -4,34 +4,20 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { formatKRW } from '@/lib/format';
-import { cn } from '@/lib/cn';
+import MemberPrice, { MemberDiscountBadge } from './MemberPrice';
 import type { ProductSummary } from '@/server/repositories/product.repository';
 
 interface ProductCardProps {
   product: ProductSummary;
   /** 이미지 eager loading (LCP 후보일 때 true). */
   priority?: boolean;
-  canShowPrice?: boolean;
-}
-
-function calcDiscountPct(price: string, salePrice: string): number {
-  const p = parseFloat(price);
-  const s = parseFloat(salePrice);
-  if (p <= 0) return 0;
-  return Math.round((1 - s / p) * 100);
 }
 
 export default function ProductCard({
   product,
   priority = false,
-  canShowPrice = false,
 }: ProductCardProps) {
   const hasDiscount = !!product.salePrice;
-  const displayPrice = product.salePrice ?? product.price;
-  const discountPct = canShowPrice && hasDiscount
-    ? calcDiscountPct(product.price, product.salePrice!)
-    : 0;
 
   return (
     <Link
@@ -70,10 +56,12 @@ export default function ProductCard({
         )}
 
         {/* 할인율 뱃지 */}
-        {discountPct > 0 && (
-          <span className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded">
-            {discountPct}%
-          </span>
+        {hasDiscount && (
+          <MemberDiscountBadge
+            price={product.price}
+            salePrice={product.salePrice}
+            className="absolute left-2 top-2 rounded bg-red-500 px-1.5 py-0.5 text-xs font-bold text-white"
+          />
         )}
       </div>
 
@@ -87,27 +75,7 @@ export default function ProductCard({
         </h3>
 
         {/* 가격 */}
-        {canShowPrice ? (
-        <div className="mt-auto pt-1">
-          {hasDiscount && (
-            <span className="block text-xs text-neutral-400 line-through">
-              {formatKRW(product.price)}
-            </span>
-          )}
-          <span
-            className={cn(
-              'text-sm font-bold',
-              hasDiscount ? 'text-red-500' : 'text-neutral-900',
-            )}
-          >
-            {formatKRW(displayPrice)}
-          </span>
-        </div>
-        ) : (
-          <p className="mt-auto pt-1 text-sm font-semibold text-neutral-500">
-            회원 전용 가격
-          </p>
-        )}
+        <MemberPrice price={product.price} salePrice={product.salePrice} />
       </div>
     </Link>
   );
