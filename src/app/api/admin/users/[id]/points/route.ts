@@ -43,13 +43,11 @@ function pointJson(point: {
   };
 }
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(_request: Request, { params }: { params: { id: string } }) {
   try {
     await requireAdmin('user.read');
-    const searchParams = new URL(request.url).searchParams;
     const parsed = adminUserPointHistoryQuerySchema.parse({
       userId: params.id,
-      limit: searchParams.get('limit') ?? undefined,
     });
 
     const points = await prisma.userPointHistory.findMany({
@@ -57,7 +55,6 @@ export async function GET(request: Request, { params }: { params: { id: string }
         userId: parsed.userId,
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: parsed.limit,
       select: {
         id: true,
         delta: true,

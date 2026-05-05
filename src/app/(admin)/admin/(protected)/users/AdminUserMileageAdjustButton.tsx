@@ -126,7 +126,7 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
       setHistoryError(null);
 
       try {
-        const response = await fetch(`${endpoint}?limit=20`, { cache: 'no-store', signal });
+        const response = await fetch(endpoint, { cache: 'no-store', signal });
         const data: unknown = await response.json();
 
         if (!response.ok || !isPointHistoryResponse(data)) {
@@ -192,7 +192,7 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
       }
 
       setBalance(data.balance);
-      setHistory((items) => [data, ...items.filter((item) => item.id !== data.id)].slice(0, 20));
+      setHistory((items) => [data, ...items.filter((item) => item.id !== data.id)]);
       setAmount('');
       setReason(DEFAULT_REASON);
       setMessage({ kind: 'success', text: '마일리지를 부여했습니다.' });
@@ -236,7 +236,7 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
       }
 
       setBalance(data.balance);
-      setHistory((items) => [data, ...items.filter((item) => item.id !== data.id)].slice(0, 20));
+      setHistory((items) => [data, ...items.filter((item) => item.id !== data.id)]);
       setResetConfirm('');
       setResetReason(DEFAULT_RESET_REASON);
       setMessage({ kind: 'success', text: '마일리지를 초기화했습니다.' });
@@ -460,9 +460,11 @@ export function AdminUserMileageAdjustButton({ userId, userName, initialBalance 
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="flex items-center gap-1.5 text-sm font-extrabold text-neutral-950">
                     <History size={15} className="text-neutral-500" />
-                    최근 마일리지 이력
+                    전체 마일리지 이력
                   </h3>
-                  <span className="text-xs font-semibold text-neutral-500">최대 20건</span>
+                  <span className="text-xs font-semibold text-neutral-500">
+                    {isLoadingHistory ? '불러오는 중' : `${formatNumber(history.length)}건`}
+                  </span>
                 </div>
 
                 <div className="mt-2 max-h-[60dvh] overflow-auto rounded-md border border-neutral-200 bg-white lg:max-h-[calc(100dvh-12rem)]">

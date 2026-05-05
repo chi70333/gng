@@ -104,7 +104,7 @@ export function AdminUserPointsClient({ userId, initialBalance, initialPoints }:
         createdAt: data.createdAt,
       };
       setBalance(nextPoint.balance);
-      setPoints((current) => [nextPoint, ...current].slice(0, 20));
+      setPoints((current) => [nextPoint, ...current]);
       setDelta('');
       setReason('');
       setMessage({ kind: 'success', text: '마일리지를 저장했습니다.' });

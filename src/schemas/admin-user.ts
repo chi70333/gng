@@ -84,7 +84,6 @@ export const adminUserPointDeleteSchema = z.object({
 
 export const adminUserPointHistoryQuerySchema = z.object({
   userId: z.coerce.bigint(),
-  limit: z.coerce.number().int().min(1).max(50).optional().default(20),
 });
 
 export const adminUserMessageFormSchema = z.object({

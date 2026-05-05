@@ -148,7 +148,6 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
       },
       pointHistories: {
         orderBy: { id: 'desc' },
-        take: 20,
       },
       couponIssues: {
         take: 10,
