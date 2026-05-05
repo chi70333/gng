@@ -2,7 +2,7 @@
 
 import type { Metadata } from 'next';
 import { Prisma } from '@prisma/client';
-import { Activity, Clock3, PlugZap, Search, ServerCrash } from 'lucide-react';
+import { Activity, Clock3, PlugZap, Search, ServerCrash, UserRound } from 'lucide-react';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
 import {
@@ -12,6 +12,7 @@ import {
   adminGridCellClass,
   adminGridStickyCellClass,
 } from '@/components/admin/AdminDataGrid';
+import { AdminPagination } from '@/components/admin/AdminPagination';
 import { AdminPageSizeSelect } from '@/components/admin/AdminPageSizeSelect';
 import { AdminStatusBadge } from '@/components/admin/AdminStatusBadge';
 import {
@@ -28,13 +29,14 @@ export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'API 통신 관리',
-  description: '레거시 연동 API의 상태와 통신 이력을 확인합니다.',
+  description: '레거시 연동 API와 회원 웹훅의 상태와 통신 이력을 확인합니다.',
 };
 
 const SERVICE_OPTIONS = [
   { value: '', label: '전체 API' },
   { value: 'gng-api', label: 'gng-api' },
   { value: 'point-sync', label: 'point-sync' },
+  { value: 'member-webhook', label: '회원 웹훅' },
 ] as const;
 
 const RESULT_OPTIONS = [
@@ -69,6 +71,10 @@ type ApiLogRow = {
   ip: string | null;
   userAgent: string | null;
   createdAt: Date;
+  userId: string | null;
+  loginId: string | null;
+  memberName: string | null;
+  memberEmail: string | null;
 };
 
 type ServiceSummaryRow = {
@@ -140,6 +146,9 @@ function buildWhere(query: ReturnType<typeof parseQuery>) {
       OR "action" ILIKE ${keyword}
       OR "errorMessage" ILIKE ${keyword}
       OR "ip" ILIKE ${keyword}
+      OR "loginId" ILIKE ${keyword}
+      OR "memberName" ILIKE ${keyword}
+      OR "memberEmail" ILIKE ${keyword}
       OR "requestPayload"::text ILIKE ${keyword}
       OR "responsePayload"::text ILIKE ${keyword}
     )`);
@@ -187,13 +196,22 @@ function formatPayload(value: string | null): string {
 function serviceLabel(service: string): string {
   if (service === 'gng-api') return 'gng-api';
   if (service === 'point-sync') return 'point-sync';
+  if (service === 'member-webhook') return '회원 웹훅';
   return service;
 }
 
 function actionLabel(row: Pick<ApiLogRow, 'action' | 'method' | 'service'>): string {
   if (row.action) return row.action;
   if (row.service === 'point-sync' && row.method === 'POST') return 'point_sync';
+  if (row.service === 'member-webhook') return '회원등록';
   return '-';
+}
+
+function memberLabel(row: Pick<ApiLogRow, 'memberName' | 'loginId' | 'memberEmail'>): string {
+  const primary = row.memberName || row.loginId || row.memberEmail;
+  if (!primary) return '-';
+  if (row.memberName && row.loginId) return `${row.memberName} / ${row.loginId}`;
+  return primary;
 }
 
 function readPayloadErrorMessage(value: string | null): string | null {
@@ -239,10 +257,55 @@ function successRate(summary: ServiceSummaryRow | undefined): string {
 
 async function loadApiLogs(query: ReturnType<typeof parseQuery>): Promise<QueryResult> {
   const where = buildWhere(query);
+  const offset = (query.page - 1) * query.size;
+  const allLogs = Prisma.sql`
+    SELECT
+      'api:' || "id"::text AS "id",
+      "service",
+      "endpoint",
+      "method",
+      "action",
+      "statusCode",
+      "success",
+      "durationMs",
+      "requestPayload",
+      "responsePayload",
+      "errorMessage",
+      "ip",
+      "userAgent",
+      "createdAt",
+      NULL::text AS "userId",
+      NULL::text AS "loginId",
+      NULL::text AS "memberName",
+      NULL::text AS "memberEmail"
+    FROM "ApiCommunicationLog"
+    UNION ALL
+    SELECT
+      'member-webhook:' || "id"::text AS "id",
+      'member-webhook' AS "service",
+      "endpoint",
+      "method",
+      'register_member' AS "action",
+      COALESCE("statusCode", 0) AS "statusCode",
+      "success",
+      NULL::int AS "durationMs",
+      "requestPayload",
+      "responsePayload",
+      "errorMessage",
+      NULL::text AS "ip",
+      NULL::text AS "userAgent",
+      "createdAt",
+      "userId"::text AS "userId",
+      "loginId",
+      "name" AS "memberName",
+      "email" AS "memberEmail"
+    FROM "ExternalMemberWebhookLog"
+  `;
 
   try {
     const [rows, countRows, summaries] = await Promise.all([
       prisma.$queryRaw<ApiLogRow[]>(Prisma.sql`
+        WITH "AllLogs" AS (${allLogs})
         SELECT
           "id"::text AS "id",
           "service",
@@ -257,18 +320,25 @@ async function loadApiLogs(query: ReturnType<typeof parseQuery>): Promise<QueryR
           "errorMessage",
           "ip",
           "userAgent",
-          "createdAt"
-        FROM "ApiCommunicationLog"
+          "createdAt",
+          "userId",
+          "loginId",
+          "memberName",
+          "memberEmail"
+        FROM "AllLogs"
         ${where}
         ORDER BY "createdAt" DESC
         LIMIT ${query.size}
+        OFFSET ${offset}
       `),
       prisma.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`
+        WITH "AllLogs" AS (${allLogs})
         SELECT COUNT(*) AS "total"
-        FROM "ApiCommunicationLog"
+        FROM "AllLogs"
         ${where}
       `),
       prisma.$queryRaw<ServiceSummaryRow[]>(Prisma.sql`
+        WITH "AllLogs" AS (${allLogs})
         SELECT
           "service",
           COUNT(*)::int AS "total",
@@ -290,9 +360,9 @@ async function loadApiLogs(query: ReturnType<typeof parseQuery>): Promise<QueryR
           END)::int AS "failed",
           ROUND(AVG("durationMs"))::int AS "avgDurationMs",
           MAX("createdAt") AS "latestAt"
-        FROM "ApiCommunicationLog"
+        FROM "AllLogs"
         WHERE "createdAt" >= NOW() - INTERVAL '24 hours'
-          AND "service" IN ('gng-api', 'point-sync')
+          AND "service" IN ('gng-api', 'point-sync', 'member-webhook')
         GROUP BY "service"
       `),
     ]);
@@ -323,9 +393,15 @@ export default async function AdminApiMonitorPage({
   const data = await loadApiLogs(query);
   const logs = data.rows;
   const params = buildParams(query);
+  const baseHref = `/admin/api-monitor${params.toString() ? `?${params.toString()}` : ''}`;
+  const totalPages = Math.max(1, Math.ceil(data.total / query.size));
+  const hasNext = query.page < totalPages;
   const hiddenFields = Array.from(params.entries()).map(([name, value]) => ({ name, value }));
   const gngSummary = data.summaries.find((summary) => summary.service === 'gng-api');
   const pointSummary = data.summaries.find((summary) => summary.service === 'point-sync');
+  const memberWebhookSummary = data.summaries.find(
+    (summary) => summary.service === 'member-webhook',
+  );
   const failed24h = data.summaries.reduce((sum, summary) => sum + summary.failed, 0);
   const latestAt =
     data.summaries
@@ -339,11 +415,11 @@ export default async function AdminApiMonitorPage({
       <AdminPageHeader
         eyebrow="API"
         title="API 통신 관리"
-        description="gng-api, point-sync 연동 상태와 요청/응답 이력을 확인합니다."
+        description="gng-api, point-sync, 회원 웹훅 연동 상태와 요청/응답 이력을 확인합니다."
         actions={<ApiMonitorRefreshControl queriedAt={queriedAt} />}
       />
 
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-5">
         <AdminInfoTile
           label="gng-api 24시간 정상률"
           value={successRate(gngSummary)}
@@ -353,6 +429,11 @@ export default async function AdminApiMonitorPage({
           label="point-sync 24시간 정상률"
           value={successRate(pointSummary)}
           icon={Activity}
+        />
+        <AdminInfoTile
+          label="회원 웹훅 24시간 오류"
+          value={`${formatNumber(memberWebhookSummary?.failed ?? 0)}건`}
+          icon={UserRound}
         />
         <AdminInfoTile
           label="24시간 오류"
@@ -369,7 +450,7 @@ export default async function AdminApiMonitorPage({
           icon={ServerCrash}
         >
           <p className="text-sm font-medium text-neutral-600">
-            ApiCommunicationLog 테이블을 찾지 못했습니다. 마이그레이션 적용 후 다시 확인해주세요.
+            통신 로그 테이블을 찾지 못했습니다. 마이그레이션 적용 후 다시 확인해주세요.
           </p>
         </AdminSection>
       ) : null}
@@ -408,7 +489,7 @@ export default async function AdminApiMonitorPage({
             <input
               name="action"
               defaultValue={query.action}
-              placeholder="list_members"
+              placeholder="list_members, register_member"
               className={`${adminFieldClass} h-11`}
             />
           </label>
@@ -417,7 +498,7 @@ export default async function AdminApiMonitorPage({
             <input
               name="q"
               defaultValue={query.q}
-              placeholder="아이디, IP, 오류 메시지"
+              placeholder="회원명, 아이디, IP, 오류 메시지"
               className={`${adminFieldClass} h-11`}
             />
           </label>
@@ -425,12 +506,13 @@ export default async function AdminApiMonitorPage({
             <Search size={18} />
             조회
           </button>
+          {query.size !== 30 ? <input type="hidden" name="size" value={query.size} /> : null}
         </div>
       </form>
 
       <AdminSection
         title="통신 이력"
-        description={`검색 결과 ${formatNumber(data.total)}건`}
+        description={`검색 결과 ${formatNumber(data.total)}건 · ${formatNumber(query.page)} / 총 ${formatNumber(totalPages)}페이지`}
         icon={PlugZap}
         bodyClassName="p-0"
         headerAction={
@@ -451,6 +533,7 @@ export default async function AdminApiMonitorPage({
             { key: 'createdAt', label: '시간', widthClassName: 'w-44' },
             { key: 'service', label: 'API', widthClassName: 'w-28' },
             { key: 'action', label: '액션', widthClassName: 'w-36' },
+            { key: 'member', label: '회원', widthClassName: 'w-52' },
             { key: 'method', label: 'Method', widthClassName: 'w-20' },
             { key: 'status', label: '상태', widthClassName: 'w-24' },
             { key: 'error', label: '오류 메시지', widthClassName: 'w-56' },
@@ -461,23 +544,29 @@ export default async function AdminApiMonitorPage({
           rows={logs}
           rowKey={(row) => row.id}
           emptyText="통신 이력이 없습니다."
-          minWidthClassName="min-w-[1120px]"
+          minWidthClassName="min-w-[1280px]"
           scrollAreaClassName="max-h-[480px]"
           mobileScrollAreaClassName="max-h-[560px] overflow-y-auto"
           renderRow={(row, index) => {
             const message = errorMessage(row);
             const isSuccess = isSuccessfulLog(row, message);
+            const rowNo = data.total - (query.page - 1) * query.size - index;
 
             return (
               <tr key={row.id} className="hover:bg-neutral-50">
                 <td className={`${adminGridCellClass} text-right text-neutral-500`}>
-                  {formatNumber(data.total - index)}
+                  {formatNumber(rowNo)}
                 </td>
                 <td className={`${adminGridStickyCellClass} font-semibold text-neutral-800`}>
                   {formatDateTime(row.createdAt)}
                 </td>
                 <td className={adminGridCellClass}>{serviceLabel(row.service)}</td>
                 <td className={adminGridCellClass}>{actionLabel(row)}</td>
+                <td className={adminGridCellClass}>
+                  <span className="line-clamp-2 text-xs font-semibold text-neutral-700">
+                    {memberLabel(row)}
+                  </span>
+                </td>
                 <td className={`${adminGridCellClass} font-mono`}>{row.method}</td>
                 <td className={adminGridCellClass}>
                   <div className="grid gap-1">
@@ -512,6 +601,12 @@ export default async function AdminApiMonitorPage({
                         <p className="rounded border border-rose-100 bg-rose-50 px-2 py-1 text-xs font-bold text-rose-700">
                           {row.errorMessage}
                         </p>
+                      ) : null}
+                      {row.memberName || row.loginId || row.memberEmail ? (
+                        <div className="rounded border border-neutral-200 bg-white px-2 py-1 text-xs font-semibold text-neutral-700">
+                          회원: {memberLabel(row)}
+                          {row.memberEmail ? ` / ${row.memberEmail}` : ''}
+                        </div>
                       ) : null}
                       <div>
                         <p className="mb-1 text-[11px] font-extrabold text-neutral-500">요청</p>
@@ -551,6 +646,7 @@ export default async function AdminApiMonitorPage({
                 <dl className="grid grid-cols-2 gap-2">
                   <AdminMobileField label="액션">{actionLabel(row)}</AdminMobileField>
                   <AdminMobileField label="상태">{row.statusCode}</AdminMobileField>
+                  <AdminMobileField label="회원">{memberLabel(row)}</AdminMobileField>
                   <AdminMobileField label="오류 메시지">{message ?? '-'}</AdminMobileField>
                   <AdminMobileField label="응답" align="right">
                     {row.durationMs === null ? '-' : `${formatNumber(row.durationMs)}ms`}
@@ -573,6 +669,12 @@ export default async function AdminApiMonitorPage({
           }}
         />
       </AdminSection>
+      <AdminPagination
+        baseHref={baseHref}
+        page={query.page}
+        hasNext={hasNext}
+        totalPages={totalPages}
+      />
     </div>
   );
 }

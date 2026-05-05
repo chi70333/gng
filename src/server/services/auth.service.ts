@@ -97,11 +97,7 @@ function safeEqual(a: string, b: string): boolean {
   return aBuffer.length === bBuffer.length && timingSafeEqual(aBuffer, bBuffer);
 }
 
-function verifyLegacyPassword(
-  password: string,
-  hash: string | null,
-  algo: string | null,
-): boolean {
+function verifyLegacyPassword(password: string, hash: string | null, algo: string | null): boolean {
   if (!hash || !algo) return false;
   if (algo === 'md5') return safeEqual(digest('md5', password), hash);
   if (algo === 'sha1') return safeEqual(digest('sha1', password), hash);
@@ -141,12 +137,7 @@ export async function registerUser(input: RegisterInput): Promise<AuthUser> {
 
     return { id: user.id.toString(), email: user.email, name: user.name, userKind: 'member' };
   } catch (err) {
-    if (
-      typeof err === 'object' &&
-      err !== null &&
-      'code' in err &&
-      err.code === 'P2002'
-    ) {
+    if (typeof err === 'object' && err !== null && 'code' in err && err.code === 'P2002') {
       throw new ConflictError('Login ID, email or phone already exists.');
     }
     throw err;
@@ -190,8 +181,10 @@ export async function registerSocialUser(
     if (input.provider === 'kakao') {
       try {
         await sendExternalMemberRegisterWebhook({
+          userId: user.id,
           email: user.email,
           fullName: user.name,
+          provider: input.provider,
           username: legacySocialLoginId(input.provider, input.providerUid),
           phone,
         });
@@ -199,15 +192,10 @@ export async function registerSocialUser(
         logger.error({ err, email: user.email }, 'Kakao member register webhook threw an error');
       }
     }
-    
+
     return { id: user.id.toString(), email: user.email, name: user.name, userKind: 'member' };
   } catch (err) {
-    if (
-      typeof err === 'object' &&
-      err !== null &&
-      'code' in err &&
-      err.code === 'P2002'
-    ) {
+    if (typeof err === 'object' && err !== null && 'code' in err && err.code === 'P2002') {
       throw new ConflictError('Email, phone or social account already exists.');
     }
     throw err;
