@@ -195,7 +195,7 @@ export async function syncLegacyPoint(
       userId: user.id,
       delta: input.amount,
       reason: input.reason ?? 'External point sync',
-      forcedBalance: input.new_balance,
+      forcedBalance: 'new_balance' in input ? input.new_balance : undefined,
     });
   });
 

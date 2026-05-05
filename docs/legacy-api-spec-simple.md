@@ -218,6 +218,32 @@ Body:
 { "success": false, "message": "User not found" }
 ```
 
+### 포인트 추가 적립
+
+`action`이 `add`이고 `new_balance`가 없으면 현재 잔액에 `amount`를 더한다.
+
+```http
+POST /api/point_sync.php
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "action": "add",
+  "userid": "kakao-4858866013",
+  "amount": 10000000,
+  "reason": "일괄 포인트 수신 (+10,000,000P)"
+}
+```
+
+성공 응답:
+
+```json
+{ "success": true, "message": "Point Synchronized Successfully" }
+```
+
 ## 레거시와 다른 점
 
 - 현재 운영 전환 기간에는 API Token 검사를 하지 않는다.

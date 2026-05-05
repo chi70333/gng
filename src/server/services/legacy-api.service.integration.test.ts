@@ -128,6 +128,13 @@ describeIntegration('legacy API service DB integration', () => {
       reason: '외부 잔액 보정',
     });
 
+    await syncLegacyPoint({
+      userid,
+      action: 'add',
+      amount: 250,
+      reason: '일괄 포인트 수신',
+    });
+
     const user = await prisma.user.findUniqueOrThrow({
       where: { loginId: userid },
       select: {
@@ -142,13 +149,14 @@ describeIntegration('legacy API service DB integration', () => {
       { delta: 500, balance: 500, reason: '외부 적립' },
       { delta: -200, balance: 300, reason: '외부 사용' },
       { delta: 700, balance: 1000, reason: '외부 잔액 보정' },
+      { delta: 250, balance: 1250, reason: '일괄 포인트 수신' },
     ]);
 
     const members = await listLegacyMembers({ page: 1, limit: 10, search: userid });
     expect(members.members).toEqual([
       expect.objectContaining({
         userid,
-        mileage: 1000,
+        mileage: 1250,
       }),
     ]);
   });

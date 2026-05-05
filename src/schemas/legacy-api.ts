@@ -10,14 +10,28 @@ export const legacyRegisterMemberSchema = z.object({
 
 export type LegacyRegisterMemberInput = z.infer<typeof legacyRegisterMemberSchema>;
 
-export const legacyPointSyncSchema = z.object({
+const legacyPointFields = {
   userid: z.string().trim().min(1).max(255),
   amount: z.coerce.number().int().default(0),
-  new_balance: z.coerce.number().int(),
   reason: z.string().trim().max(200).optional(),
+};
+
+export const legacyPointSyncSchema = z.object({
+  ...legacyPointFields,
+  new_balance: z.coerce.number().int(),
 });
 
-export type LegacyPointSyncInput = z.infer<typeof legacyPointSyncSchema>;
+export const legacyPointAddSchema = z.object({
+  ...legacyPointFields,
+  action: z.literal('add'),
+});
+
+export const legacyPointMutationSchema = z.union([
+  legacyPointSyncSchema,
+  legacyPointAddSchema,
+]);
+
+export type LegacyPointSyncInput = z.infer<typeof legacyPointMutationSchema>;
 
 export const legacyGoodsDetailQuerySchema = z.object({
   goodsIdx: z.coerce.number().int().positive().max(2_147_483_647),

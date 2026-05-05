@@ -424,6 +424,40 @@ describe('legacy API route compatibility', () => {
     expect(syncLegacyPoint).toHaveBeenLastCalledWith(payload);
   });
 
+  it('accepts point_sync add action payloads without a forced new_balance', async () => {
+    vi.mocked(syncLegacyPoint).mockResolvedValueOnce({
+      success: true,
+      message: 'Point Synchronized Successfully',
+    });
+
+    const payload = {
+      action: 'add',
+      amount: 10000000,
+      reason: '일괄 포인트 수신 (+10,000,000P)',
+      userid: 'kakao-4858866013',
+    };
+
+    const pointSync = await pointSyncRoute.POST(
+      request('/api/legacy/point-sync', {
+        method: 'POST',
+        headers: { 'x-api-key': token },
+        body: payload,
+      }),
+    );
+
+    expect(await json(pointSync)).toEqual({
+      success: true,
+      message: 'Point Synchronized Successfully',
+    });
+    expect(syncLegacyPoint).toHaveBeenLastCalledWith(payload);
+    expect(recordApiCommunicationLog).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        service: 'point-sync',
+        action: 'add',
+      }),
+    );
+  });
+
   it('accepts query token auth and returns the shared OPTIONS preflight response', async () => {
     vi.mocked(listLegacyMembers).mockResolvedValue({
       success: true,

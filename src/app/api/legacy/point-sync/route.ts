@@ -14,7 +14,7 @@ import {
   registerLegacyMember,
   syncLegacyPoint,
 } from '@/server/services/legacy-api.service';
-import { legacyPointSyncSchema, legacyRegisterMemberSchema } from '@/schemas/legacy-api';
+import { legacyPointMutationSchema, legacyRegisterMemberSchema } from '@/schemas/legacy-api';
 import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
@@ -140,13 +140,14 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const point = legacyPointSyncSchema.safeParse(body);
+    const point = legacyPointMutationSchema.safeParse(body);
     if (point.success) {
       const result = await syncLegacyPoint(point.data);
+      const pointAction = 'action' in point.data ? point.data.action : 'point_sync';
       return legacyLoggedJson(req, {
         service: 'point-sync',
         startedAt,
-        action: 'point_sync',
+        action: pointAction,
         requestPayload: body,
         responsePayload: result,
         errorMessage: result.success ? null : result.message,
