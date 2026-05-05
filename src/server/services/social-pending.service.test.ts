@@ -14,12 +14,14 @@ describe('social pending profile', () => {
       providerUid: 'kakao-123',
       email: 'social@example.com',
       name: '홍길동',
+      phone: '01012345678',
       callbackUrl: '/order',
     });
 
     expect(decodePendingSocialProfile(encoded)).toMatchObject({
       provider: 'kakao',
       providerUid: 'kakao-123',
+      phone: '01012345678',
       callbackUrl: '/order',
     });
   });

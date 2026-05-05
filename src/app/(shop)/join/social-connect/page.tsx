@@ -84,9 +84,11 @@ export default function SocialConnectPage({ searchParams }: SocialConnectPagePro
   const message =
     searchParams.error === 'conflict'
       ? '이미 가입된 이메일, 휴대전화번호 또는 간편 계정입니다.'
-      : searchParams.error === 'validation'
-        ? '필수 입력 항목을 확인해 주세요.'
-        : null;
+      : searchParams.error === 'phone_required'
+        ? '카카오톡 계정에서 휴대전화번호를 받지 못했습니다. 휴대전화번호를 입력해 주세요.'
+        : searchParams.error === 'validation'
+          ? '필수 입력 항목을 확인해 주세요.'
+          : null;
 
   return (
     <div className="mx-auto w-full max-w-md px-4 py-8">
@@ -98,9 +100,7 @@ export default function SocialConnectPage({ searchParams }: SocialConnectPagePro
       </div>
 
       {message && (
-        <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-          {message}
-        </p>
+        <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{message}</p>
       )}
 
       <form action={socialRegisterAction} className="space-y-3">
@@ -128,6 +128,7 @@ export default function SocialConnectPage({ searchParams }: SocialConnectPagePro
           inputMode="tel"
           maxLength={13}
           placeholder="010-1234-5678"
+          defaultValue={pendingSocial.phone ?? ''}
         />
         <Field
           label="우편번호"
@@ -167,7 +168,12 @@ export default function SocialConnectPage({ searchParams }: SocialConnectPagePro
           <p className="text-xs text-neutral-500">
             사업자회원은 아래 사업장 정보를 함께 입력해 주세요.
           </p>
-          <Field label="회사명 또는 법인명" name="companyName" autoComplete="organization" required={false} />
+          <Field
+            label="회사명 또는 법인명"
+            name="companyName"
+            autoComplete="organization"
+            required={false}
+          />
           <Field label="대표자명" name="ceoName" autoComplete="name" required={false} />
           <Field
             label="사업자등록번호"

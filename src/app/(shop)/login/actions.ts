@@ -5,7 +5,10 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { loginSchema, socialLoginSchema } from '@/schemas/auth';
 import { signIn } from '@/server/auth';
-import { SOCIAL_CALLBACK_COOKIE, SOCIAL_PENDING_MAX_AGE } from '@/server/services/social-pending.service';
+import {
+  SOCIAL_CALLBACK_COOKIE,
+  SOCIAL_PENDING_MAX_AGE,
+} from '@/server/services/social-pending.service';
 
 function isRedirectError(err: unknown): boolean {
   return (
@@ -18,19 +21,11 @@ function isRedirectError(err: unknown): boolean {
 }
 
 function isSocialProviderConfigured(provider: 'kakao' | 'naver'): boolean {
-  if (isDevelopmentKakaoAutoLogin(provider)) {
-    return true;
-  }
-
   if (provider === 'kakao') {
     return Boolean(process.env.KAKAO_CLIENT_ID);
   }
 
   return Boolean(process.env.NAVER_CLIENT_ID && process.env.NAVER_CLIENT_SECRET);
-}
-
-function isDevelopmentKakaoAutoLogin(provider: 'kakao' | 'naver'): boolean {
-  return process.env.NODE_ENV === 'development' && provider === 'kakao';
 }
 
 export async function loginAction(formData: FormData): Promise<void> {
@@ -83,21 +78,6 @@ export async function socialLoginAction(formData: FormData): Promise<void> {
     maxAge: SOCIAL_PENDING_MAX_AGE,
     path: '/',
   });
-
-  if (isDevelopmentKakaoAutoLogin(parsed.data.provider)) {
-    try {
-      await signIn('development-kakao', {
-        redirectTo: parsed.data.callbackUrl,
-      });
-    } catch (err) {
-      if (isRedirectError(err)) throw err;
-      if (err instanceof AuthError) {
-        redirect('/login?error=dev_kakao');
-      }
-      redirect('/login?error=unknown');
-    }
-    return;
-  }
 
   await signIn(parsed.data.provider, {
     redirectTo: parsed.data.callbackUrl,

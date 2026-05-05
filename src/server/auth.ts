@@ -23,11 +23,6 @@ import {
   sanitizeCallbackUrl,
 } from '@/server/services/social-pending.service';
 
-if (process.env.NODE_ENV !== 'production') {
-  delete process.env.AUTH_URL;
-  delete process.env.NEXTAUTH_URL;
-}
-
 function isSocialProvider(provider: string): provider is SocialProvider {
   return provider === 'kakao' || provider === 'naver';
 }
@@ -69,43 +64,27 @@ function isSafeRelativePath(value: string): boolean {
   return value.startsWith('/') && !value.startsWith('//');
 }
 
-const developmentKakaoLoginId = 'kakao-4852070309';
-const developmentKakaoProviderUid = '4852070309';
+function recordValue(value: unknown, key: string): unknown {
+  return typeof value === 'object' && value !== null
+    ? (value as Record<string, unknown>)[key]
+    : null;
+}
 
-async function verifyDevelopmentKakaoUser() {
-  if (process.env.NODE_ENV !== 'development') return null;
+function normalizeKakaoPhoneNumber(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
 
-  const user = await prisma.user.findFirst({
-    where: {
-      status: 'active',
-      OR: [
-        { loginId: developmentKakaoLoginId },
-        {
-          socialAccounts: {
-            some: {
-              provider: 'kakao',
-              providerUid: developmentKakaoProviderUid,
-            },
-          },
-        },
-      ],
-    },
-    select: { id: true, email: true, name: true },
-  });
+  const digits = value.replace(/[^0-9]/g, '');
+  if (digits.startsWith('82') && digits.length >= 11) {
+    return `0${digits.slice(2)}`;
+  }
 
-  if (!user) return null;
+  if (digits.startsWith('010')) return digits;
+  return null;
+}
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { lastLoginAt: new Date(), loginCount: { increment: 1 } },
-  });
-
-  return {
-    id: user.id.toString(),
-    email: user.email,
-    name: user.name,
-    userKind: 'member' as const,
-  };
+function kakaoProfilePhoneNumber(profile: unknown): string | null {
+  const kakaoAccount = recordValue(profile, 'kakao_account');
+  return normalizeKakaoPhoneNumber(recordValue(kakaoAccount, 'phone_number'));
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -168,17 +147,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         };
       },
     }),
-    ...(process.env.NODE_ENV === 'development'
-      ? [
-          Credentials({
-            id: 'development-kakao',
-            credentials: {},
-            async authorize() {
-              return verifyDevelopmentKakaoUser();
-            },
-          }),
-        ]
-      : []),
     ...(process.env.KAKAO_CLIENT_ID
       ? [
           Kakao({
@@ -188,7 +156,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               : { client: { token_endpoint_auth_method: 'none' } }),
             authorization: {
               url: 'https://kauth.kakao.com/oauth/authorize',
-              params: { scope: 'profile_nickname account_email' },
+              params: { scope: 'profile_nickname account_email phone_number' },
             },
           }),
         ]
@@ -222,7 +190,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       return siteOrigin;
     },
-    async signIn({ user, account }) {
+    async signIn({ user, account, profile }) {
       if (!account || !isSocialProvider(account.provider)) return true;
 
       if (!user.email) {
@@ -244,9 +212,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return true;
       } catch (err) {
         if (err instanceof SocialAccountNotRegisteredError) {
-          const callbackUrl = sanitizeCallbackUrl(
-            cookies().get(SOCIAL_CALLBACK_COOKIE)?.value,
-          );
+          const callbackUrl = sanitizeCallbackUrl(cookies().get(SOCIAL_CALLBACK_COOKIE)?.value);
           cookies().set(
             SOCIAL_PENDING_COOKIE,
             encodePendingSocialProfile({
@@ -254,6 +220,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               providerUid: account.providerAccountId,
               email: user.email,
               name: user.name ?? null,
+              phone: account.provider === 'kakao' ? kakaoProfilePhoneNumber(profile) : null,
               callbackUrl,
             }),
             {
@@ -267,10 +234,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return `/join/terms?social=${account.provider}`;
         }
 
-        logger.error(
-          { err, provider: account.provider },
-          'Social sign-in link failed',
-        );
+        logger.error({ err, provider: account.provider }, 'Social sign-in link failed');
         return '/login?error=oauth';
       }
     },

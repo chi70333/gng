@@ -2,8 +2,13 @@
 // Cache: no-cache. Join agreement sets a short-lived per-user cookie.
 
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
 import JoinTermsForm from '@/components/shop/JoinTermsForm';
 import { getCachedSitePolicy } from '@/server/services/site-policy.service';
+import {
+  SOCIAL_PENDING_COOKIE,
+  decodePendingSocialProfile,
+} from '@/server/services/social-pending.service';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +27,9 @@ export default async function JoinTermsPage({ searchParams }: JoinTermsPageProps
     searchParams.social === 'kakao' || searchParams.social === 'naver'
       ? searchParams.social
       : undefined;
+  const pendingSocial = decodePendingSocialProfile(cookies().get(SOCIAL_PENDING_COOKIE)?.value);
+  const pendingSocialProvider =
+    pendingSocial && pendingSocial.provider === social ? pendingSocial.provider : undefined;
 
   return (
     <div className="mx-auto w-full max-w-screen-md px-4 py-8">
@@ -37,6 +45,7 @@ export default async function JoinTermsPage({ searchParams }: JoinTermsPageProps
         collectionConsent={policy.collectionConsent}
         error={searchParams.error}
         social={social}
+        pendingSocialProvider={pendingSocialProvider}
       />
     </div>
   );

@@ -12,6 +12,7 @@ export type PendingSocialProfile = {
   providerUid: string;
   email: string;
   name: string | null;
+  phone: string | null;
   callbackUrl: string;
 };
 
@@ -82,6 +83,7 @@ export function decodePendingSocialProfile(value: string | undefined): PendingSo
       providerUid: profile.providerUid,
       email: profile.email,
       name: profile.name,
+      phone: typeof profile.phone === 'string' ? profile.phone : null,
       callbackUrl: sanitizeCallbackUrl(profile.callbackUrl),
     };
   }
@@ -96,9 +98,7 @@ export type SocialRegistrationToken = {
   exp: number;
 };
 
-export function encodeSocialRegistrationToken(
-  input: Omit<SocialRegistrationToken, 'exp'>,
-): string {
+export function encodeSocialRegistrationToken(input: Omit<SocialRegistrationToken, 'exp'>): string {
   return encodeSignedPayload({
     ...input,
     exp: Math.floor(Date.now() / 1000) + SOCIAL_REGISTRATION_TOKEN_MAX_AGE,
