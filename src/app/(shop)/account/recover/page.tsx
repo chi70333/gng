@@ -36,13 +36,25 @@ export default function RecoverPage({ searchParams }: RecoverPageProps) {
 
       <form action={recoverAccountAction} className="space-y-3">
         <label className="block">
+          <span className="mb-1 block text-sm font-medium text-neutral-700">아이디</span>
+          <input
+            name="loginId"
+            type="text"
+            required
+            autoComplete="username"
+            aria-label="비밀번호 재설정용 아이디"
+            className="h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-neutral-300"
+          />
+        </label>
+
+        <label className="block">
           <span className="mb-1 block text-sm font-medium text-neutral-700">가입 이메일</span>
           <input
             name="email"
             type="email"
             required
             autoComplete="email"
-            aria-label="아이디 찾기용 가입 이메일"
+            aria-label="비밀번호 재설정용 가입 이메일"
             className="h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-neutral-300"
           />
         </label>
@@ -50,7 +62,7 @@ export default function RecoverPage({ searchParams }: RecoverPageProps) {
           type="submit"
           className="flex h-12 w-full items-center justify-center rounded-lg bg-neutral-900 text-sm font-semibold text-white transition-colors hover:bg-neutral-700"
         >
-          아이디 안내 받기
+          임시비밀번호 발급
         </button>
       </form>
 
