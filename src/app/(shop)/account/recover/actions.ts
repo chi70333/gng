@@ -6,8 +6,10 @@ import { requestAccountRecovery } from '@/server/services/account.service';
 
 export async function recoverAccountAction(formData: FormData): Promise<void> {
   const parsed = accountRecoverSchema.safeParse({
-    email: formData.get('email'),
+  loginId: formData.get('loginId'),
+  email: formData.get('email'),
   });
+
 
   if (parsed.success) {
     await requestAccountRecovery(parsed.data);
