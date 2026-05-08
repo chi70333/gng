@@ -1,5 +1,5 @@
-﻿// Legacy sources: idsearch.php, id_loss.php, id_loss_ok.php
-// Cache: no-cache. Neutral response prevents account enumeration.
+// Legacy sources: idsearch.php, id_loss.php, id_loss_ok.php
+// Cache: no-cache. Recovery response shows whether a matching active account was found.
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -15,6 +15,7 @@ export const metadata: Metadata = {
 type RecoverPageProps = {
   searchParams: {
     sent?: string;
+    error?: string;
   };
 };
 
@@ -30,7 +31,13 @@ export default function RecoverPage({ searchParams }: RecoverPageProps) {
 
       {searchParams.sent === '1' && (
         <p className="mb-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
-          가입 정보가 확인되면 임시비밀번호가 발급됩니다.
+          임시비밀번호가 발급되었습니다. 비밀번호는 Q123456$$$ 입니다.
+        </p>
+      )}
+
+      {searchParams.error === 'not_found' && (
+        <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+          아이디와 가입 이메일이 일치하는 활성 회원을 찾지 못했습니다.
         </p>
       )}
 
@@ -58,6 +65,7 @@ export default function RecoverPage({ searchParams }: RecoverPageProps) {
             className="h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-neutral-300"
           />
         </label>
+
         <button
           type="submit"
           className="flex h-12 w-full items-center justify-center rounded-lg bg-neutral-900 text-sm font-semibold text-white transition-colors hover:bg-neutral-700"
