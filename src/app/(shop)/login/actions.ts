@@ -43,20 +43,11 @@ export async function loginAction(formData: FormData): Promise<void> {
   }
 
   try {
-    const result = await signIn('credentials', {
+    await signIn('credentials', {
       loginId: parsed.data.loginId,
       password: parsed.data.password,
-      redirect: false,
+      redirectTo: callbackUrl,
     });
-
-    if (typeof result === 'string') {
-      const url = new URL(result, 'https://local.invalid');
-      if (url.pathname === '/login' && url.searchParams.has('error')) {
-        redirect('/login?error=credentials');
-      }
-    }
-
-    redirect(callbackUrl);
   } catch (err) {
     if (isRedirectError(err)) throw err;
     if (err instanceof AuthError) {
