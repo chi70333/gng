@@ -4,17 +4,32 @@
 import { prisma } from '@/server/db';
 import { logger } from '@/lib/logger';
 import type { AccountRecoverInput } from '@/schemas/account';
+import { hashPassword } from '@/server/services/auth.service';
+
+const TEMP_PASSWORD = 'Q123456$$$';
 
 export async function requestAccountRecovery(
   input: AccountRecoverInput,
 ): Promise<void> {
-  const user = await prisma.user.findUnique({
-    where: { email: input.email },
+  const user = await prisma.user.findFirst({
+    where: {
+      loginId: input.loginId,
+      email: input.email,
+      status: 'active',
+    },
     select: { id: true },
   });
 
   if (!user) return;
 
-  // TODO(P1): enqueue email/SMS recovery through QStash after provider selection.
-  logger.info({ userId: user.id.toString() }, 'account recovery requested');
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordHash: await hashPassword(TEMP_PASSWORD),
+      legacyPasswordHash: null,
+      legacyPasswordAlgo: null,
+     },
+  });
+
+logger.info({ userId: user.id.toString() }, 'temporary password issued');
 }
