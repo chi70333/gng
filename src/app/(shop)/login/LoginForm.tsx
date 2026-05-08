@@ -1,7 +1,6 @@
 'use client';
 
 import { signIn } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 
 const LABEL_LOGIN_ID = '\uC544\uC774\uB514';
@@ -16,7 +15,6 @@ type LoginFormProps = {
 };
 
 export function LoginForm({ callbackUrl }: LoginFormProps) {
-  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
 
@@ -43,8 +41,12 @@ export function LoginForm({ callbackUrl }: LoginFormProps) {
       return;
     }
 
-    router.push(result.url ?? callbackUrl);
-    router.refresh();
+    const nextUrl = result.url ?? callbackUrl;
+    window.location.assign(
+      nextUrl.startsWith('http')
+      ? nextUrl
+      : new URL(nextUrl, window.location.origin).toString(),
+    );
   }
 
   return (
