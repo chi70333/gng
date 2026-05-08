@@ -8,8 +8,8 @@ import { recoverAccountAction } from './actions';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '아이디 찾기',
-  description: '지앤지 회원 아이디 찾기',
+  title: '비밀번호 재설정',
+  description: '지앤지 회원 임시비밀번호 발급',
 };
 
 type RecoverPageProps = {
@@ -22,15 +22,15 @@ export default function RecoverPage({ searchParams }: RecoverPageProps) {
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-8rem)] w-full max-w-md flex-col justify-center px-4 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-neutral-900">아이디 찾기</h1>
+        <h1 className="text-2xl font-bold text-neutral-900">비밀번호 재설정</h1>
         <p className="mt-1 text-sm text-neutral-500">
-          가입 시 등록한 이메일을 입력하면 아이디 안내를 보내드립니다.
+          가입한 아이디와 이메일을 입력하면 임시비밀번호를 발급합니다.
         </p>
       </div>
 
       {searchParams.sent === '1' && (
         <p className="mb-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
-          가입 정보가 확인되면 아이디 안내가 발송됩니다.
+          가입 정보가 확인되면 임시비밀번호가 발급됩니다.
         </p>
       )}
 
@@ -67,7 +67,7 @@ export default function RecoverPage({ searchParams }: RecoverPageProps) {
       </form>
 
       <p className="mt-5 text-center text-sm text-neutral-500">
-        아이디가 기억나셨나요?{' '}
+        임시비밀번호를 발급받으셨나요?{' '}
         <Link href="/login" className="font-medium text-neutral-900 underline">
           로그인
         </Link>
