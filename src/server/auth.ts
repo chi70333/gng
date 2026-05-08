@@ -46,6 +46,7 @@ function asOptionalNumber(value: unknown): number | undefined {
 }
 
 function canonicalSiteOrigin(): string | null {
+  if (process.env.VERCEL_ENV && process.env.VERCEL_ENV !== 'production') return null;
   if (process.env.NODE_ENV !== 'production') return null;
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
