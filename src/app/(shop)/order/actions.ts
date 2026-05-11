@@ -8,6 +8,7 @@ import { createOrderFromCart, createOrderFromDirectItem } from '@/server/service
 import { createOrderSchema } from '@/schemas/order';
 import { formDataValue, formDataValues } from '@/lib/form-data';
 import { legacyClientIpFromHeaders } from '@/lib/legacy-order-code';
+import { logger } from '@/lib/logger';
 
 const CART_COOKIE = 'gng_cart_id';
 
@@ -112,7 +113,21 @@ export async function createOrderAction(formData: FormData): Promise<void> {
     orderDetailUrl = `/mypage/orders/${encodeURIComponent(order.orderNo)}${
       queryString ? `?${queryString}` : ''
     }`;
-  } catch {
+  } catch (err) {
+    logger.error(
+      {
+        err,
+        checkoutSource: directSkuId ? 'direct' : 'cart',
+        directSkuId,
+        directQuantity,
+        selectedSkuIds,
+        hasIdentity: Boolean(identity),
+        identityType: identity?.type ?? null,
+        pointsToUse: parsed.data.pointsToUse,
+        couponIssueId: parsed.data.couponIssueId?.toString() ?? null,
+      },
+      'checkout order creation failed',
+    );
     redirect(orderErrorUrl('failed', errorSource));
   }
 
