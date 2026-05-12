@@ -192,7 +192,7 @@ export function getCachedBoardList(code: string, limit = 30): Promise<BoardListR
           .set(staleKey, value, { ex: TTL.STALE_READ })
           .catch((err: unknown) => console.warn('board stale Redis set failed', err));
         return value;
-      } catch (err) {
+      } catch {
         if (staleValue) return staleValue;
         return {
           board: { code, name: code, type: 'default' },
