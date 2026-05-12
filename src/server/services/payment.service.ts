@@ -7,7 +7,6 @@ import { prisma } from '@/server/db';
 import { createPointLedgerEntry } from '@/server/services/point-ledger.service';
 import { lockOrderForUpdate, transitionOrderStatus } from '@/server/services/order.service';
 import { ConflictError, NotFoundError } from '@/lib/errors';
-import { logger } from '@/lib/logger';
 import type { PaymentCallbackInput } from '@/schemas/payment';
 
 export type PaymentCallbackResult = {
@@ -114,15 +113,6 @@ export async function cleanupExpiredOrderHolds(
 export async function handlePaymentCallback(
   input: PaymentCallbackInput,
 ): Promise<PaymentCallbackResult> {
-  try {
-    const cleaned = await cleanupExpiredOrderHolds();
-    if (cleaned.cancelledCount > 0) {
-      logger.info({ cleaned }, 'Expired order hold cleanup completed');
-    }
-  } catch (err) {
-    logger.warn({ err }, 'Expired order hold cleanup failed');
-  }
-
   const result = await prisma.$transaction(async (tx) => {
     await lockOrderForUpdate(tx, input.orderNo);
     const order = await tx.order.findUnique({
