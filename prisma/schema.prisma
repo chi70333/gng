@@ -502,6 +502,7 @@ model Payment {
 
   @@index([orderId])
   @@index([providerTxId])
+  @@unique([provider, providerTxId])
 }
 
 model Shipment {

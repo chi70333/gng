@@ -6,13 +6,16 @@ import { unstable_cache } from 'next/cache';
 
 /** 표준 캐시 TTL (초) — docs/07-traffic.md */
 export const TTL = {
-  PRODUCT_DETAIL: 60,   // 상품 상세 60s + tag 무효화
-  PRODUCT_LIST: 120,    // 상품 목록 2m
-  CATEGORY_TREE: 300,   // 카테고리 트리 5m
-  BANNER: 300,          // 배너 5m
-  BEST_PRODUCTS: 300,   // 베스트/신상 5m
-  DASHBOARD_PRODUCTS: 300, // 메인 카테고리 섹션 5m
-  FILTER_FACETS: 60,    // 필터 패싯 60s
+  PRODUCT_DETAIL: 60 * 60 * 6,   // 상품 상세 6h + tag 무효화
+  PRODUCT_LIST: 60 * 60 * 6,     // 상품 목록 6h
+  CATEGORY_TREE: 60 * 60 * 24,   // 카테고리 트리 24h
+  BANNER: 60 * 60 * 6,           // 배너 6h
+  BEST_PRODUCTS: 60 * 60 * 6,    // 베스트/신상 6h
+  DASHBOARD_PRODUCTS: 60 * 60 * 6, // 메인 카테고리 섹션 6h
+  FILTER_FACETS: 60 * 60 * 6,    // 필터 패싯 6h
+  BOARD_LIST: 60 * 60 * 6,       // 공개 게시판 목록 6h
+  STALE_READ: 60 * 60 * 24 * 30, // 읽기 캐시 stale 보관 30d
+  REFRESH_LOCK: 30,              // 같은 캐시 키 DB 재생성 중복 방지 30s
 } as const;
 
 /** 캐시 태그 헬퍼 — revalidateTag(TAGS.product('slug')) 으로 특정 항목 무효화 */

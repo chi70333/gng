@@ -5,7 +5,9 @@
 import 'server-only';
 import argon2 from 'argon2';
 import { revalidatePath, revalidateTag, unstable_cache, unstable_noStore as noStore } from 'next/cache';
+import { TTL } from '@/lib/cache';
 import { prisma } from '@/server/db';
+import { keys, redis } from '@/server/redis';
 import { AuthError, ForbiddenError, NotFoundError, ValidationError } from '@/lib/errors';
 import type {
   CommentFormInput,
@@ -157,9 +159,55 @@ async function getBoardPosts(code: string, limit: number): Promise<BoardListResu
 
 export function getCachedBoardList(code: string, limit = 30): Promise<BoardListResult> {
   return unstable_cache(
-    () => getBoardPosts(code, limit),
+    async () => {
+      const cacheKey = keys.boardList(code, limit);
+      const staleKey = `${cacheKey}:stale`;
+      const refreshLockKey = `${cacheKey}:refresh-lock`;
+      let staleValue: BoardListResult | null = null;
+      let hasRefreshLock = false;
+
+      try {
+        const hit = await redis.get<BoardListResult>(cacheKey);
+        if (hit) return hit;
+        staleValue = await redis.get<BoardListResult>(staleKey);
+        if (staleValue) {
+          const lock = await redis.set(refreshLockKey, '1', {
+            ex: TTL.REFRESH_LOCK,
+            nx: true,
+          });
+          hasRefreshLock = lock === 'OK';
+          if (!hasRefreshLock) return staleValue;
+        }
+      } catch (err) {
+        // Redis는 보조 캐시이므로 실패해도 DB/Next cache 경로를 유지한다.
+        console.warn('board Redis cache failed', err);
+      }
+
+      try {
+        const value = await getBoardPosts(code, limit);
+        redis
+          .set(cacheKey, value, { ex: TTL.BOARD_LIST })
+          .catch((err: unknown) => console.warn('board Redis set failed', err));
+        redis
+          .set(staleKey, value, { ex: TTL.STALE_READ })
+          .catch((err: unknown) => console.warn('board stale Redis set failed', err));
+        return value;
+      } catch (err) {
+        if (staleValue) return staleValue;
+        return {
+          board: { code, name: code, type: 'default' },
+          posts: [],
+        };
+      } finally {
+        if (hasRefreshLock) {
+          redis
+            .del(refreshLockKey)
+            .catch((err: unknown) => console.warn('board refresh lock cleanup failed', err));
+        }
+      }
+    },
     [`board-list:${code}:${limit}`],
-    { revalidate: 300, tags: [`board:${code}`] },
+    { revalidate: TTL.BOARD_LIST, tags: [`board:${code}`] },
   )();
 }
 

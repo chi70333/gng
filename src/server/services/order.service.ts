@@ -56,6 +56,17 @@ const FINALIZED_STOCK_STATUSES = new Set([
 ]);
 const TERMINAL_REVERSAL_STATUSES = new Set(['cancelled', 'refunded']);
 
+async function lockOrderById(tx: Prisma.TransactionClient, orderId: bigint): Promise<void> {
+  await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${orderId} FOR UPDATE`;
+}
+
+async function lockOrderByOrderNo(
+  tx: Prisma.TransactionClient,
+  orderNo: string,
+): Promise<void> {
+  await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "orderNo" = ${orderNo} FOR UPDATE`;
+}
+
 async function createUniqueLegacyOrderNo(
   tx: Prisma.TransactionClient,
   clientIp?: string | null,
@@ -237,9 +248,14 @@ export async function transitionOrderStatus(
     actor: string;
     reason?: string | null;
   },
-): Promise<void> {
-  const previousStatus = input.order.status;
-  if (previousStatus === input.nextStatus) return;
+): Promise<boolean> {
+  await lockOrderById(tx, input.order.id);
+  const currentOrder = await tx.order.findUnique({
+    where: { id: input.order.id },
+    select: { status: true },
+  });
+  const previousStatus = currentOrder?.status ?? input.order.status;
+  if (previousStatus === input.nextStatus) return false;
 
   if (previousStatus === 'pending' && input.nextStatus === 'paid') {
     await finalizeReservedStock(tx, input.order.id);
@@ -270,6 +286,14 @@ export async function transitionOrderStatus(
       reason: input.reason || null,
     },
   });
+  return true;
+}
+
+export async function lockOrderForUpdate(
+  tx: Prisma.TransactionClient,
+  orderNo: string,
+): Promise<void> {
+  await lockOrderByOrderNo(tx, orderNo);
 }
 
 async function createOrderFromItems(
@@ -499,6 +523,7 @@ export async function cancelUserOrder(input: {
   reason?: string;
 }): Promise<{ orderNo: string; status: string }> {
   return prisma.$transaction(async (tx) => {
+    await lockOrderByOrderNo(tx, input.orderNo);
     const order = await tx.order.findUnique({
       where: { orderNo: input.orderNo },
       select: {

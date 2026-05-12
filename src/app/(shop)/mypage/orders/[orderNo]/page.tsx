@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 
 type DetailPageProps = {
   params: { orderNo: string };
-  searchParams: { phone?: string };
+  searchParams: { phone?: string; cancelError?: string };
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -61,6 +61,17 @@ function paymentLabel(method: string): string {
 
 function normalizePhone(value: string | null): string {
   return (value ?? '').replace(/\D/g, '');
+}
+
+function cancelErrorMessage(code?: string): string | null {
+  if (!code) return null;
+  const messages: Record<string, string> = {
+    CONFLICT: '배송 준비 이후 주문은 고객센터로 취소를 요청해 주세요.',
+    FORBIDDEN: '본인 주문만 취소할 수 있습니다.',
+    NOT_FOUND: '주문을 찾을 수 없습니다.',
+    UNAUTHORIZED: '로그인이 필요합니다.',
+  };
+  return messages[code] ?? '주문 취소 처리 중 문제가 발생했습니다.';
 }
 
 function GuestOrderLookup({ orderNo }: { orderNo: string }) {
@@ -183,6 +194,7 @@ export default async function MyOrderDetailPage({ params, searchParams }: Detail
 
   const canCancel = order.status === 'pending' || order.status === 'paid';
   const cancelAction = cancelOrderAction.bind(null, order.orderNo);
+  const cancelError = cancelErrorMessage(searchParams.cancelError);
 
   return (
     <div className="mx-auto max-w-screen-md px-4 py-6">
@@ -328,6 +340,11 @@ export default async function MyOrderDetailPage({ params, searchParams }: Detail
       {canCancel ? (
         <form action={cancelAction} className="mt-4 rounded-lg bg-white p-5">
           <h2 className="text-base font-bold text-neutral-900">주문취소</h2>
+          {cancelError ? (
+            <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+              {cancelError}
+            </p>
+          ) : null}
           <label className="mt-3 block">
             <span className="mb-1 block text-sm font-medium text-neutral-700">취소 사유</span>
             <textarea

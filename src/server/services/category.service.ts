@@ -22,24 +22,67 @@ import {
  */
 export const getCachedCategoryTree = unstable_cache(
   async (): Promise<SerializedCategory[]> => {
+    const treeKey = keys.categoryTree();
+    const staleKey = `${treeKey}:stale`;
+    const refreshLockKey = `${treeKey}:refresh-lock`;
+    let staleTree: SerializedCategory[] | null = null;
+    let hasRefreshLock = false;
     // 1차: Redis
     try {
-      const hit = await redis.get<SerializedCategory[]>(keys.categoryTree());
+      const hit = await redis.get<SerializedCategory[]>(treeKey);
       if (hit) return hit;
+      staleTree = await redis.get<SerializedCategory[]>(staleKey);
+      if (staleTree) {
+        const lock = await redis.set(refreshLockKey, '1', {
+          ex: TTL.REFRESH_LOCK,
+          nx: true,
+        });
+        hasRefreshLock = lock === 'OK';
+        if (!hasRefreshLock) return staleTree;
+      }
     } catch (err) {
       logger.warn({ err }, 'category-tree Redis get failed, falling back to DB');
     }
 
     // 2차: DB
-    const flat = await getAllActiveCategories();
+    let flat: Omit<SerializedCategory, 'children'>[];
+    try {
+      flat = await getAllActiveCategories();
+    } catch (err) {
+      if (hasRefreshLock) {
+        redis
+          .del(refreshLockKey)
+          .catch((cleanupErr: unknown) =>
+            logger.warn({ err: cleanupErr }, 'category-tree refresh lock cleanup failed'),
+          );
+      }
+      if (staleTree) {
+        logger.warn({ err }, 'category-tree DB load failed, serving stale Redis value');
+        return staleTree;
+      }
+      logger.warn({ err }, 'category-tree DB load failed, serving empty tree');
+      return [];
+    }
     const tree = buildCategoryTree(flat);
 
     // Redis 저장 (실패해도 계속 진행)
     redis
-      .set(keys.categoryTree(), tree, { ex: TTL.CATEGORY_TREE })
+      .set(treeKey, tree, { ex: TTL.CATEGORY_TREE })
       .catch((err: unknown) =>
         logger.warn({ err }, 'category-tree Redis set failed'),
       );
+    redis
+      .set(staleKey, tree, { ex: TTL.STALE_READ })
+      .catch((err: unknown) =>
+        logger.warn({ err }, 'category-tree stale Redis set failed'),
+      );
+    if (hasRefreshLock) {
+      redis
+        .del(refreshLockKey)
+        .catch((err: unknown) =>
+          logger.warn({ err }, 'category-tree refresh lock cleanup failed'),
+        );
+    }
 
     return tree;
   },
@@ -50,7 +93,14 @@ export const getCachedCategoryTree = unstable_cache(
 /** slug 기준 카테고리 단건 (ISR 캐싱, 건별 태그). */
 export function getCachedCategoryBySlug(slug: string) {
   return unstable_cache(
-    () => getCategoryBySlug(slug),
+    async () => {
+      try {
+        return await getCategoryBySlug(slug);
+      } catch (err) {
+        logger.warn({ err, slug }, 'category slug DB load failed, serving null');
+        return null;
+      }
+    },
     [`category-slug:${slug}`],
     { revalidate: TTL.CATEGORY_TREE, tags: [TAGS.categoryTree] },
   )();
@@ -93,7 +143,14 @@ export function getCachedCategoryByLegacyIndex(
 
 export function getCachedCategoryAncestors(slug: string) {
   return unstable_cache(
-    () => getCategoryAncestors(slug),
+    async () => {
+      try {
+        return await getCategoryAncestors(slug);
+      } catch (err) {
+        logger.warn({ err, slug }, 'category ancestors DB load failed, serving empty list');
+        return [];
+      }
+    },
     [`category-ancestors:${slug}`],
     { revalidate: TTL.CATEGORY_TREE, tags: [TAGS.categoryTree] },
   )();

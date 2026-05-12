@@ -1519,6 +1519,7 @@ async function applyMileageImportOperations(
   return prisma.$transaction(
     async (tx) => {
       const userIds = uniqueBigInts(operations.map((operation) => operation.userId));
+
       const users = await tx.user.findMany({
         where: {
           id: { in: userIds },

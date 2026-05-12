@@ -34,20 +34,51 @@ async function readThroughRedis<T>(
   ttl: number,
   load: () => Promise<T>,
 ): Promise<T> {
+  const staleKey = `${key}:stale`;
+  const refreshLockKey = `${key}:refresh-lock`;
+  let staleValue: T | null = null;
+  let hasRefreshLock = false;
+
   try {
     const hit = await redis.get<T>(key);
     if (hit) return hit;
+    staleValue = await redis.get<T>(staleKey);
+    if (staleValue !== null) {
+      const lock = await redis.set(refreshLockKey, '1', {
+        ex: TTL.REFRESH_LOCK,
+        nx: true,
+      });
+      hasRefreshLock = lock === 'OK';
+      if (!hasRefreshLock) return staleValue;
+    }
   } catch (err) {
     logger.warn({ err, key }, 'product Redis get failed, falling back to DB');
   }
 
-  const value = await load();
+  try {
+    const value = await load();
 
-  redis
-    .set(key, value, { ex: ttl })
-    .catch((err: unknown) => logger.warn({ err, key }, 'product Redis set failed'));
+    redis
+      .set(key, value, { ex: ttl })
+      .catch((err: unknown) => logger.warn({ err, key }, 'product Redis set failed'));
+    redis
+      .set(staleKey, value, { ex: TTL.STALE_READ })
+      .catch((err: unknown) => logger.warn({ err, key }, 'product stale Redis set failed'));
 
-  return value;
+    return value;
+  } catch (err) {
+    if (staleValue !== null) {
+      logger.warn({ err, key }, 'product DB load failed, serving stale Redis value');
+      return staleValue;
+    }
+    throw err;
+  } finally {
+    if (hasRefreshLock) {
+      redis
+        .del(refreshLockKey)
+        .catch((err: unknown) => logger.warn({ err, key }, 'product refresh lock cleanup failed'));
+    }
+  }
 }
 
 /** 카테고리별 상품 목록 (ISR 120s, 카테고리 태그). */
@@ -121,7 +152,12 @@ export function getCachedProductMetadataBySlug(
   slug: string,
 ): Promise<ProductMetadata | null> {
   return unstable_cache(
-    () => getProductMetadataBySlug(slug),
+    () =>
+      readThroughRedis(
+        `${keys.product(slug)}:metadata`,
+        TTL.PRODUCT_DETAIL,
+        () => getProductMetadataBySlug(slug),
+      ),
     [`product-metadata:${slug}`],
     {
       revalidate: TTL.PRODUCT_DETAIL,
@@ -197,7 +233,12 @@ export function getCachedProductSkus(productId: string): Promise<ProductSku[]> {
 /** 필터 패싯 (ISR 60s). */
 export function getCachedFilterFacets(categorySlug: string) {
   return unstable_cache(
-    () => getFilterFacets(categorySlug),
+    () =>
+      readThroughRedis(
+        `filter:facets:${categorySlug}`,
+        TTL.FILTER_FACETS,
+        () => getFilterFacets(categorySlug),
+      ),
     [`filter-facets:${categorySlug}`],
     {
       revalidate: TTL.FILTER_FACETS,

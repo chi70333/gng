@@ -9,6 +9,7 @@ import { adminUserListQuerySchema } from '@/schemas/admin-user';
 import { createXlsxWorkbook } from '@/lib/xlsx';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
 const LEGACY_MEMBER_EXCEL_COLUMNS = [
   '회원구분',
@@ -32,7 +33,8 @@ const LEGACY_MEMBER_EXCEL_COLUMNS = [
   '환불계좌번호',
 ];
 
-const EXPORT_BATCH_SIZE = 1000;
+const EXPORT_BATCH_SIZE = 500;
+const MAX_EXPORT_ROWS = 5000;
 
 const userExportSelect = {
   id: true,
@@ -133,13 +135,13 @@ function buildUserExportRow(
 
 async function buildUserExportRows(where: Prisma.UserWhereInput): Promise<(string | number)[][]> {
   const rows: (string | number)[][] = [];
-  let skip = 0;
+  let cursor: { id: bigint } | undefined;
 
   while (true) {
     const users = await prisma.user.findMany({
       where,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      skip,
+      orderBy: { id: 'desc' },
+      ...(cursor ? { cursor, skip: 1 } : {}),
       take: EXPORT_BATCH_SIZE,
       select: userExportSelect,
     });
@@ -150,7 +152,8 @@ async function buildUserExportRows(where: Prisma.UserWhereInput): Promise<(strin
     rows.push(...users.map((user) => buildUserExportRow(user, totalByUserId)));
 
     if (users.length < EXPORT_BATCH_SIZE) break;
-    skip += users.length;
+    if (rows.length >= MAX_EXPORT_ROWS) break;
+    cursor = { id: users[users.length - 1]!.id };
   }
 
   return rows;
@@ -160,7 +163,23 @@ export async function GET(request: Request) {
   await requireAdmin('user.read');
   const searchParams = Object.fromEntries(new URL(request.url).searchParams);
   const query = adminUserListQuerySchema.parse(searchParams);
-  const rows = await buildUserExportRows(buildUserWhere(query));
+  const where = buildUserWhere(query);
+  const total = await prisma.user.count({ where });
+
+  if (total > MAX_EXPORT_ROWS) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: 'EXPORT_TOO_LARGE',
+          message: `Export is limited to ${MAX_EXPORT_ROWS} users. Please narrow the filters.`,
+        },
+      },
+      { status: 413, headers: { 'Cache-Control': 'no-store' } },
+    );
+  }
+
+  const rows = await buildUserExportRows(where);
   const xlsx = createXlsxWorkbook([LEGACY_MEMBER_EXCEL_COLUMNS, ...rows], '회원');
   const now = new Date();
   const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;

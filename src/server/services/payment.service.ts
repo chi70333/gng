@@ -5,7 +5,7 @@ import type { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '@/server/db';
 import { createPointLedgerEntry } from '@/server/services/point-ledger.service';
-import { transitionOrderStatus } from '@/server/services/order.service';
+import { lockOrderForUpdate, transitionOrderStatus } from '@/server/services/order.service';
 import { ConflictError, NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import type { PaymentCallbackInput } from '@/schemas/payment';
@@ -65,6 +65,11 @@ export async function cleanupExpiredOrderHolds(
     where: {
       status: 'pending',
       createdAt: { lte: cutoff },
+      payments: {
+        some: {
+          provider: { not: 'manual-bank' },
+        },
+      },
     },
     select: { id: true, orderNo: true, status: true },
   });
@@ -72,6 +77,7 @@ export async function cleanupExpiredOrderHolds(
   let cancelledCount = 0;
   for (const pending of pendingOrders) {
     const cancelled = await prisma.$transaction(async (tx) => {
+      await lockOrderForUpdate(tx, pending.orderNo);
       const order = await tx.order.findUnique({
         where: { id: pending.id },
         select: {
@@ -118,6 +124,7 @@ export async function handlePaymentCallback(
   }
 
   const result = await prisma.$transaction(async (tx) => {
+    await lockOrderForUpdate(tx, input.orderNo);
     const order = await tx.order.findUnique({
       where: { orderNo: input.orderNo },
       select: {
@@ -173,6 +180,10 @@ export async function handlePaymentCallback(
       throw new ConflictError('Payment amount mismatch.');
     }
 
+    if (order.status === 'paid' && input.status === 'approved') {
+      return { orderNo: input.orderNo, status: order.status, duplicate: true };
+    }
+
     const nextOrderStatus =
       input.status === 'approved'
         ? 'paid'
@@ -200,16 +211,17 @@ export async function handlePaymentCallback(
       },
     });
 
-    if (nextOrderStatus !== order.status) {
-      await transitionOrderStatus(tx, {
-        order,
-        nextStatus: nextOrderStatus,
-        actor: 'system',
-        reason: `payment:${input.status}`,
-      });
-    }
+    const statusChanged =
+      nextOrderStatus !== order.status
+        ? await transitionOrderStatus(tx, {
+            order,
+            nextStatus: nextOrderStatus,
+            actor: 'system',
+            reason: `payment:${input.status}`,
+          })
+        : false;
 
-    if (input.status === 'approved' && order.status !== 'paid' && order.userId) {
+    if (input.status === 'approved' && statusChanged && order.userId) {
       const pointPct = order.user?.grade?.pointPct ?? new Decimal(0);
       const earnBase = Decimal.max(order.subtotal.minus(order.discount), 0);
       const pointsToEarn = earnBase.mul(pointPct).div(100).floor().toNumber();
