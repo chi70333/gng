@@ -21,6 +21,7 @@ import type { CreateOrderInput } from '@/schemas/order';
 type CreatedOrder = {
   orderNo: string;
   total: string;
+  status: string;
 };
 
 type CreateOrderOptions = {
@@ -86,16 +87,26 @@ async function createUniqueLegacyOrderNo(
   throw new ConflictError('주문번호 생성에 실패했습니다. 다시 시도해 주세요.');
 }
 
+async function lockUserById(tx: Prisma.TransactionClient, userId: bigint): Promise<void> {
+  await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE`;
+}
+
 function getPaymentProvider(method: string): string {
+  if (method === 'point') return 'internal-point';
   if (method === 'bank') return 'manual-bank';
   return 'checkout-pending';
 }
 
-function buildPaymentRawResponse(input: CreateOrderInput) {
-  const method = input.paymentMethod ?? 'bank';
+function buildPaymentRawResponse(
+  input: CreateOrderInput,
+  method: string,
+  options: { zeroCheckout?: boolean } = {},
+) {
   return {
     source: 'checkout',
     paymentMethod: method,
+    zeroCheckout: options.zeroCheckout ?? false,
+    pointsUsed: input.pointsToUse,
     bankDeposit:
       method === 'bank'
         ? {
@@ -174,6 +185,55 @@ export async function finalizeReservedStock(
       where: { id: item.productId },
       data: { soldCount: { increment: item.quantity } },
     });
+  }
+}
+
+async function finalizeStockForImmediatePayment(
+  tx: Prisma.TransactionClient,
+  orderItems: CartItem[],
+): Promise<void> {
+  for (const item of orderItems) {
+    if (!item.skuId) continue;
+    // Raw SQL is used here to atomically honor existing reserved stock while
+    // immediately decrementing inventory for zero-won paid orders.
+    const sold = await tx.$executeRaw`
+      UPDATE "ProductSku"
+      SET "stock" = "stock" - ${item.quantity}
+      WHERE "id" = ${BigInt(item.skuId)}
+        AND "isActive" = true
+        AND "stock" - "reserved" >= ${item.quantity}
+    `;
+
+    if (sold !== 1) {
+      throw new ConflictError('Some cart items are out of stock.');
+    }
+
+    await tx.product.update({
+      where: { id: BigInt(item.productId) },
+      data: { soldCount: { increment: item.quantity } },
+    });
+  }
+}
+
+async function reserveStockForPendingPayment(
+  tx: Prisma.TransactionClient,
+  orderItems: CartItem[],
+): Promise<void> {
+  for (const item of orderItems) {
+    if (!item.skuId) continue;
+    // Raw SQL is used here because Prisma updateMany cannot express
+    // `stock - reserved >= quantity` atomically without a read-then-write race.
+    const reserved = await tx.$executeRaw`
+      UPDATE "ProductSku"
+      SET "reserved" = "reserved" + ${item.quantity}
+      WHERE "id" = ${BigInt(item.skuId)}
+        AND "isActive" = true
+        AND "stock" - "reserved" >= ${item.quantity}
+    `;
+
+    if (reserved !== 1) {
+      throw new ConflictError('Some cart items are out of stock.');
+    }
   }
 }
 
@@ -332,6 +392,7 @@ async function createOrderFromItems(
   }
 
   let finalTotal = subtotal.plus(shippingFee);
+  let orderStatus: OrderTransitionStatus = 'pending';
 
   await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     orderNo = await createUniqueLegacyOrderNo(tx, options.clientIp);
@@ -350,6 +411,7 @@ async function createOrderFromItems(
 
     const payableBeforePoints = subtotal.plus(shippingFee).minus(discount);
     if (input.pointsToUse > 0 && userId) {
+      await lockUserById(tx, userId);
       const balance = await getPointBalance(tx, userId);
       if (input.pointsToUse > balance) {
         throw new ValidationError('사용 가능한 포인트를 초과했습니다.');
@@ -360,21 +422,16 @@ async function createOrderFromItems(
     }
 
     finalTotal = payableBeforePoints.minus(input.pointsToUse);
+    const paidImmediately = finalTotal.eq(0);
+    orderStatus = paidImmediately ? 'paid' : 'pending';
+    const paymentMethod =
+      paidImmediately && input.pointsToUse > 0 ? 'point' : input.paymentMethod ?? 'bank';
+    const paymentStatus = paidImmediately ? 'approved' : 'pending';
 
-    for (const item of orderItems) {
-      // Raw SQL is used here because Prisma updateMany cannot express
-      // `stock - reserved >= quantity` atomically without a read-then-write race.
-      const reserved = await tx.$executeRaw`
-        UPDATE "ProductSku"
-        SET "reserved" = "reserved" + ${item.quantity}
-        WHERE "id" = ${BigInt(item.skuId)}
-          AND "isActive" = true
-          AND "stock" - "reserved" >= ${item.quantity}
-      `;
-
-      if (reserved !== 1) {
-        throw new ConflictError('Some cart items are out of stock.');
-      }
+    if (paidImmediately) {
+      await finalizeStockForImmediatePayment(tx, orderItems);
+    } else {
+      await reserveStockForPendingPayment(tx, orderItems);
     }
 
     const order = await tx.order.create({
@@ -382,7 +439,7 @@ async function createOrderFromItems(
         orderNo,
         legacyTradeCode: orderNo,
         userId,
-        status: 'pending',
+        status: orderStatus,
         subtotal,
         discount,
         shippingFee,
@@ -405,7 +462,7 @@ async function createOrderFromItems(
           email: input.buyerEmail ?? null,
           buyerPhone: input.buyerPhone ?? input.phone,
           channel: input.channel ?? null,
-          paymentMethod: input.paymentMethod ?? null,
+          paymentMethod,
           couponIssueId: input.couponIssueId?.toString() ?? null,
           receipt: {
             cashReceiptType: input.cashReceiptType,
@@ -430,17 +487,21 @@ async function createOrderFromItems(
         },
         payments: {
           create: {
-            method: input.paymentMethod ?? 'bank',
-            provider: getPaymentProvider(input.paymentMethod ?? 'bank'),
+            method: paymentMethod,
+            provider: getPaymentProvider(paymentMethod),
             amount: finalTotal,
-            status: 'pending',
-            rawResponse: buildPaymentRawResponse(input),
+            status: paymentStatus,
+            rawResponse: buildPaymentRawResponse(input, paymentMethod, {
+              zeroCheckout: paidImmediately,
+            }),
+            approvedAt: paidImmediately ? new Date() : null,
           },
         },
         history: {
           create: {
-            toStatus: 'pending',
+            toStatus: orderStatus,
             actor: identity.type,
+            reason: paidImmediately ? 'checkout:zero-total' : null,
           },
         },
       },
@@ -480,7 +541,7 @@ async function createOrderFromItems(
     }
   });
 
-  return { orderNo, total: finalTotal.toString() };
+  return { orderNo, total: finalTotal.toString(), status: orderStatus };
 }
 
 export async function createOrderFromCart(

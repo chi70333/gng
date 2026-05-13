@@ -105,14 +105,18 @@ export async function createOrderAction(formData: FormData): Promise<void> {
           clientIp,
         })
       : await createOrderFromCart(orderIdentity, parsed.data, { clientIp });
-    const guestOrderParams = new URLSearchParams();
-    if (orderIdentity.type === 'guest') {
-      guestOrderParams.set('phone', parsed.data.buyerPhone ?? parsed.data.phone);
+    if (order.status === 'paid' && order.total === '0') {
+      orderDetailUrl = `/order/complete?orderNo=${encodeURIComponent(order.orderNo)}`;
+    } else {
+      const guestOrderParams = new URLSearchParams();
+      if (orderIdentity.type === 'guest') {
+        guestOrderParams.set('phone', parsed.data.buyerPhone ?? parsed.data.phone);
+      }
+      const queryString = guestOrderParams.toString();
+      orderDetailUrl = `/mypage/orders/${encodeURIComponent(order.orderNo)}${
+        queryString ? `?${queryString}` : ''
+      }`;
     }
-    const queryString = guestOrderParams.toString();
-    orderDetailUrl = `/mypage/orders/${encodeURIComponent(order.orderNo)}${
-      queryString ? `?${queryString}` : ''
-    }`;
   } catch (err) {
     logger.error(
       {

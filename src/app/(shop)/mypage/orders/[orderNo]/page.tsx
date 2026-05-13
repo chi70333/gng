@@ -55,6 +55,7 @@ function paymentLabel(method: string): string {
     vbank: '가상계좌',
     mobile: '휴대폰 결제',
     transfer: '계좌이체',
+    point: '포인트 결제',
   };
   return labels[method] ?? method;
 }
