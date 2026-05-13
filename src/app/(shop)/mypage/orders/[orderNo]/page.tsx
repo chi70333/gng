@@ -10,6 +10,7 @@ import { prisma } from '@/server/db';
 import { formatKRW, formatKoreanDateTime } from '@/lib/format';
 import { getCachedSitePolicy } from '@/server/services/site-policy.service';
 import { cancelOrderAction } from './actions';
+import { OrderDetailScrollTop } from './OrderDetailScrollTop';
 
 export const dynamic = 'force-dynamic';
 
@@ -199,6 +200,7 @@ export default async function MyOrderDetailPage({ params, searchParams }: Detail
 
   return (
     <div className="mx-auto max-w-screen-md px-4 py-6">
+      <OrderDetailScrollTop orderNo={order.orderNo} />
       <div className="rounded-lg bg-white p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
