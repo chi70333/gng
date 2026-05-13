@@ -1,16 +1,11 @@
 'use client';
 
 import Link from 'next/link';
+import { signOut } from 'next-auth/react';
 import { LogOut, User } from 'lucide-react';
 import { useMemberSession } from '@/hooks/use-member-session';
 
-type HeaderAccountActionsProps = {
-  logoutAction: (formData: FormData) => Promise<void>;
-};
-
-export default function HeaderAccountActions({
-  logoutAction,
-}: HeaderAccountActionsProps) {
+export default function HeaderAccountActions() {
   const { isMember } = useMemberSession();
 
   return (
@@ -24,8 +19,13 @@ export default function HeaderAccountActions({
       </Link>
 
       {isMember ? (
-        <form action={logoutAction} className="hidden md:block">
-          <input type="hidden" name="callbackUrl" value="/" />
+        <form
+          className="hidden md:block"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void signOut({ callbackUrl: '/' });
+          }}
+        >
           <button
             type="submit"
             aria-label="로그아웃"

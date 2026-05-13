@@ -5,8 +5,9 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 export const config = {
   matcher: [
-    // 정적 자산, 이미지, next 내부 경로 제외
-    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)',
+    // 공개 쇼핑 페이지는 ISR/CDN 캐시를 타야 하므로 관리자 경로만 통과시킨다.
+    '/admin/:path*',
+    '/api/admin/:path*',
   ],
 };
 

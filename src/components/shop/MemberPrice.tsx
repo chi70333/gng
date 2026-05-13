@@ -51,7 +51,7 @@ export default function MemberPrice({
       <p
         className={cn(
           'font-semibold text-neutral-500',
-          variant === 'detail' ? 'text-sm' : 'mt-auto pt-1 text-sm',
+        variant === 'detail' ? 'text-sm' : 'mt-auto min-h-6 pt-1 text-sm leading-5',
         )}
       >
         회원 전용 가격
@@ -82,7 +82,7 @@ export default function MemberPrice({
   }
 
   return (
-    <div className="mt-auto pt-1">
+    <div className="mt-auto min-h-6 pt-1">
       {hasDiscount && (
         <span className="block text-xs text-neutral-400 line-through">
           {formatKRW(price)}

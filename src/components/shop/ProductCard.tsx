@@ -20,26 +20,27 @@ export default function ProductCard({
   const hasDiscount = !!product.salePrice;
 
   return (
-    <Link
-      href={`/goods/${product.slug}`}
-      className="group flex flex-col bg-white rounded-lg overflow-hidden hover:shadow-md transition-shadow"
-    >
+    <article className="group flex flex-col overflow-hidden rounded-lg bg-white transition-shadow hover:shadow-md">
       {/* 상품 이미지 */}
-      <div className="relative aspect-square w-full bg-neutral-100 overflow-hidden">
+      <Link
+        href={`/goods/${product.slug}`}
+        aria-label={`${product.name} 상품 상세로 이동`}
+        className="relative block aspect-square w-full overflow-hidden bg-neutral-100"
+      >
         {product.thumbnail ? (
           <Image
             src={product.thumbnail}
             alt={product.name}
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-            className="object-cover group-hover:scale-105 transition-transform duration-300"
+            className="object-cover transition-transform duration-300 group-hover:scale-105"
             priority={priority}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-neutral-300">
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="w-10 h-10"
+              className="h-10 w-10"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -63,20 +64,24 @@ export default function ProductCard({
             className="absolute left-2 top-2 rounded bg-red-500 px-1.5 py-0.5 text-xs font-bold text-white"
           />
         )}
-      </div>
+      </Link>
 
       {/* 상품 정보 */}
-      <div className="p-3 flex flex-col gap-1 flex-1">
+      <div className="flex flex-1 flex-col gap-2 p-3">
         {product.brand && (
-          <span className="text-xs text-neutral-400 truncate">{product.brand.name}</span>
+          <span className="block min-h-4 truncate text-xs leading-4 text-neutral-400">
+            {product.brand.name}
+          </span>
         )}
-        <h3 className="text-sm font-medium text-neutral-900 line-clamp-2 leading-snug">
-          {product.name}
+        <h3 className="min-h-10 text-sm font-medium leading-5 text-neutral-900">
+          <Link href={`/goods/${product.slug}`} className="line-clamp-2 min-h-11">
+            {product.name}
+          </Link>
         </h3>
 
         {/* 가격 */}
         <MemberPrice price={product.price} salePrice={product.salePrice} />
       </div>
-    </Link>
+    </article>
   );
 }

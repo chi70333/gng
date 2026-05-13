@@ -4,6 +4,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { signOut } from 'next-auth/react';
 import { ChevronDown, X, Menu } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { useMemberSession } from '@/hooks/use-member-session';
@@ -11,12 +12,10 @@ import type { SerializedCategory } from '@/server/repositories/category.reposito
 
 type MobileMenuDrawerProps = {
   categories: SerializedCategory[];
-  logoutAction: (formData: FormData) => Promise<void>;
 };
 
 export default function MobileMenuDrawer({
   categories,
-  logoutAction,
 }: MobileMenuDrawerProps) {
   const [open, setOpen] = useState(false);
   const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null);
@@ -146,8 +145,12 @@ export default function MobileMenuDrawer({
             {isMember ? '마이페이지' : '로그인'}
           </Link>
           {isMember ? (
-            <form action={logoutAction}>
-              <input type="hidden" name="callbackUrl" value="/" />
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void signOut({ callbackUrl: '/' });
+              }}
+            >
               <button
                 type="submit"
                 className="flex h-11 w-full items-center text-left text-sm text-neutral-700 hover:text-neutral-900"

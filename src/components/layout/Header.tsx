@@ -2,7 +2,6 @@
 import { Search, ShoppingBag } from 'lucide-react';
 import MobileMenuDrawer from './MobileMenuDrawer';
 import HeaderAccountActions from './HeaderAccountActions';
-import { logoutAction } from '@/app/actions';
 import { logger } from '@/lib/logger';
 import type { SerializedCategory } from '@/server/repositories/category.repository';
 import { getCachedCategoryTree } from '@/server/services/category.service';
@@ -31,7 +30,6 @@ export function HeaderShell({
       <div className="relative mx-auto flex h-14 max-w-screen-xl items-center gap-2 px-4 md:gap-3">
         <MobileMenuDrawer
           categories={categories}
-          logoutAction={logoutAction}
         />
 
         <Link
@@ -91,7 +89,7 @@ export function HeaderShell({
             <ShoppingBag size={20} />
           </Link>
 
-          <HeaderAccountActions logoutAction={logoutAction} />
+          <HeaderAccountActions />
         </div>
       </div>
     </header>

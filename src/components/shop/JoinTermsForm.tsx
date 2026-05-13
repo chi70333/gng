@@ -80,7 +80,7 @@ export default function JoinTermsForm({
             <button
               type="button"
               onClick={checkAll}
-              className="h-10 shrink-0 rounded-lg border border-blue-600 px-3 text-sm font-semibold text-blue-600"
+              className="min-h-11 shrink-0 rounded-lg border border-blue-600 px-3 text-sm font-semibold text-blue-600"
             >
               전체동의
             </button>

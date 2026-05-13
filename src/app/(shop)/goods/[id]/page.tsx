@@ -17,6 +17,7 @@ import {
 import { cn } from '@/lib/cn';
 
 export const revalidate = 60; // ISR 60s
+export const dynamic = 'force-static';
 export const dynamicParams = true;
 
 export async function generateMetadata({

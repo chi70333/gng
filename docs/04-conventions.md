@@ -75,6 +75,7 @@
 - meilisearch
 - iron-session (선택)
 - @sentry/nextjs
+- @vercel/analytics, @vercel/speed-insights
 
 ### UI
 - tailwindcss, postcss, autoprefixer

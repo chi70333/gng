@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => {
     getOrderReadyItem: vi.fn(),
     getPointBalance: vi.fn(),
     createPointLedgerEntry: vi.fn(),
+    loggerInfo: vi.fn(),
   };
 });
 
@@ -56,6 +57,12 @@ vi.mock('@/server/services/point-ledger.service', () => ({
 
 vi.mock('@/lib/legacy-order-code', () => ({
   createLegacyOrderCode: () => 'ORDER-ZERO',
+}));
+
+vi.mock('@/lib/logger', () => ({
+  logger: {
+    info: mocks.loggerInfo,
+  },
 }));
 
 import { createOrderFromDirectItem } from './order.service';
@@ -155,6 +162,31 @@ describe('order checkout service', () => {
         delta: -2_000_000,
         orderId: 11n,
       }),
+    );
+    expect(mocks.loggerInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        area: 'checkout',
+        step: 'directItemHydrate',
+        durationMs: expect.any(Number),
+      }),
+      'checkout directItemHydrate',
+    );
+    expect(mocks.loggerInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        area: 'checkout',
+        step: 'stockFinalize',
+        orderNo: 'ORDER-ZERO',
+      }),
+      'checkout stockFinalize',
+    );
+    expect(mocks.loggerInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        area: 'checkout',
+        step: 'complete',
+        orderNo: 'ORDER-ZERO',
+        status: 'paid',
+      }),
+      'checkout complete',
     );
   });
 });

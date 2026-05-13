@@ -16,6 +16,7 @@ import { calculateCouponDiscount, markCouponUsed } from '@/server/services/coupo
 import { createPointLedgerEntry, getPointBalance } from '@/server/services/point-ledger.service';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '@/lib/errors';
 import { createLegacyOrderCode } from '@/lib/legacy-order-code';
+import { logger } from '@/lib/logger';
 import type { CreateOrderInput } from '@/schemas/order';
 
 type CreatedOrder = {
@@ -56,6 +57,22 @@ const FINALIZED_STOCK_STATUSES = new Set([
   'refunded',
 ]);
 const TERMINAL_REVERSAL_STATUSES = new Set(['cancelled', 'refunded']);
+
+function logCheckoutStep(
+  step: string,
+  startedAt: number,
+  extra: Record<string, unknown> = {},
+): void {
+  logger.info(
+    {
+      area: 'checkout',
+      step,
+      durationMs: Date.now() - startedAt,
+      ...extra,
+    },
+    `checkout ${step}`,
+  );
+}
 
 async function lockOrderById(tx: Prisma.TransactionClient, orderId: bigint): Promise<void> {
   await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${orderId} FOR UPDATE`;
@@ -362,6 +379,7 @@ async function createOrderFromItems(
   orderItems: CartItem[],
   options: CreateOrderOptions = {},
 ): Promise<CreatedOrder> {
+  const checkoutStartedAt = Date.now();
   if (orderItems.length === 0) {
     throw new ValidationError('Cart is empty.');
   }
@@ -395,11 +413,18 @@ async function createOrderFromItems(
   let orderStatus: OrderTransitionStatus = 'pending';
 
   await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const transactionStartedAt = Date.now();
+    const orderNoStartedAt = Date.now();
     orderNo = await createUniqueLegacyOrderNo(tx, options.clientIp);
+    logCheckoutStep('orderNo', orderNoStartedAt, {
+      orderNo,
+      itemCount: orderItems.length,
+    });
     let discount = new Decimal(0);
     let couponIssueId: bigint | null = null;
 
     if (input.couponIssueId && userId) {
+      const couponStartedAt = Date.now();
       const coupon = await calculateCouponDiscount(tx, {
         couponIssueId: input.couponIssueId,
         userId,
@@ -407,10 +432,15 @@ async function createOrderFromItems(
       });
       discount = coupon.discount;
       couponIssueId = coupon.couponIssueId;
+      logCheckoutStep('coupon', couponStartedAt, {
+        orderNo,
+        couponIssueId: couponIssueId.toString(),
+      });
     }
 
     const payableBeforePoints = subtotal.plus(shippingFee).minus(discount);
     if (input.pointsToUse > 0 && userId) {
+      const pointsStartedAt = Date.now();
       await lockUserById(tx, userId);
       const balance = await getPointBalance(tx, userId);
       if (input.pointsToUse > balance) {
@@ -419,6 +449,10 @@ async function createOrderFromItems(
       if (new Decimal(input.pointsToUse).gt(payableBeforePoints)) {
         throw new ValidationError('주문금액보다 많은 포인트를 사용할 수 없습니다.');
       }
+      logCheckoutStep('pointsCheck', pointsStartedAt, {
+        orderNo,
+        pointsToUse: input.pointsToUse,
+      });
     }
 
     finalTotal = payableBeforePoints.minus(input.pointsToUse);
@@ -429,11 +463,22 @@ async function createOrderFromItems(
     const paymentStatus = paidImmediately ? 'approved' : 'pending';
 
     if (paidImmediately) {
+      const stockStartedAt = Date.now();
       await finalizeStockForImmediatePayment(tx, orderItems);
+      logCheckoutStep('stockFinalize', stockStartedAt, {
+        orderNo,
+        itemCount: orderItems.length,
+      });
     } else {
+      const stockStartedAt = Date.now();
       await reserveStockForPendingPayment(tx, orderItems);
+      logCheckoutStep('stockReserve', stockStartedAt, {
+        orderNo,
+        itemCount: orderItems.length,
+      });
     }
 
+    const orderCreateStartedAt = Date.now();
     const order = await tx.order.create({
       data: {
         orderNo,
@@ -506,21 +551,37 @@ async function createOrderFromItems(
         },
       },
     });
+    logCheckoutStep('orderCreate', orderCreateStartedAt, {
+      orderNo,
+      orderId: order.id.toString(),
+      status: orderStatus,
+    });
 
     if (couponIssueId) {
+      const couponMarkStartedAt = Date.now();
       await markCouponUsed(tx, { couponIssueId, orderId: order.id });
+      logCheckoutStep('couponMarkUsed', couponMarkStartedAt, {
+        orderNo,
+        couponIssueId: couponIssueId.toString(),
+      });
     }
 
     if (input.pointsToUse > 0 && userId) {
+      const pointsLedgerStartedAt = Date.now();
       await createPointLedgerEntry(tx, {
         userId,
         delta: -input.pointsToUse,
         reason: `주문 ${orderNo} 포인트 사용`,
         orderId: order.id,
       });
+      logCheckoutStep('pointsLedger', pointsLedgerStartedAt, {
+        orderNo,
+        pointsToUse: input.pointsToUse,
+      });
     }
 
     if (input.saveShippingAddress && userId) {
+      const shippingAddressStartedAt = Date.now();
       const hasDefault = await tx.userAddress.findFirst({
         where: { userId, isDefault: true },
         select: { id: true },
@@ -538,7 +599,23 @@ async function createOrderFromItems(
           isDefault: !hasDefault,
         },
       });
+      logCheckoutStep('shippingAddressSave', shippingAddressStartedAt, {
+        orderNo,
+        hasDefault: Boolean(hasDefault),
+      });
     }
+
+    logCheckoutStep('transaction', transactionStartedAt, {
+      orderNo,
+      status: orderStatus,
+      itemCount: orderItems.length,
+    });
+  });
+
+  logCheckoutStep('complete', checkoutStartedAt, {
+    orderNo,
+    status: orderStatus,
+    itemCount: orderItems.length,
   });
 
   return { orderNo, total: finalTotal.toString(), status: orderStatus };
@@ -549,10 +626,16 @@ export async function createOrderFromCart(
   input: CreateOrderInput,
   options: CreateOrderOptions = {},
 ): Promise<CreatedOrder> {
+  const cartStartedAt = Date.now();
   const cart = await getCart(identity);
   const orderItems = getOrderItems(cart.items, input.selectedSkuIds);
+  logCheckoutStep('cartHydrate', cartStartedAt, {
+    itemCount: orderItems.length,
+    selectedOnly: Boolean(input.selectedSkuIds),
+  });
   const order = await createOrderFromItems(identity, input, orderItems, options);
 
+  const cartClearStartedAt = Date.now();
   if (input.selectedSkuIds) {
     await deleteCartItems(
       identity,
@@ -561,6 +644,11 @@ export async function createOrderFromCart(
   } else {
     await clearCart(identity);
   }
+  logCheckoutStep('cartClear', cartClearStartedAt, {
+    orderNo: order.orderNo,
+    itemCount: orderItems.length,
+    selectedOnly: Boolean(input.selectedSkuIds),
+  });
 
   return order;
 }
@@ -572,7 +660,12 @@ export async function createOrderFromDirectItem(input: {
   quantity: number;
   clientIp?: string | null;
 }): Promise<CreatedOrder> {
+  const directItemStartedAt = Date.now();
   const checkoutItem = await getOrderReadyItem(input.skuId, input.quantity);
+  logCheckoutStep('directItemHydrate', directItemStartedAt, {
+    skuId: input.skuId,
+    quantity: input.quantity,
+  });
   return createOrderFromItems(input.identity, input.orderInput, [checkoutItem], {
     clientIp: input.clientIp,
   });

@@ -6,6 +6,7 @@ import { Suspense } from 'react';
 import Header, { HeaderShell } from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import ProductGrid from '@/components/shop/ProductGrid';
+import RegistrationNotice from '@/components/shop/RegistrationNotice';
 import type { SerializedCategory } from '@/server/repositories/category.repository';
 import { getCachedDashboardCategorySections } from '@/server/services/product.service';
 import { getCachedCategoryTree } from '@/server/services/category.service';
@@ -13,11 +14,7 @@ import { logger } from '@/lib/logger';
 
 export const revalidate = 60; // ISR 60s
 
-type HomePageProps = {
-  searchParams?: { registered?: string };
-};
-
-export default async function HomePage({ searchParams }: HomePageProps) {
+export default async function HomePage() {
   const [dashboardSections, categories] = await Promise.all([
     getCachedDashboardCategorySections(8).catch((err: unknown) => {
       logger.error({ err }, 'HomePage: getDashboardCategorySections failed');
@@ -38,11 +35,9 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       </Suspense>
       <main className="flex-1">
         <div className="mx-auto max-w-screen-xl space-y-12 px-4 py-6">
-          {searchParams?.registered === '1' ? (
-            <p className="rounded-lg bg-green-50 px-3 py-3 text-sm font-medium text-green-700">
-              회원가입이 완료되었습니다. 지앤지 쇼핑몰을 바로 이용하실 수 있습니다.
-            </p>
-          ) : null}
+          <Suspense fallback={null}>
+            <RegistrationNotice />
+          </Suspense>
 
           {rootCategories.length > 0 && (
             <section aria-labelledby="category-heading" className="space-y-3">

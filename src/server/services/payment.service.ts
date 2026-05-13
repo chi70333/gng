@@ -7,6 +7,7 @@ import { prisma } from '@/server/db';
 import { createPointLedgerEntry } from '@/server/services/point-ledger.service';
 import { lockOrderForUpdate, transitionOrderStatus } from '@/server/services/order.service';
 import { ConflictError, NotFoundError } from '@/lib/errors';
+import { logger } from '@/lib/logger';
 import type { PaymentCallbackInput } from '@/schemas/payment';
 
 export type PaymentCallbackResult = {
@@ -20,6 +21,22 @@ type ExpiredHoldCleanupResult = {
 };
 
 const DEFAULT_HOLD_TTL_MINUTES = 30;
+
+function logPaymentStep(
+  step: string,
+  startedAt: number,
+  extra: Record<string, unknown> = {},
+): void {
+  logger.info(
+    {
+      area: 'payment',
+      step,
+      durationMs: Date.now() - startedAt,
+      ...extra,
+    },
+    `payment ${step}`,
+  );
+}
 
 function extractCallbackHash(rawResponse: unknown): string | null {
   if (!rawResponse || typeof rawResponse !== 'object') return null;
@@ -113,8 +130,17 @@ export async function cleanupExpiredOrderHolds(
 export async function handlePaymentCallback(
   input: PaymentCallbackInput,
 ): Promise<PaymentCallbackResult> {
+  const callbackStartedAt = Date.now();
   const result = await prisma.$transaction(async (tx) => {
+    const transactionStartedAt = Date.now();
     await lockOrderForUpdate(tx, input.orderNo);
+    logPaymentStep('lockOrder', transactionStartedAt, {
+      orderNo: input.orderNo,
+      provider: input.provider,
+      status: input.status,
+    });
+
+    const orderLookupStartedAt = Date.now();
     const order = await tx.order.findUnique({
       where: { orderNo: input.orderNo },
       select: {
@@ -131,8 +157,13 @@ export async function handlePaymentCallback(
     });
 
     if (!order) throw new NotFoundError('Order not found.');
+    logPaymentStep('orderLookup', orderLookupStartedAt, {
+      orderNo: input.orderNo,
+      currentStatus: order.status,
+    });
 
     if (input.providerTxId) {
+      const duplicateStartedAt = Date.now();
       const existingPayment = await tx.payment.findFirst({
         where: {
           provider: input.provider,
@@ -142,9 +173,20 @@ export async function handlePaymentCallback(
       });
 
       if (existingPayment) {
+        logPaymentStep('duplicate', duplicateStartedAt, {
+          orderNo: input.orderNo,
+          duplicate: true,
+          reason: 'providerTxId',
+        });
         return { orderNo: input.orderNo, status: order.status, duplicate: true };
       }
+      logPaymentStep('duplicateCheck', duplicateStartedAt, {
+        orderNo: input.orderNo,
+        duplicate: false,
+        reason: 'providerTxId',
+      });
     } else {
+      const duplicateStartedAt = Date.now();
       const existingPayments = await tx.payment.findMany({
         where: { orderId: order.id },
         select: {
@@ -158,8 +200,18 @@ export async function handlePaymentCallback(
         take: 20,
       });
       if (existingPayments.some((payment) => isDuplicateWithoutProviderTxId(payment, input))) {
+        logPaymentStep('duplicate', duplicateStartedAt, {
+          orderNo: input.orderNo,
+          duplicate: true,
+          reason: 'callbackHash',
+        });
         return { orderNo: input.orderNo, status: order.status, duplicate: true };
       }
+      logPaymentStep('duplicateCheck', duplicateStartedAt, {
+        orderNo: input.orderNo,
+        duplicate: false,
+        checkedPayments: existingPayments.length,
+      });
     }
 
     if (order.status === 'cancelled' && input.status === 'approved') {
@@ -181,6 +233,7 @@ export async function handlePaymentCallback(
           ? 'cancelled'
           : 'pending';
 
+    const paymentCreateStartedAt = Date.now();
     await tx.payment.create({
       data: {
         orderId: order.id,
@@ -200,7 +253,13 @@ export async function handlePaymentCallback(
         approvedAt: input.status === 'approved' ? new Date() : null,
       },
     });
+    logPaymentStep('paymentCreate', paymentCreateStartedAt, {
+      orderNo: input.orderNo,
+      provider: input.provider,
+      status: input.status,
+    });
 
+    const statusStartedAt = Date.now();
     const statusChanged =
       nextOrderStatus !== order.status
         ? await transitionOrderStatus(tx, {
@@ -210,8 +269,15 @@ export async function handlePaymentCallback(
             reason: `payment:${input.status}`,
           })
         : false;
+    logPaymentStep('statusTransition', statusStartedAt, {
+      orderNo: input.orderNo,
+      fromStatus: order.status,
+      nextStatus: nextOrderStatus,
+      statusChanged,
+    });
 
     if (input.status === 'approved' && statusChanged && order.userId) {
+      const pointsStartedAt = Date.now();
       const pointPct = order.user?.grade?.pointPct ?? new Decimal(0);
       const earnBase = Decimal.max(order.subtotal.minus(order.discount), 0);
       const pointsToEarn = earnBase.mul(pointPct).div(100).floor().toNumber();
@@ -224,9 +290,27 @@ export async function handlePaymentCallback(
           expireAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365),
         });
       }
+      logPaymentStep('pointsEarn', pointsStartedAt, {
+        orderNo: input.orderNo,
+        pointsToEarn,
+      });
     }
 
+    logPaymentStep('transaction', transactionStartedAt, {
+      orderNo: input.orderNo,
+      nextStatus: nextOrderStatus,
+      duplicate: false,
+      statusChanged,
+    });
+
     return { orderNo: input.orderNo, status: nextOrderStatus, duplicate: false };
+  });
+
+  logPaymentStep('complete', callbackStartedAt, {
+    orderNo: input.orderNo,
+    provider: input.provider,
+    status: result.status,
+    duplicate: result.duplicate,
   });
 
   return result;

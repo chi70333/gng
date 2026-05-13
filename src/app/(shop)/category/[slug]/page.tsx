@@ -22,6 +22,7 @@ import type { SortOption } from '@/server/repositories/product.repository';
 import type { SerializedCategory } from '@/server/repositories/category.repository';
 
 export const revalidate = 120; // ISR 120s
+export const dynamic = 'force-static';
 
 // ── 정적 파라미터 사전 생성 (빌드 타임 ISR) ──
 export async function generateStaticParams() {
