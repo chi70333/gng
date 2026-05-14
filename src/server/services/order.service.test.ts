@@ -22,10 +22,14 @@ const mocks = vi.hoisted(() => {
     tx,
     transaction: vi.fn(),
     userFindUnique: vi.fn(),
+    clearCart: vi.fn(),
+    deleteCartItems: vi.fn(),
+    getCart: vi.fn(),
     getOrderReadyItem: vi.fn(),
     getPointBalance: vi.fn(),
     createPointLedgerEntry: vi.fn(),
     loggerInfo: vi.fn(),
+    loggerWarn: vi.fn(),
   };
 });
 
@@ -39,9 +43,9 @@ vi.mock('@/server/db', () => ({
 }));
 
 vi.mock('@/server/services/cart.service', () => ({
-  clearCart: vi.fn(),
-  deleteCartItems: vi.fn(),
-  getCart: vi.fn(),
+  clearCart: mocks.clearCart,
+  deleteCartItems: mocks.deleteCartItems,
+  getCart: mocks.getCart,
   getOrderReadyItem: mocks.getOrderReadyItem,
 }));
 
@@ -62,10 +66,11 @@ vi.mock('@/lib/legacy-order-code', () => ({
 vi.mock('@/lib/logger', () => ({
   logger: {
     info: mocks.loggerInfo,
+    warn: mocks.loggerWarn,
   },
 }));
 
-import { createOrderFromDirectItem } from './order.service';
+import { createOrderFromCart, createOrderFromDirectItem } from './order.service';
 
 const zeroPointOrderInput = {
   buyerName: '홍길동',
@@ -100,6 +105,8 @@ describe('order checkout service', () => {
     mocks.tx.$executeRaw.mockResolvedValue(1);
     mocks.tx.order.create.mockResolvedValue({ id: 11n });
     mocks.getPointBalance.mockResolvedValue(2_000_000);
+    mocks.clearCart.mockResolvedValue({ items: [], subtotal: '0' });
+    mocks.deleteCartItems.mockResolvedValue({ items: [], subtotal: '0' });
     mocks.getOrderReadyItem.mockResolvedValue({
       productId: '3',
       skuId: '1',
@@ -108,7 +115,29 @@ describe('order checkout service', () => {
       optionSummary: null,
       unitPrice: '2000000',
       quantity: 1,
+      addedAt: new Date().toISOString(),
       isAvailable: true,
+      availableQuantity: 500_000,
+      stockMessage: null,
+    });
+    mocks.getCart.mockResolvedValue({
+      subtotal: '2000000',
+      items: [
+        {
+          productId: '3',
+          skuId: '1',
+          slug: 'test-product',
+          name: '테스트 상품',
+          thumbnail: null,
+          optionSummary: null,
+          unitPrice: '2000000',
+          quantity: 1,
+          addedAt: new Date().toISOString(),
+          isAvailable: true,
+          availableQuantity: 500_000,
+          stockMessage: null,
+        },
+      ],
     });
   });
 
@@ -123,11 +152,8 @@ describe('order checkout service', () => {
     expect(order).toEqual({ orderNo: 'ORDER-ZERO', total: '0', status: 'paid' });
     const orderCreateInput = mocks.tx.order.create.mock.calls[0]?.[0];
     expect(mocks.tx.$queryRaw).toHaveBeenCalledTimes(1);
-    expect(mocks.tx.$executeRaw).toHaveBeenCalledTimes(1);
-    expect(mocks.tx.product.update).toHaveBeenCalledWith({
-      where: { id: 3n },
-      data: { soldCount: { increment: 1 } },
-    });
+    expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
+    expect(mocks.tx.product.update).not.toHaveBeenCalled();
     expect(mocks.tx.order.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -141,6 +167,7 @@ describe('order checkout service', () => {
               rawResponse: expect.objectContaining({
                 paymentMethod: 'point',
                 pointsUsed: 2_000_000,
+                stockAccountingSkippedSkuIds: ['1'],
                 zeroCheckout: true,
               }),
             }),
@@ -176,6 +203,8 @@ describe('order checkout service', () => {
         area: 'checkout',
         step: 'stockFinalize',
         orderNo: 'ORDER-ZERO',
+        skippedStockAccountingSkuIds: ['1'],
+        updatedStockAccountingCount: 0,
       }),
       'checkout stockFinalize',
     );
@@ -187,6 +216,72 @@ describe('order checkout service', () => {
         status: 'paid',
       }),
       'checkout complete',
+    );
+  });
+
+  it('keeps live stock accounting for ordinary stock levels', async () => {
+    mocks.getOrderReadyItem.mockResolvedValueOnce({
+      productId: '3',
+      skuId: '1',
+      name: '테스트 상품',
+      thumbnail: null,
+      optionSummary: null,
+      unitPrice: '2000000',
+      quantity: 1,
+      addedAt: new Date().toISOString(),
+      isAvailable: true,
+      availableQuantity: 99_999,
+      stockMessage: null,
+    });
+
+    await createOrderFromDirectItem({
+      identity: { type: 'user', id: 'hong@example.com' },
+      orderInput: zeroPointOrderInput,
+      skuId: '1',
+      quantity: 1,
+    });
+
+    expect(mocks.tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(mocks.tx.product.update).toHaveBeenCalledWith({
+      where: { id: 3n },
+      data: { soldCount: { increment: 1 } },
+    });
+    expect(mocks.tx.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          payments: {
+            create: expect.objectContaining({
+              rawResponse: expect.objectContaining({
+                stockAccountingSkippedSkuIds: [],
+              }),
+            }),
+          },
+        }),
+      }),
+    );
+  });
+
+  it('keeps a successful order when cart cleanup fails after checkout', async () => {
+    const cartClearError = new Error('cart backend unavailable');
+    mocks.clearCart.mockRejectedValueOnce(cartClearError);
+
+    const order = await createOrderFromCart(
+      { type: 'user', id: 'hong@example.com' },
+      zeroPointOrderInput,
+    );
+
+    expect(order).toEqual({ orderNo: 'ORDER-ZERO', total: '0', status: 'paid' });
+    expect(mocks.clearCart).toHaveBeenCalledWith({ type: 'user', id: 'hong@example.com' });
+    expect(mocks.loggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        err: cartClearError,
+        area: 'checkout',
+        step: 'cartClear',
+        orderNo: 'ORDER-ZERO',
+        itemCount: 1,
+        selectedOnly: false,
+      }),
+      'checkout cart clear failed after order creation',
     );
   });
 });

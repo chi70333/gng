@@ -49,6 +49,11 @@ type OrderTransitionTarget = OrderReleaseTarget & {
   status: string;
 };
 
+type StockAccountingResult = {
+  updatedCount: number;
+  skippedSkuIds: string[];
+};
+
 const FINALIZED_STOCK_STATUSES = new Set([
   'paid',
   'preparing',
@@ -57,6 +62,7 @@ const FINALIZED_STOCK_STATUSES = new Set([
   'refunded',
 ]);
 const TERMINAL_REVERSAL_STATUSES = new Set(['cancelled', 'refunded']);
+const LIVE_STOCK_ACCOUNTING_BYPASS_THRESHOLD = 100_000;
 
 function logCheckoutStep(
   step: string,
@@ -117,12 +123,13 @@ function getPaymentProvider(method: string): string {
 function buildPaymentRawResponse(
   input: CreateOrderInput,
   method: string,
-  options: { zeroCheckout?: boolean } = {},
+  options: { stockAccountingSkippedSkuIds?: string[]; zeroCheckout?: boolean } = {},
 ) {
   return {
     source: 'checkout',
     paymentMethod: method,
     zeroCheckout: options.zeroCheckout ?? false,
+    stockAccountingSkippedSkuIds: options.stockAccountingSkippedSkuIds ?? [],
     pointsUsed: input.pointsToUse,
     bankDeposit:
       method === 'bank'
@@ -159,6 +166,32 @@ function getOrderItems(cartItems: CartItem[], selectedSkuIds?: string[]): CartIt
 
   const selected = new Set(selectedSkuIds);
   return cartItems.filter((item) => selected.has(item.skuId));
+}
+
+function shouldBypassLiveStockAccounting(item: CartItem): boolean {
+  return item.availableQuantity >= LIVE_STOCK_ACCOUNTING_BYPASS_THRESHOLD;
+}
+
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+async function getStockAccountingSkippedSkuIds(
+  tx: Prisma.TransactionClient,
+  orderId: bigint,
+): Promise<Set<string>> {
+  const payment = await tx.payment.findFirst({
+    where: { orderId },
+    orderBy: { createdAt: 'desc' },
+    select: { rawResponse: true },
+  });
+  const rawResponse = payment?.rawResponse;
+  if (!isJsonRecord(rawResponse)) return new Set();
+
+  const skippedSkuIds = rawResponse.stockAccountingSkippedSkuIds;
+  if (!Array.isArray(skippedSkuIds)) return new Set();
+
+  return new Set(skippedSkuIds.filter((skuId): skuId is string => typeof skuId === 'string'));
 }
 
 export async function releaseReservedStock(
@@ -208,9 +241,16 @@ export async function finalizeReservedStock(
 async function finalizeStockForImmediatePayment(
   tx: Prisma.TransactionClient,
   orderItems: CartItem[],
-): Promise<void> {
+): Promise<StockAccountingResult> {
+  const result: StockAccountingResult = { updatedCount: 0, skippedSkuIds: [] };
+
   for (const item of orderItems) {
     if (!item.skuId) continue;
+    if (shouldBypassLiveStockAccounting(item)) {
+      result.skippedSkuIds.push(item.skuId);
+      continue;
+    }
+
     // Raw SQL is used here to atomically honor existing reserved stock while
     // immediately decrementing inventory for zero-won paid orders.
     const sold = await tx.$executeRaw`
@@ -229,7 +269,10 @@ async function finalizeStockForImmediatePayment(
       where: { id: BigInt(item.productId) },
       data: { soldCount: { increment: item.quantity } },
     });
+    result.updatedCount += 1;
   }
+
+  return result;
 }
 
 async function reserveStockForPendingPayment(
@@ -258,6 +301,7 @@ export async function restoreFinalizedStock(
   tx: Prisma.TransactionClient,
   orderId: bigint,
 ): Promise<void> {
+  const skippedSkuIds = await getStockAccountingSkippedSkuIds(tx, orderId);
   const items = await tx.orderItem.findMany({
     where: { orderId },
     select: { skuId: true, productId: true, quantity: true },
@@ -265,6 +309,7 @@ export async function restoreFinalizedStock(
 
   for (const item of items) {
     if (!item.skuId) continue;
+    if (skippedSkuIds.has(item.skuId.toString())) continue;
     await tx.productSku.update({
       where: { id: item.skuId },
       data: { stock: { increment: item.quantity } },
@@ -411,6 +456,7 @@ async function createOrderFromItems(
 
   let finalTotal = subtotal.plus(shippingFee);
   let orderStatus: OrderTransitionStatus = 'pending';
+  let stockAccounting: StockAccountingResult = { updatedCount: 0, skippedSkuIds: [] };
 
   await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const transactionStartedAt = Date.now();
@@ -464,10 +510,12 @@ async function createOrderFromItems(
 
     if (paidImmediately) {
       const stockStartedAt = Date.now();
-      await finalizeStockForImmediatePayment(tx, orderItems);
+      stockAccounting = await finalizeStockForImmediatePayment(tx, orderItems);
       logCheckoutStep('stockFinalize', stockStartedAt, {
         orderNo,
         itemCount: orderItems.length,
+        skippedStockAccountingSkuIds: stockAccounting.skippedSkuIds,
+        updatedStockAccountingCount: stockAccounting.updatedCount,
       });
     } else {
       const stockStartedAt = Date.now();
@@ -537,6 +585,7 @@ async function createOrderFromItems(
             amount: finalTotal,
             status: paymentStatus,
             rawResponse: buildPaymentRawResponse(input, paymentMethod, {
+              stockAccountingSkippedSkuIds: stockAccounting.skippedSkuIds,
               zeroCheckout: paidImmediately,
             }),
             approvedAt: paidImmediately ? new Date() : null,
@@ -636,19 +685,33 @@ export async function createOrderFromCart(
   const order = await createOrderFromItems(identity, input, orderItems, options);
 
   const cartClearStartedAt = Date.now();
-  if (input.selectedSkuIds) {
-    await deleteCartItems(
-      identity,
-      orderItems.map((item) => item.skuId),
+  try {
+    if (input.selectedSkuIds) {
+      await deleteCartItems(
+        identity,
+        orderItems.map((item) => item.skuId),
+      );
+    } else {
+      await clearCart(identity);
+    }
+    logCheckoutStep('cartClear', cartClearStartedAt, {
+      orderNo: order.orderNo,
+      itemCount: orderItems.length,
+      selectedOnly: Boolean(input.selectedSkuIds),
+    });
+  } catch (err) {
+    logger.warn(
+      {
+        err,
+        area: 'checkout',
+        step: 'cartClear',
+        orderNo: order.orderNo,
+        itemCount: orderItems.length,
+        selectedOnly: Boolean(input.selectedSkuIds),
+      },
+      'checkout cart clear failed after order creation',
     );
-  } else {
-    await clearCart(identity);
   }
-  logCheckoutStep('cartClear', cartClearStartedAt, {
-    orderNo: order.orderNo,
-    itemCount: orderItems.length,
-    selectedOnly: Boolean(input.selectedSkuIds),
-  });
 
   return order;
 }
