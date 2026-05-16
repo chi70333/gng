@@ -403,12 +403,72 @@ function parseCsvMoney(value: string | undefined): string {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed.toFixed(2) : '0';
 }
 
-function slugFromSku(sku: string): string {
-  const slug = sku
+function slugBase(value: string): string {
+  return value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+function slugFromSku(sku: string): string {
+  const slug = slugBase(sku);
   return slug || `product-${Date.now()}`;
+}
+
+function productSkuFromInput(sku: string | undefined, name: string | undefined): string {
+  const trimmed = sku?.trim() ?? '';
+  if (trimmed.length >= 2) return trimmed.slice(0, 80);
+
+  const nameBase = slugBase(name ?? '').toUpperCase().replace(/-/g, '_');
+  return (nameBase ? `P-${nameBase}` : `P-${Date.now()}`).slice(0, 80);
+}
+
+function productSlugFromInput(
+  slug: string | undefined,
+  sku: string,
+  name: string | undefined,
+): string {
+  return slugBase(slug ?? '') || slugBase(sku) || slugBase(name ?? '') || `product-${Date.now()}`;
+}
+
+function uniqueSuffix(base: string, suffix: number, maxLength: number): string {
+  const postfix = `-${suffix}`;
+  const root = base.slice(0, Math.max(1, maxLength - postfix.length)).replace(/-+$/g, '');
+  return `${root}${postfix}`;
+}
+
+async function uniqueProductSku(
+  tx: Prisma.TransactionClient,
+  sku: string,
+  productId?: bigint,
+): Promise<string> {
+  const base = sku.slice(0, 80);
+  for (let suffix = 1; suffix <= 999; suffix += 1) {
+    const candidate = suffix === 1 ? base : uniqueSuffix(base, suffix, 80);
+    const existing = await tx.product.findUnique({
+      where: { sku: candidate },
+      select: { id: true },
+    });
+    if (!existing || existing.id === productId) return candidate;
+  }
+  return uniqueSuffix(base, Date.now(), 80);
+}
+
+async function uniqueProductSlug(
+  tx: Prisma.TransactionClient,
+  slug: string,
+  productId?: bigint,
+): Promise<string> {
+  const base = slug.slice(0, 160).replace(/-+$/g, '') || `product-${Date.now()}`;
+  for (let suffix = 1; suffix <= 999; suffix += 1) {
+    const candidate = suffix === 1 ? base : uniqueSuffix(base, suffix, 160);
+    const existing = await tx.product.findUnique({
+      where: { slug: candidate },
+      select: { id: true },
+    });
+    if (!existing || existing.id === productId) return candidate;
+  }
+  return uniqueSuffix(base, Date.now(), 160);
 }
 
 function legacyCsvImage(value: string | undefined): string {
@@ -686,11 +746,14 @@ async function revalidateProduct(product: {
 
 export async function saveAdminProduct(formData: FormData) {
   const admin = await requireAdmin('product.write');
+  const rawName = formString(formData, 'name');
+  const normalizedSku = productSkuFromInput(formString(formData, 'sku'), rawName);
+  const normalizedSlug = productSlugFromInput(formString(formData, 'slug'), normalizedSku, rawName);
   const parsed = adminProductFormSchema.parse({
     id: formString(formData, 'id'),
-    sku: formString(formData, 'sku'),
-    slug: formString(formData, 'slug'),
-    name: formString(formData, 'name'),
+    sku: normalizedSku,
+    slug: normalizedSlug,
+    name: rawName,
     summary: formString(formData, 'summary'),
     description: formString(formData, 'description'),
     price: formString(formData, 'price'),
@@ -746,6 +809,8 @@ export async function saveAdminProduct(formData: FormData) {
   };
 
   const product = await prisma.$transaction(async (tx) => {
+    const sku = await uniqueProductSku(tx, parsed.sku, parsed.id);
+    const slug = await uniqueProductSlug(tx, parsed.slug, parsed.id);
     const current = parsed.id
       ? await tx.product.findUnique({
           where: { id: parsed.id },
@@ -757,8 +822,8 @@ export async function saveAdminProduct(formData: FormData) {
       ? await tx.product.update({
           where: { id: parsed.id },
           data: {
-            sku: parsed.sku,
-            slug: parsed.slug,
+            sku,
+            slug,
             name: parsed.name,
             summary: optionalString(parsed.summary),
             description,
@@ -773,8 +838,8 @@ export async function saveAdminProduct(formData: FormData) {
         })
       : await tx.product.create({
           data: {
-            sku: parsed.sku,
-            slug: parsed.slug,
+            sku,
+            slug,
             name: parsed.name,
             summary: optionalString(parsed.summary),
             description,
@@ -790,7 +855,7 @@ export async function saveAdminProduct(formData: FormData) {
 
     await syncProductOptionsAndSkus(tx, {
       productId: saved.id,
-      productSku: parsed.sku,
+      productSku: sku,
       options: parsed.options,
       skus: parsed.skus,
       effectiveStock,

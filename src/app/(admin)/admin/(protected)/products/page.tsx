@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
-import { formatKRW, formatNumber } from '@/lib/format';
+import { formatKRW, formatKoreanDateTime, formatNumber } from '@/lib/format';
 import {
   AdminDataGrid,
   type AdminSortDirection,
@@ -150,12 +150,7 @@ function pointRateLabel(attributes: Prisma.JsonValue): string {
 }
 
 function formatAdminDate(value: Date): string {
-  const year = String(value.getFullYear()).slice(2);
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  const hour = String(value.getHours()).padStart(2, '0');
-  const minute = String(value.getMinutes()).padStart(2, '0');
-  return `${year}-${month}-${day} ${hour}:${minute}`;
+  return formatKoreanDateTime(value).slice(2, 16);
 }
 
 function appendParams(params: URLSearchParams, key: string, value: string | undefined) {

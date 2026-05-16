@@ -91,8 +91,8 @@ export const getCachedCategoryTree = unstable_cache(
 );
 
 /** slug 기준 카테고리 단건 (ISR 캐싱, 건별 태그). */
-export function getCachedCategoryBySlug(slug: string) {
-  return unstable_cache(
+export async function getCachedCategoryBySlug(slug: string) {
+  const cachedCategory = await unstable_cache(
     async () => {
       try {
         return await getCategoryBySlug(slug);
@@ -104,6 +104,16 @@ export function getCachedCategoryBySlug(slug: string) {
     [`category-slug:${slug}`],
     { revalidate: TTL.CATEGORY_TREE, tags: [TAGS.categoryTree] },
   )();
+
+  if (cachedCategory) return cachedCategory;
+
+  // Do not let a cached null keep newly created or reactivated categories on 404.
+  try {
+    return await getCategoryBySlug(slug);
+  } catch (err) {
+    logger.warn({ err, slug }, 'category slug DB fallback failed, serving null');
+    return null;
+  }
 }
 
 /** breadcrumb 용 조상 목록 (ISR 캐싱). */

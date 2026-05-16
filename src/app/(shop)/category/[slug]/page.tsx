@@ -23,6 +23,7 @@ import type { SerializedCategory } from '@/server/repositories/category.reposito
 
 export const revalidate = 120; // ISR 120s
 export const dynamic = 'force-static';
+export const dynamicParams = true;
 
 // ── 정적 파라미터 사전 생성 (빌드 타임 ISR) ──
 export async function generateStaticParams() {
