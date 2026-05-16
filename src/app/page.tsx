@@ -10,13 +10,17 @@ import RegistrationNotice from '@/components/shop/RegistrationNotice';
 import type { SerializedCategory } from '@/server/repositories/category.repository';
 import { getCachedDashboardCategorySections } from '@/server/services/product.service';
 import { getCachedCategoryTree } from '@/server/services/category.service';
+import {
+  DASHBOARD_ROTATION_CANDIDATE_COUNT,
+  rotateDashboardProducts,
+} from '@/lib/dashboard-rotation';
 import { logger } from '@/lib/logger';
 
 export const revalidate = 60; // ISR 60s
 
 export default async function HomePage() {
   const [dashboardSections, categories] = await Promise.all([
-    getCachedDashboardCategorySections(8).catch((err: unknown) => {
+    getCachedDashboardCategorySections(DASHBOARD_ROTATION_CANDIDATE_COUNT).catch((err: unknown) => {
       logger.error({ err }, 'HomePage: getDashboardCategorySections failed');
       return [];
     }),
@@ -27,6 +31,10 @@ export default async function HomePage() {
   ]);
 
   const rootCategories = categories.filter((category) => category.depth === 0);
+  const rotatedDashboardSections = dashboardSections.map((section) => ({
+    ...section,
+    products: rotateDashboardProducts(section.products),
+  }));
 
   return (
     <>
@@ -69,7 +77,7 @@ export default async function HomePage() {
             </section>
           )}
 
-          {dashboardSections.map((section, index) => (
+          {rotatedDashboardSections.map((section, index) => (
             <section
               key={section.category.id}
               aria-labelledby={`dashboard-category-${section.category.id}`}

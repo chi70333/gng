@@ -7,6 +7,7 @@ import {
   getCachedProductBySlug,
   getCachedProductMetadataBySlug,
 } from '@/server/services/product.service';
+import { DASHBOARD_ROTATION_CANDIDATE_COUNT } from '@/lib/dashboard-rotation';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -55,12 +56,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const sections = await getCachedDashboardCategorySections(8);
+  const sections = await getCachedDashboardCategorySections(DASHBOARD_ROTATION_CANDIDATE_COUNT);
   await getCachedCategoryTree();
 
   const slugs = [
     ...new Set(sections.flatMap((section) => section.products.map((product) => product.slug))),
-  ].slice(0, 8);
+  ].slice(0, DASHBOARD_ROTATION_CANDIDATE_COUNT);
 
   let warmedProducts = 0;
   for (const slug of slugs) {
