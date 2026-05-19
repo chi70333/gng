@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
 import { formatKoreanDateTime } from '@/lib/format';
+import { getKoreanDateParts, koreanDateRangeUtc } from '@/lib/korean-date-range';
 import {
   ADMIN_ORDER_MILEAGE_EXCEPTION_QUERY,
   ADMIN_ORDER_MILEAGE_EXCEPTION_VALUE,
@@ -86,17 +87,17 @@ function statusLabel(status: string): string {
 }
 
 function getDateRange(query: ReturnType<typeof adminOrderListQuerySchema.parse>) {
-  const now = new Date();
-  const start = new Date(
-    query.year ?? now.getFullYear(),
-    (query.month ?? now.getMonth() + 1) - 1,
-    query.day ?? 1,
-  );
-  const endExclusive = new Date(
-    query.year2 ?? now.getFullYear(),
-    (query.month2 ?? now.getMonth() + 1) - 1,
-    (query.day2 ?? now.getDate()) + 1,
-  );
+  const now = getKoreanDateParts();
+  const { start } = koreanDateRangeUtc({
+    year: query.year ?? now.year,
+    month: query.month ?? now.month,
+    day: query.day ?? 1,
+  });
+  const { endExclusive } = koreanDateRangeUtc({
+    year: query.year2 ?? now.year,
+    month: query.month2 ?? now.month,
+    day: query.day2 ?? now.day,
+  });
   return { start, endExclusive };
 }
 

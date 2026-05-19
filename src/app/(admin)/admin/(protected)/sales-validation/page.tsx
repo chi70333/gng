@@ -8,6 +8,11 @@ import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
 import { formatKoreanDateTime, formatNumber, formatPhone } from '@/lib/format';
 import {
+  getKoreanDateString,
+  koreanDateRangeUtc,
+  type KoreanDateParts,
+} from '@/lib/korean-date-range';
+import {
   AdminDataGrid,
   type AdminSortDirection,
   AdminMobileCard,
@@ -31,7 +36,6 @@ export const metadata: Metadata = {
   description: '한국시간 기준 일자별 마일리지 적립과 사용 내역을 검증합니다.',
 };
 
-const KOREA_TIME_ZONE = 'Asia/Seoul';
 const DEFAULT_PAGE_SIZE = 30;
 const PAGE_SIZE_OPTIONS = [20, 30, 50, 100, 200, 500, 1000];
 const SORT_KEYS = [
@@ -68,7 +72,7 @@ type SummaryRow = {
   net: bigint;
   orderCount: bigint;
   totalCount: bigint;
-  totalUsed: bigint;
+  ledgerUsedTotal: bigint;
 };
 
 type HistoryRow = {
@@ -80,18 +84,9 @@ type HistoryRow = {
   createdAt: Date;
 };
 
-function getKoreanTodayString(): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: KOREA_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
-}
-
 function parseDate(value: string | undefined): string {
   if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-  return getKoreanTodayString();
+  return getKoreanDateString();
 }
 
 function parsePositiveInt(value: string | undefined, fallback: number, max: number): number {
@@ -111,14 +106,12 @@ function parseSort(searchParams: SalesValidationSearchParams): {
   return { sort, dir };
 }
 
-function koreanDateRangeUtc(date: string): { start: Date; endExclusive: Date } {
+function datePartsFromString(date: string): KoreanDateParts {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-  const year = Number(match?.[1] ?? '1970');
-  const month = Number(match?.[2] ?? '1');
-  const day = Number(match?.[3] ?? '1');
   return {
-    start: new Date(Date.UTC(year, month - 1, day, -9, 0, 0, 0)),
-    endExclusive: new Date(Date.UTC(year, month - 1, day + 1, -9, 0, 0, 0)),
+    year: Number(match?.[1] ?? '1970'),
+    month: Number(match?.[2] ?? '1'),
+    day: Number(match?.[3] ?? '1'),
   };
 }
 
@@ -224,7 +217,7 @@ export default async function AdminSalesValidationPage({
     ? requestedPageSize
     : DEFAULT_PAGE_SIZE;
   const sortState = parseSort(searchParams);
-  const { start, endExclusive } = koreanDateRangeUtc(date);
+  const { start, endExclusive } = koreanDateRangeUtc(datePartsFromString(date));
   const offset = (page - 1) * pageSize;
   const keyword = q ? `%${q}%` : null;
   const searchSql = keyword
@@ -280,7 +273,7 @@ export default async function AdminSalesValidationPage({
     SELECT
       s.*,
       COUNT(*) OVER()::bigint AS "totalCount",
-      COALESCE(SUM(s."used") OVER(), 0)::bigint AS "totalUsed"
+      COALESCE(SUM(s."used") OVER(), 0)::bigint AS "ledgerUsedTotal"
     FROM scoped s
     ${sortSql}
     OFFSET ${offset}
@@ -288,13 +281,13 @@ export default async function AdminSalesValidationPage({
   `);
 
   const total = rows[0]?.totalCount ?? 0n;
-  const totalUsed = rows[0]?.totalUsed ?? 0n;
+  const ledgerUsedTotal = rows[0]?.ledgerUsedTotal ?? 0n;
   const totalPages = Math.max(1, Math.ceil(Number(total) / pageSize));
   const hasNext = page < totalPages;
   const userIds = rows.map((row) => row.userId);
-  const histories =
+  const [histories, orderTotals] = await Promise.all([
     userIds.length > 0
-      ? await prisma.userPointHistory.findMany({
+      ? prisma.userPointHistory.findMany({
           where: {
             userId: { in: userIds },
             createdAt: { gte: start, lt: endExclusive },
@@ -309,7 +302,21 @@ export default async function AdminSalesValidationPage({
             createdAt: true,
           },
         })
-      : [];
+      : Promise.resolve([]),
+    prisma.order.aggregate({
+      where: {
+        deletedAt: null,
+        createdAt: { gte: start, lt: endExclusive },
+      },
+      _sum: {
+        total: true,
+        pointsUsed: true,
+      },
+    }),
+  ]);
+  const orderAmountTotal = orderTotals._sum.total ?? new Prisma.Decimal(0);
+  const orderMileageUsedTotal = orderTotals._sum.pointsUsed ?? 0;
+  const mileageIncludedOrderTotal = orderAmountTotal.plus(orderMileageUsedTotal);
   const historiesByUser = new Map<string, HistoryRow[]>();
   for (const history of histories) {
     const key = history.userId.toString();
@@ -519,8 +526,18 @@ export default async function AdminSalesValidationPage({
           }}
         />
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-extrabold text-neutral-900">
-          <span className="text-neutral-500">선택일 사용 총합</span>
-          <span className="font-mono text-lg text-rose-700">{formatNumber(totalUsed)}</span>
+          <span className="text-neutral-500">마일리지 이력 사용</span>
+          <span className="font-mono text-lg text-rose-700">{formatNumber(ledgerUsedTotal)}</span>
+          <span className="mx-2 text-neutral-300">|</span>
+          <span className="text-neutral-500">주문 마일리지 사용</span>
+          <span className="font-mono text-lg text-rose-700">
+            {formatNumber(orderMileageUsedTotal)}
+          </span>
+          <span className="mx-2 text-neutral-300">|</span>
+          <span className="text-neutral-500">마일리지 포함 주문금액</span>
+          <span className="font-mono text-lg text-neutral-950">
+            {formatNumber(mileageIncludedOrderTotal.toString())}
+          </span>
         </div>
       </AdminSection>
 

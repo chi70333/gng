@@ -17,6 +17,11 @@ import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/admin/auth';
 import { formatKRW, formatKoreanDateTime, formatNumber } from '@/lib/format';
 import {
+  getKoreanDateParts,
+  koreanDateRangeUtc,
+  type KoreanDateParts,
+} from '@/lib/korean-date-range';
+import {
   AdminDataGrid,
   type AdminSortDirection,
   AdminMobileCard,
@@ -132,28 +137,14 @@ function pad2(value: number): string {
 }
 
 function defaultDateParts() {
-  const now = new Date();
+  const now = getKoreanDateParts();
   return {
-    year: now.getFullYear(),
-    month: now.getMonth() + 1,
+    year: now.year,
+    month: now.month,
     day: 1,
-    year2: now.getFullYear(),
-    month2: now.getMonth() + 1,
-    day2: now.getDate(),
-  };
-}
-
-type DateParts = {
-  year: number;
-  month: number;
-  day: number;
-};
-
-function datePartsFrom(date: Date): DateParts {
-  return {
-    year: date.getFullYear(),
-    month: date.getMonth() + 1,
-    day: date.getDate(),
+    year2: now.year,
+    month2: now.month,
+    day2: now.day,
   };
 }
 
@@ -173,7 +164,7 @@ function addMonths(date: Date, months: number): Date {
   return next;
 }
 
-function sameDateParts(a: DateParts, b: DateParts): boolean {
+function sameDateParts(a: KoreanDateParts, b: KoreanDateParts): boolean {
   return a.year === b.year && a.month === b.month && a.day === b.day;
 }
 
@@ -189,8 +180,8 @@ function getDateRange(query: ReturnType<typeof adminOrderListQuerySchema.parse>)
     month: query.month2 ?? defaults.month2,
     day: query.day2 ?? defaults.day2,
   };
-  const start = new Date(startParts.year, startParts.month - 1, startParts.day);
-  const endExclusive = new Date(endParts.year, endParts.month - 1, endParts.day + 1);
+  const { start } = koreanDateRangeUtc(startParts);
+  const { endExclusive } = koreanDateRangeUtc(endParts);
   return { startParts, endParts, start, endExclusive };
 }
 
@@ -322,10 +313,7 @@ export default async function AdminOrdersPage({
 
   const where: Prisma.OrderWhereInput = { AND: and };
   const pageSize = query.trade_list_cnt;
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date(todayStart);
-  todayEnd.setDate(todayEnd.getDate() + 1);
+  const { start: todayStart, endExclusive: todayEnd } = koreanDateRangeUtc(getKoreanDateParts());
 
   const [orderRows, todayCount] = await Promise.all([
     prisma.order.findMany({
@@ -418,16 +406,16 @@ export default async function AdminOrdersPage({
     return nextQuery ? `/admin/orders?${nextQuery}` : resetHref;
   };
   const today = new Date();
-  const todayParts = datePartsFrom(today);
+  const todayParts = getKoreanDateParts(today);
   const periodShortcuts = [
     { label: '오늘', start: todayParts, end: todayParts },
-    { label: '7일', start: datePartsFrom(addDays(today, -6)), end: todayParts },
-    { label: '15일', start: datePartsFrom(addDays(today, -14)), end: todayParts },
-    { label: '1개월', start: datePartsFrom(addMonths(today, -1)), end: todayParts },
-    { label: '3개월', start: datePartsFrom(addMonths(today, -3)), end: todayParts },
+    { label: '7일', start: getKoreanDateParts(addDays(today, -6)), end: todayParts },
+    { label: '15일', start: getKoreanDateParts(addDays(today, -14)), end: todayParts },
+    { label: '1개월', start: getKoreanDateParts(addMonths(today, -1)), end: todayParts },
+    { label: '3개월', start: getKoreanDateParts(addMonths(today, -3)), end: todayParts },
     { label: '이번달', start: { ...todayParts, day: 1 }, end: todayParts },
   ];
-  const getPeriodHref = (start: DateParts, end: DateParts) => {
+  const getPeriodHref = (start: KoreanDateParts, end: KoreanDateParts) => {
     const nextParams = new URLSearchParams(params);
     nextParams.set('year', String(start.year));
     nextParams.set('month', pad2(start.month));
