@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import {
   Boxes,
+  ClipboardCheck,
   ClipboardList,
   CircleAlert,
   FileText,
@@ -24,6 +25,7 @@ const navItems = [
     label: '예외주문',
     icon: CircleAlert,
   },
+  { href: '/admin/sales-validation', label: '일자별매출검증', icon: ClipboardCheck },
   { href: '/admin/users', label: '회원', icon: UsersRound },
   { href: '/admin/categories', label: '카테고리', icon: Tags },
   { href: '/admin/coupons', label: '쿠폰', icon: TicketPercent },
