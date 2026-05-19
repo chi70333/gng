@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loginSchema, registerSchema, socialRegisterSchema } from './auth';
+import { passwordResetSchema } from './account';
 
 describe('loginSchema', () => {
   it('accepts member id login without join-time format hints', () => {
@@ -24,6 +25,30 @@ describe('loginSchema', () => {
     const parsed = loginSchema.safeParse({
       loginId: '',
       password: '',
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+});
+
+describe('passwordResetSchema', () => {
+  it('accepts login id, email, and matching new password', () => {
+    const parsed = passwordResetSchema.parse({
+      loginId: 'kakao-1234567890',
+      email: 'member@example.com',
+      password: 'NewPassword123!',
+      passwordConfirm: 'NewPassword123!',
+    });
+
+    expect(parsed.loginId).toBe('kakao-1234567890');
+  });
+
+  it('rejects mismatched password confirmation', () => {
+    const parsed = passwordResetSchema.safeParse({
+      loginId: 'member01',
+      email: 'member@example.com',
+      password: 'NewPassword123!',
+      passwordConfirm: 'OtherPassword123!',
     });
 
     expect(parsed.success).toBe(false);

@@ -117,7 +117,7 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
           href="/account/recover"
           className="flex min-h-11 items-center text-neutral-500 underline"
         >
-          아이디/비밀번호 찾기
+          비밀번호 재설정
         </Link>
       </div>
     </div>
