@@ -71,12 +71,9 @@ type SummaryRow = {
   used: bigint;
   net: bigint;
   orderCount: bigint;
-  totalCount: bigint;
-};
-
-type ValidationRow = SummaryRow & {
   linkedMileageUsed: bigint;
   orderMileageUsed: bigint;
+  totalCount: bigint;
 };
 
 type HistoryRow = {
@@ -143,7 +140,16 @@ function orderSql(sort: SalesValidationSortKey, dir: AdminSortDirection): Prisma
   if (sort === 'net') return Prisma.sql`ORDER BY s."net" ${direction}, ${fallback}`;
   if (sort === 'orderCount') return Prisma.sql`ORDER BY s."orderCount" ${direction}, ${fallback}`;
   if (sort === 'status') {
-    return Prisma.sql`ORDER BY (s."earned" = s."used") ${direction}, ${fallback}`;
+    return Prisma.sql`
+      ORDER BY
+        CASE
+          WHEN s."linkedMileageUsed" <> s."orderMileageUsed" THEN 0
+          WHEN s."earned" = s."used" THEN 1
+          ELSE 2
+        END
+        ${direction},
+        ${fallback}
+    `;
   }
 
   return Prisma.sql`ORDER BY s."used" DESC, ${fallback}`;
@@ -164,34 +170,20 @@ function buildSortHref(
   return nextQuery ? `${basePath}?${nextQuery}` : basePath;
 }
 
-function needsCheck(row: ValidationRow): boolean {
+function needsCheck(row: SummaryRow): boolean {
   return row.linkedMileageUsed !== row.orderMileageUsed;
 }
 
-function statusLabel(row: ValidationRow): '체크' | '정상' | '비정상' {
+function statusLabel(row: SummaryRow): '체크' | '정상' | '비정상' {
   if (needsCheck(row)) return '체크';
   return row.earned === row.used ? '정상' : '비정상';
 }
 
-function statusClass(row: ValidationRow): string {
+function statusClass(row: SummaryRow): string {
   if (needsCheck(row)) return 'bg-amber-100 text-amber-800 ring-amber-300';
   return row.earned === row.used
     ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
     : 'bg-rose-50 text-rose-700 ring-rose-200';
-}
-
-function userAliases(row: SummaryRow, socialLogins: string[]): string[] {
-  const values = [
-    row.loginId,
-    row.email,
-    row.loginId ? `${row.loginId}@legacy.local` : null,
-    ...socialLogins,
-  ];
-
-  return values
-    .filter((value): value is string => Boolean(value))
-    .map((value) => value.trim().toLowerCase())
-    .filter((value, index, array) => array.indexOf(value) === index);
 }
 
 function DetailHistories({
@@ -353,6 +345,50 @@ export default async function AdminSalesValidationPage({
         AND o."userId" IS NOT NULL
       GROUP BY o."userId"
     ),
+    order_point_summary AS (
+      SELECT
+        o."userId",
+        COALESCE(SUM(o."pointsUsed"), 0)::bigint AS "orderMileageUsed"
+      FROM "Order" o
+      WHERE o."createdAt" >= ${start}
+        AND o."createdAt" < ${endExclusive}
+        AND o."deletedAt" IS NULL
+        AND o."userId" IS NOT NULL
+      GROUP BY o."userId"
+    ),
+    user_aliases AS (
+      SELECT u."id" AS "userId", LOWER(u."loginId") AS alias
+      FROM "User" u
+      WHERE u."loginId" IS NOT NULL
+      UNION
+      SELECT u."id" AS "userId", LOWER(u."email") AS alias
+      FROM "User" u
+      WHERE u."email" IS NOT NULL
+      UNION
+      SELECT u."id" AS "userId", LOWER(u."loginId" || '@legacy.local') AS alias
+      FROM "User" u
+      WHERE u."loginId" IS NOT NULL
+      UNION
+      SELECT s."userId", LOWER(s."provider" || '-' || s."providerUid") AS alias
+      FROM "UserSocialAccount" s
+    ),
+    linked_summary AS (
+      SELECT
+        a."userId",
+        SUM((l."requestPayload"->>'amount')::bigint)::bigint AS "linkedMileageUsed"
+      FROM "ApiCommunicationLog" l
+      JOIN user_aliases a
+        ON LOWER(COALESCE(l."requestPayload"->>'userid', '')) = a.alias
+      WHERE l."createdAt" >= ${start}
+        AND l."createdAt" < ${endExclusive}
+        AND l."method" = 'POST'
+        AND l."success" = true
+        AND l."service" IN ('gng-api', 'point-sync')
+        AND COALESCE(l."action", '') IN ('add', 'point_sync')
+        AND NULLIF(l."requestPayload"->>'amount', '') ~ '^-?[0-9]+$'
+        AND (l."requestPayload"->>'amount')::bigint > 0
+      GROUP BY a."userId"
+    ),
     scoped AS (
       SELECT
         u."id" AS "userId",
@@ -363,10 +399,14 @@ export default async function AdminSalesValidationPage({
         ps."earned",
         ps."used",
         ps."net",
-        COALESCE(os."orderCount", 0)::bigint AS "orderCount"
+        COALESCE(os."orderCount", 0)::bigint AS "orderCount",
+        COALESCE(ls."linkedMileageUsed", 0)::bigint AS "linkedMileageUsed",
+        COALESCE(ops."orderMileageUsed", 0)::bigint AS "orderMileageUsed"
       FROM point_summary ps
       JOIN "User" u ON u."id" = ps."userId"
       LEFT JOIN order_summary os ON os."userId" = ps."userId"
+      LEFT JOIN order_point_summary ops ON ops."userId" = ps."userId"
+      LEFT JOIN linked_summary ls ON ls."userId" = ps."userId"
       WHERE u."deletedAt" IS NULL
       ${searchSql}
     )
@@ -384,7 +424,7 @@ export default async function AdminSalesValidationPage({
   const hasNext = page < totalPages;
   const userIds = rows.map((row) => row.userId);
 
-  const [histories, orderTotals, linkedMileageRows, orderPointRows, socialAccounts, linkedLogs] =
+  const [histories, orderTotals, linkedMileageRows, linkedLogs] =
     await Promise.all([
       userIds.length > 0
         ? prisma.userPointHistory.findMany({
@@ -430,51 +470,50 @@ export default async function AdminSalesValidationPage({
           AND l."createdAt" < ${endExclusive}
           AND l."method" = 'POST'
           AND l."success" = true
-          AND l."service" IN ('gng-api', 'point-sync')
-          AND COALESCE(l."action", '') IN ('add', 'point_sync')
+        AND l."service" IN ('gng-api', 'point-sync')
+        AND COALESCE(l."action", '') IN ('add', 'point_sync')
       `),
       userIds.length > 0
-        ? prisma.order.groupBy({
-            by: ['userId'],
-            where: {
-              userId: { in: userIds },
-              deletedAt: null,
-              createdAt: { gte: start, lt: endExclusive },
-            },
-            _sum: {
-              pointsUsed: true,
-            },
-          })
+        ? prisma.$queryRaw<LinkedMileageLogRow[]>(Prisma.sql`
+            WITH user_aliases AS (
+              SELECT u."id" AS "userId", LOWER(u."loginId") AS alias
+              FROM "User" u
+              WHERE u."id" IN (${Prisma.join(userIds)}) AND u."loginId" IS NOT NULL
+              UNION
+              SELECT u."id" AS "userId", LOWER(u."email") AS alias
+              FROM "User" u
+              WHERE u."id" IN (${Prisma.join(userIds)}) AND u."email" IS NOT NULL
+              UNION
+              SELECT u."id" AS "userId", LOWER(u."loginId" || '@legacy.local') AS alias
+              FROM "User" u
+              WHERE u."id" IN (${Prisma.join(userIds)}) AND u."loginId" IS NOT NULL
+              UNION
+              SELECT s."userId", LOWER(s."provider" || '-' || s."providerUid") AS alias
+              FROM "UserSocialAccount" s
+              WHERE s."userId" IN (${Prisma.join(userIds)})
+            )
+            SELECT
+              l."id",
+              l."service",
+              COALESCE(l."requestPayload"->>'userid', '') AS "userid",
+              (l."requestPayload"->>'amount')::bigint AS "amount",
+              COALESCE(l."requestPayload"->>'reason', '') AS "reason",
+              l."createdAt",
+              a."userId"
+            FROM "ApiCommunicationLog" l
+            JOIN user_aliases a
+              ON LOWER(COALESCE(l."requestPayload"->>'userid', '')) = a.alias
+            WHERE l."createdAt" >= ${start}
+              AND l."createdAt" < ${endExclusive}
+              AND l."method" = 'POST'
+              AND l."success" = true
+              AND l."service" IN ('gng-api', 'point-sync')
+              AND COALESCE(l."action", '') IN ('add', 'point_sync')
+              AND NULLIF(l."requestPayload"->>'amount', '') ~ '^-?[0-9]+$'
+              AND (l."requestPayload"->>'amount')::bigint > 0
+            ORDER BY l."createdAt" DESC, l."id" DESC
+          `)
         : Promise.resolve([]),
-      userIds.length > 0
-        ? prisma.userSocialAccount.findMany({
-            where: { userId: { in: userIds } },
-            select: {
-              userId: true,
-              provider: true,
-              providerUid: true,
-            },
-          })
-        : Promise.resolve([]),
-      prisma.$queryRaw<LinkedMileageLogRow[]>(Prisma.sql`
-        SELECT
-          l."id",
-          l."service",
-          COALESCE(l."requestPayload"->>'userid', '') AS "userid",
-          (l."requestPayload"->>'amount')::bigint AS "amount",
-          COALESCE(l."requestPayload"->>'reason', '') AS "reason",
-          l."createdAt"
-        FROM "ApiCommunicationLog" l
-        WHERE l."createdAt" >= ${start}
-          AND l."createdAt" < ${endExclusive}
-          AND l."method" = 'POST'
-          AND l."success" = true
-          AND l."service" IN ('gng-api', 'point-sync')
-          AND COALESCE(l."action", '') IN ('add', 'point_sync')
-          AND NULLIF(l."requestPayload"->>'amount', '') ~ '^-?[0-9]+$'
-          AND (l."requestPayload"->>'amount')::bigint > 0
-        ORDER BY l."createdAt" DESC, l."id" DESC
-      `),
     ]);
 
   const linkedMileageUsedTotal = linkedMileageRows[0]?.total ?? 0n;
@@ -488,51 +527,13 @@ export default async function AdminSalesValidationPage({
     historiesByUser.set(key, [...(historiesByUser.get(key) ?? []), history]);
   }
 
-  const orderMileageByUser = new Map<string, bigint>();
-  for (const orderPointRow of orderPointRows) {
-    if (!orderPointRow.userId) continue;
-    orderMileageByUser.set(
-      orderPointRow.userId.toString(),
-      BigInt(orderPointRow._sum.pointsUsed ?? 0),
-    );
-  }
-
-  const socialLoginsByUser = new Map<string, string[]>();
-  for (const account of socialAccounts) {
-    const key = account.userId.toString();
-    const alias = `${account.provider}-${account.providerUid}`;
-    socialLoginsByUser.set(key, [...(socialLoginsByUser.get(key) ?? []), alias]);
-  }
-
-  const aliasToUserId = new Map<string, string>();
-  for (const row of rows) {
-    const userId = row.userId.toString();
-    for (const alias of userAliases(row, socialLoginsByUser.get(userId) ?? [])) {
-      aliasToUserId.set(alias, userId);
-    }
-  }
-
-  const linkedMileageByUser = new Map<string, bigint>();
   const linkedLogsByUser = new Map<string, LinkedMileageLogRow[]>();
   for (const log of linkedLogs) {
-    const matchedUserId = aliasToUserId.get(log.userid.trim().toLowerCase());
+    const typedLog = log as LinkedMileageLogRow & { userId: bigint };
+    const matchedUserId = typedLog.userId?.toString();
     if (!matchedUserId) continue;
-
-    linkedMileageByUser.set(
-      matchedUserId,
-      (linkedMileageByUser.get(matchedUserId) ?? 0n) + log.amount,
-    );
     linkedLogsByUser.set(matchedUserId, [...(linkedLogsByUser.get(matchedUserId) ?? []), log]);
   }
-
-  const validationRows: ValidationRow[] = rows.map((row) => {
-    const key = row.userId.toString();
-    return {
-      ...row,
-      linkedMileageUsed: linkedMileageByUser.get(key) ?? 0n,
-      orderMileageUsed: orderMileageByUser.get(key) ?? 0n,
-    };
-  });
 
   const params = new URLSearchParams();
   params.set('date', date);
@@ -581,7 +582,7 @@ export default async function AdminSalesValidationPage({
 
       <AdminSection
         title="검증목록"
-        description={`현재 페이지 ${formatNumber(validationRows.length)}명 / 총 ${formatNumber(page)} / ${formatNumber(totalPages)}페이지`}
+        description={`현재 페이지 ${formatNumber(rows.length)}명 / 총 ${formatNumber(page)} / ${formatNumber(totalPages)}페이지`}
         icon={CalendarDays}
         bodyClassName="p-0"
         headerAction={
@@ -637,7 +638,7 @@ export default async function AdminSalesValidationPage({
               sortKey: 'status',
             },
           ]}
-          rows={validationRows}
+          rows={rows}
           rowKey={(row) => row.userId.toString()}
           emptyText="선택한 날짜에 마일리지 변동 회원이 없습니다."
           minWidthClassName="min-w-[1260px]"
