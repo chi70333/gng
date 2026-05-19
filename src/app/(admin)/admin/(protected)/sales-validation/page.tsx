@@ -33,7 +33,7 @@ export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: '일자별매출검증',
-  description: '한국시간 기준 일자별 마일리지 적립과 사용 내역을 검증합니다.',
+  description: '한국시간 기준 일자별 마일리지 적립/사용과 주문 사용값을 함께 검증합니다.',
 };
 
 const DEFAULT_PAGE_SIZE = 30;
@@ -74,11 +74,25 @@ type SummaryRow = {
   totalCount: bigint;
 };
 
+type ValidationRow = SummaryRow & {
+  linkedMileageUsed: bigint;
+  orderMileageUsed: bigint;
+};
+
 type HistoryRow = {
   id: bigint;
   userId: bigint;
   delta: number;
   balance: number;
+  reason: string;
+  createdAt: Date;
+};
+
+type LinkedMileageLogRow = {
+  id: bigint;
+  service: string;
+  userid: string;
+  amount: bigint;
   reason: string;
   createdAt: Date;
 };
@@ -150,53 +164,140 @@ function buildSortHref(
   return nextQuery ? `${basePath}?${nextQuery}` : basePath;
 }
 
-function statusLabel(row: SummaryRow): '정상' | '비정상' {
+function needsCheck(row: ValidationRow): boolean {
+  return row.linkedMileageUsed !== row.orderMileageUsed;
+}
+
+function statusLabel(row: ValidationRow): '체크' | '정상' | '비정상' {
+  if (needsCheck(row)) return '체크';
   return row.earned === row.used ? '정상' : '비정상';
 }
 
-function statusClass(row: SummaryRow): string {
+function statusClass(row: ValidationRow): string {
+  if (needsCheck(row)) return 'bg-amber-100 text-amber-800 ring-amber-300';
   return row.earned === row.used
     ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
     : 'bg-rose-50 text-rose-700 ring-rose-200';
 }
 
-function DetailHistories({ histories }: { histories: HistoryRow[] }) {
+function userAliases(row: SummaryRow, socialLogins: string[]): string[] {
+  const values = [
+    row.loginId,
+    row.email,
+    row.loginId ? `${row.loginId}@legacy.local` : null,
+    ...socialLogins,
+  ];
+
+  return values
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.trim().toLowerCase())
+    .filter((value, index, array) => array.indexOf(value) === index);
+}
+
+function DetailHistories({
+  histories,
+  linkedLogs,
+  linkedMileageUsed,
+  orderMileageUsed,
+}: {
+  histories: HistoryRow[];
+  linkedLogs: LinkedMileageLogRow[];
+  linkedMileageUsed: bigint;
+  orderMileageUsed: bigint;
+}) {
+  const diff = linkedMileageUsed - orderMileageUsed;
+
   return (
-    <div className="mt-2 max-h-64 min-w-[360px] overflow-auto rounded-md border border-neutral-200 bg-white p-2 shadow-lg">
-      {histories.length === 0 ? (
-        <p className="px-2 py-3 text-xs font-semibold text-neutral-500">표시할 내역이 없습니다.</p>
-      ) : (
-        <div className="grid gap-1.5">
-          {histories.map((history) => (
-            <div
-              key={history.id.toString()}
-              className="grid gap-1 rounded border border-neutral-100 bg-neutral-50 px-2 py-1.5"
+    <div className="mt-2 max-h-80 min-w-[380px] overflow-auto rounded-md border border-neutral-200 bg-white p-2 shadow-lg">
+      <div className="grid gap-2">
+        <div className="grid gap-1 rounded border border-amber-200 bg-amber-50 px-3 py-2">
+          <div className="flex items-center justify-between gap-3 text-xs font-bold text-neutral-700">
+            <span>연동마일리지사용</span>
+            <span className="font-mono text-amber-800">{formatNumber(linkedMileageUsed)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3 text-xs font-bold text-neutral-700">
+            <span>주문마일리지사용</span>
+            <span className="font-mono text-rose-700">{formatNumber(orderMileageUsed)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3 text-xs font-bold text-neutral-700">
+            <span>차이</span>
+            <span
+              className={`font-mono ${diff === 0n ? 'text-emerald-700' : 'text-amber-800'}`}
             >
-              <div className="flex items-center justify-between gap-3">
-                <span
-                  className={
-                    history.delta >= 0
-                      ? 'font-mono text-xs font-extrabold text-emerald-700'
-                      : 'font-mono text-xs font-extrabold text-rose-700'
-                  }
-                >
-                  {history.delta >= 0 ? '+' : ''}
-                  {formatNumber(history.delta)}
-                </span>
-                <span className="font-mono text-[11px] font-semibold text-neutral-500">
-                  잔액 {formatNumber(history.balance)}
-                </span>
-              </div>
-              <p className="break-words text-xs font-semibold text-neutral-700">
-                {history.reason}
-              </p>
-              <p className="font-mono text-[11px] text-neutral-500">
-                {formatKoreanDateTime(history.createdAt)}
-              </p>
-            </div>
-          ))}
+              {diff > 0n ? '+' : ''}
+              {formatNumber(diff)}
+            </span>
+          </div>
         </div>
-      )}
+
+        {linkedLogs.length > 0 ? (
+          <div className="grid gap-1.5">
+            {linkedLogs.map((log) => (
+              <div
+                key={log.id.toString()}
+                className="grid gap-1 rounded border border-amber-100 bg-amber-50/70 px-2 py-1.5"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-mono text-xs font-extrabold text-amber-800">
+                    +{formatNumber(log.amount)}
+                  </span>
+                  <span className="text-[11px] font-semibold uppercase text-amber-700">
+                    {log.service}
+                  </span>
+                </div>
+                <p className="break-all font-mono text-[11px] text-neutral-500">{log.userid}</p>
+                <p className="break-words text-xs font-semibold text-neutral-700">
+                  {log.reason || '외부 연동'}
+                </p>
+                <p className="font-mono text-[11px] text-neutral-500">
+                  {formatKoreanDateTime(log.createdAt)}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="px-2 text-xs font-semibold text-neutral-500">
+            이 회원에 매칭된 외부 연동 지급 로그가 없습니다.
+          </p>
+        )}
+
+        {histories.length === 0 ? (
+          <p className="px-2 py-3 text-xs font-semibold text-neutral-500">
+            표시할 마일리지 이력이 없습니다.
+          </p>
+        ) : (
+          <div className="grid gap-1.5">
+            {histories.map((history) => (
+              <div
+                key={history.id.toString()}
+                className="grid gap-1 rounded border border-neutral-100 bg-neutral-50 px-2 py-1.5"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span
+                    className={
+                      history.delta >= 0
+                        ? 'font-mono text-xs font-extrabold text-emerald-700'
+                        : 'font-mono text-xs font-extrabold text-rose-700'
+                    }
+                  >
+                    {history.delta >= 0 ? '+' : ''}
+                    {formatNumber(history.delta)}
+                  </span>
+                  <span className="font-mono text-[11px] font-semibold text-neutral-500">
+                    잔액 {formatNumber(history.balance)}
+                  </span>
+                </div>
+                <p className="break-words text-xs font-semibold text-neutral-700">
+                  {history.reason}
+                </p>
+                <p className="font-mono text-[11px] text-neutral-500">
+                  {formatKoreanDateTime(history.createdAt)}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -282,64 +383,156 @@ export default async function AdminSalesValidationPage({
   const totalPages = Math.max(1, Math.ceil(Number(total) / pageSize));
   const hasNext = page < totalPages;
   const userIds = rows.map((row) => row.userId);
-  const [histories, orderTotals, linkedMileageRows] = await Promise.all([
-    userIds.length > 0
-      ? prisma.userPointHistory.findMany({
-          where: {
-            userId: { in: userIds },
-            createdAt: { gte: start, lt: endExclusive },
-          },
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-          select: {
-            id: true,
-            userId: true,
-            delta: true,
-            balance: true,
-            reason: true,
-            createdAt: true,
-          },
-        })
-      : Promise.resolve([]),
-    prisma.order.aggregate({
-      where: {
-        deletedAt: null,
-        createdAt: { gte: start, lt: endExclusive },
-      },
-      _sum: {
-        total: true,
-        pointsUsed: true,
-      },
-    }),
-    prisma.$queryRaw<{ total: bigint }[]>(Prisma.sql`
-      SELECT COALESCE(
-        SUM(
-          CASE
-            WHEN NULLIF(l."requestPayload"->>'amount', '') ~ '^-?[0-9]+$'
-              AND (l."requestPayload"->>'amount')::bigint > 0
-            THEN (l."requestPayload"->>'amount')::bigint
-            ELSE 0
-          END
-        ),
-        0
-      )::bigint AS "total"
-      FROM "ApiCommunicationLog" l
-      WHERE l."createdAt" >= ${start}
-        AND l."createdAt" < ${endExclusive}
-        AND l."method" = 'POST'
-        AND l."success" = true
-        AND l."service" IN ('gng-api', 'point-sync')
-        AND COALESCE(l."action", '') IN ('add', 'point_sync')
-    `),
-  ]);
+
+  const [histories, orderTotals, linkedMileageRows, orderPointRows, socialAccounts, linkedLogs] =
+    await Promise.all([
+      userIds.length > 0
+        ? prisma.userPointHistory.findMany({
+            where: {
+              userId: { in: userIds },
+              createdAt: { gte: start, lt: endExclusive },
+            },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            select: {
+              id: true,
+              userId: true,
+              delta: true,
+              balance: true,
+              reason: true,
+              createdAt: true,
+            },
+          })
+        : Promise.resolve([]),
+      prisma.order.aggregate({
+        where: {
+          deletedAt: null,
+          createdAt: { gte: start, lt: endExclusive },
+        },
+        _sum: {
+          total: true,
+          pointsUsed: true,
+        },
+      }),
+      prisma.$queryRaw<{ total: bigint }[]>(Prisma.sql`
+        SELECT COALESCE(
+          SUM(
+            CASE
+              WHEN NULLIF(l."requestPayload"->>'amount', '') ~ '^-?[0-9]+$'
+                AND (l."requestPayload"->>'amount')::bigint > 0
+              THEN (l."requestPayload"->>'amount')::bigint
+              ELSE 0
+            END
+          ),
+          0
+        )::bigint AS "total"
+        FROM "ApiCommunicationLog" l
+        WHERE l."createdAt" >= ${start}
+          AND l."createdAt" < ${endExclusive}
+          AND l."method" = 'POST'
+          AND l."success" = true
+          AND l."service" IN ('gng-api', 'point-sync')
+          AND COALESCE(l."action", '') IN ('add', 'point_sync')
+      `),
+      userIds.length > 0
+        ? prisma.order.groupBy({
+            by: ['userId'],
+            where: {
+              userId: { in: userIds },
+              deletedAt: null,
+              createdAt: { gte: start, lt: endExclusive },
+            },
+            _sum: {
+              pointsUsed: true,
+            },
+          })
+        : Promise.resolve([]),
+      userIds.length > 0
+        ? prisma.userSocialAccount.findMany({
+            where: { userId: { in: userIds } },
+            select: {
+              userId: true,
+              provider: true,
+              providerUid: true,
+            },
+          })
+        : Promise.resolve([]),
+      prisma.$queryRaw<LinkedMileageLogRow[]>(Prisma.sql`
+        SELECT
+          l."id",
+          l."service",
+          COALESCE(l."requestPayload"->>'userid', '') AS "userid",
+          (l."requestPayload"->>'amount')::bigint AS "amount",
+          COALESCE(l."requestPayload"->>'reason', '') AS "reason",
+          l."createdAt"
+        FROM "ApiCommunicationLog" l
+        WHERE l."createdAt" >= ${start}
+          AND l."createdAt" < ${endExclusive}
+          AND l."method" = 'POST'
+          AND l."success" = true
+          AND l."service" IN ('gng-api', 'point-sync')
+          AND COALESCE(l."action", '') IN ('add', 'point_sync')
+          AND NULLIF(l."requestPayload"->>'amount', '') ~ '^-?[0-9]+$'
+          AND (l."requestPayload"->>'amount')::bigint > 0
+        ORDER BY l."createdAt" DESC, l."id" DESC
+      `),
+    ]);
+
   const linkedMileageUsedTotal = linkedMileageRows[0]?.total ?? 0n;
   const orderAmountTotal = orderTotals._sum.total ?? new Prisma.Decimal(0);
   const orderMileageUsedTotal = orderTotals._sum.pointsUsed ?? 0;
   const mileageIncludedOrderTotal = orderAmountTotal.plus(orderMileageUsedTotal);
+
   const historiesByUser = new Map<string, HistoryRow[]>();
   for (const history of histories) {
     const key = history.userId.toString();
     historiesByUser.set(key, [...(historiesByUser.get(key) ?? []), history]);
   }
+
+  const orderMileageByUser = new Map<string, bigint>();
+  for (const orderPointRow of orderPointRows) {
+    if (!orderPointRow.userId) continue;
+    orderMileageByUser.set(
+      orderPointRow.userId.toString(),
+      BigInt(orderPointRow._sum.pointsUsed ?? 0),
+    );
+  }
+
+  const socialLoginsByUser = new Map<string, string[]>();
+  for (const account of socialAccounts) {
+    const key = account.userId.toString();
+    const alias = `${account.provider}-${account.providerUid}`;
+    socialLoginsByUser.set(key, [...(socialLoginsByUser.get(key) ?? []), alias]);
+  }
+
+  const aliasToUserId = new Map<string, string>();
+  for (const row of rows) {
+    const userId = row.userId.toString();
+    for (const alias of userAliases(row, socialLoginsByUser.get(userId) ?? [])) {
+      aliasToUserId.set(alias, userId);
+    }
+  }
+
+  const linkedMileageByUser = new Map<string, bigint>();
+  const linkedLogsByUser = new Map<string, LinkedMileageLogRow[]>();
+  for (const log of linkedLogs) {
+    const matchedUserId = aliasToUserId.get(log.userid.trim().toLowerCase());
+    if (!matchedUserId) continue;
+
+    linkedMileageByUser.set(
+      matchedUserId,
+      (linkedMileageByUser.get(matchedUserId) ?? 0n) + log.amount,
+    );
+    linkedLogsByUser.set(matchedUserId, [...(linkedLogsByUser.get(matchedUserId) ?? []), log]);
+  }
+
+  const validationRows: ValidationRow[] = rows.map((row) => {
+    const key = row.userId.toString();
+    return {
+      ...row,
+      linkedMileageUsed: linkedMileageByUser.get(key) ?? 0n,
+      orderMileageUsed: orderMileageByUser.get(key) ?? 0n,
+    };
+  });
 
   const params = new URLSearchParams();
   params.set('date', date);
@@ -387,8 +580,8 @@ export default async function AdminSalesValidationPage({
       </form>
 
       <AdminSection
-        title="검증 목록"
-        description={`현재 페이지 ${formatNumber(rows.length)}명 · ${formatNumber(page)} / ${formatNumber(totalPages)}페이지`}
+        title="검증목록"
+        description={`현재 페이지 ${formatNumber(validationRows.length)}명 / 총 ${formatNumber(page)} / ${formatNumber(totalPages)}페이지`}
         icon={CalendarDays}
         bodyClassName="p-0"
         headerAction={
@@ -444,7 +637,7 @@ export default async function AdminSalesValidationPage({
               sortKey: 'status',
             },
           ]}
-          rows={rows}
+          rows={validationRows}
           rowKey={(row) => row.userId.toString()}
           emptyText="선택한 날짜에 마일리지 변동 회원이 없습니다."
           minWidthClassName="min-w-[1260px]"
@@ -453,6 +646,8 @@ export default async function AdminSalesValidationPage({
           getSortHref={getSortHref}
           renderRow={(row) => {
             const historiesForUser = historiesByUser.get(row.userId.toString()) ?? [];
+            const linkedLogsForUser = linkedLogsByUser.get(row.userId.toString()) ?? [];
+
             return (
               <tr key={row.userId.toString()} className="bg-white transition hover:bg-neutral-50">
                 <td className={adminGridStickyCellClass}>
@@ -491,7 +686,12 @@ export default async function AdminSalesValidationPage({
                         {statusLabel(row)}
                       </span>
                     </summary>
-                    <DetailHistories histories={historiesForUser} />
+                    <DetailHistories
+                      histories={historiesForUser}
+                      linkedLogs={linkedLogsForUser}
+                      linkedMileageUsed={row.linkedMileageUsed}
+                      orderMileageUsed={row.orderMileageUsed}
+                    />
                   </details>
                 </td>
               </tr>
@@ -499,6 +699,8 @@ export default async function AdminSalesValidationPage({
           }}
           renderMobileCard={(row) => {
             const historiesForUser = historiesByUser.get(row.userId.toString()) ?? [];
+            const linkedLogsForUser = linkedLogsByUser.get(row.userId.toString()) ?? [];
+
             return (
               <AdminMobileCard>
                 <div className="flex items-start justify-between gap-3">
@@ -521,7 +723,12 @@ export default async function AdminSalesValidationPage({
                         {statusLabel(row)}
                       </span>
                     </summary>
-                    <DetailHistories histories={historiesForUser} />
+                    <DetailHistories
+                      histories={historiesForUser}
+                      linkedLogs={linkedLogsForUser}
+                      linkedMileageUsed={row.linkedMileageUsed}
+                      orderMileageUsed={row.orderMileageUsed}
+                    />
                   </details>
                 </div>
                 <dl className="mt-3 grid grid-cols-2 gap-2">
