@@ -1,14 +1,47 @@
 'use client';
 
-import { loginAction } from './actions';
+import { useState, type FormEvent } from 'react';
+import { signIn } from 'next-auth/react';
 
 type LoginFormProps = {
   callbackUrl: string;
 };
 
 export function LoginForm({ callbackUrl }: LoginFormProps) {
+  const [isPending, setIsPending] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (isPending) return;
+
+    const formData = new FormData(event.currentTarget);
+    const loginId = String(formData.get('loginId') ?? '').trim();
+    const password = String(formData.get('password') ?? '');
+
+    if (!loginId || !password) {
+      window.location.assign('/login?error=validation');
+      return;
+    }
+
+    setIsPending(true);
+
+    const result = await signIn('credentials', {
+      loginId,
+      password,
+      callbackUrl,
+      redirect: false,
+    });
+
+    if (result?.error) {
+      window.location.assign('/login?error=credentials');
+      return;
+    }
+
+    window.location.assign(result?.url ?? callbackUrl);
+  }
+
   return (
-    <form action={loginAction} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4">
       <input type="hidden" name="callbackUrl" value={callbackUrl} />
 
       <label className="block">
@@ -34,9 +67,10 @@ export function LoginForm({ callbackUrl }: LoginFormProps) {
 
       <button
         type="submit"
-        className="flex h-12 w-full items-center justify-center rounded-lg bg-neutral-900 text-sm font-semibold text-white transition-colors hover:bg-neutral-700"
+        disabled={isPending}
+        className="flex h-12 w-full items-center justify-center rounded-lg bg-neutral-900 text-sm font-semibold text-white transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:bg-neutral-400"
       >
-        로그인
+        {isPending ? '로그인 중...' : '로그인'}
       </button>
     </form>
   );
