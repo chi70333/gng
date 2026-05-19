@@ -72,7 +72,6 @@ type SummaryRow = {
   net: bigint;
   orderCount: bigint;
   totalCount: bigint;
-  ledgerUsedTotal: bigint;
 };
 
 type HistoryRow = {
@@ -272,8 +271,7 @@ export default async function AdminSalesValidationPage({
     )
     SELECT
       s.*,
-      COUNT(*) OVER()::bigint AS "totalCount",
-      COALESCE(SUM(s."used") OVER(), 0)::bigint AS "ledgerUsedTotal"
+      COUNT(*) OVER()::bigint AS "totalCount"
     FROM scoped s
     ${sortSql}
     OFFSET ${offset}
@@ -281,11 +279,10 @@ export default async function AdminSalesValidationPage({
   `);
 
   const total = rows[0]?.totalCount ?? 0n;
-  const ledgerUsedTotal = rows[0]?.ledgerUsedTotal ?? 0n;
   const totalPages = Math.max(1, Math.ceil(Number(total) / pageSize));
   const hasNext = page < totalPages;
   const userIds = rows.map((row) => row.userId);
-  const [histories, orderTotals] = await Promise.all([
+  const [histories, orderTotals, linkedMileageRows] = await Promise.all([
     userIds.length > 0
       ? prisma.userPointHistory.findMany({
           where: {
@@ -313,7 +310,28 @@ export default async function AdminSalesValidationPage({
         pointsUsed: true,
       },
     }),
+    prisma.$queryRaw<{ total: bigint }[]>(Prisma.sql`
+      SELECT COALESCE(
+        SUM(
+          CASE
+            WHEN NULLIF(l."requestPayload"->>'amount', '') ~ '^-?[0-9]+$'
+              AND (l."requestPayload"->>'amount')::bigint > 0
+            THEN (l."requestPayload"->>'amount')::bigint
+            ELSE 0
+          END
+        ),
+        0
+      )::bigint AS "total"
+      FROM "ApiCommunicationLog" l
+      WHERE l."createdAt" >= ${start}
+        AND l."createdAt" < ${endExclusive}
+        AND l."method" = 'POST'
+        AND l."success" = true
+        AND l."service" IN ('gng-api', 'point-sync')
+        AND COALESCE(l."action", '') IN ('add', 'point_sync')
+    `),
   ]);
+  const linkedMileageUsedTotal = linkedMileageRows[0]?.total ?? 0n;
   const orderAmountTotal = orderTotals._sum.total ?? new Prisma.Decimal(0);
   const orderMileageUsedTotal = orderTotals._sum.pointsUsed ?? 0;
   const mileageIncludedOrderTotal = orderAmountTotal.plus(orderMileageUsedTotal);
@@ -526,8 +544,10 @@ export default async function AdminSalesValidationPage({
           }}
         />
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-extrabold text-neutral-900">
-          <span className="text-neutral-500">마일리지 이력 사용</span>
-          <span className="font-mono text-lg text-rose-700">{formatNumber(ledgerUsedTotal)}</span>
+          <span className="text-neutral-500">연동마일리지사용</span>
+          <span className="font-mono text-lg text-rose-700">
+            {formatNumber(linkedMileageUsedTotal)}
+          </span>
           <span className="mx-2 text-neutral-300">|</span>
           <span className="text-neutral-500">주문 마일리지 사용</span>
           <span className="font-mono text-lg text-rose-700">
