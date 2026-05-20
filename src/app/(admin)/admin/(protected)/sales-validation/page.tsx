@@ -424,7 +424,7 @@ export default async function AdminSalesValidationPage({
   const hasNext = page < totalPages;
   const userIds = rows.map((row) => row.userId);
 
-  const [histories, orderTotals, orderItemTotalRows, linkedMileageRows, linkedLogs] =
+  const [histories, orderTotals, orderAmountRows, linkedMileageRows, linkedLogs] =
     await Promise.all([
       userIds.length > 0
         ? prisma.userPointHistory.findMany({
@@ -454,9 +454,8 @@ export default async function AdminSalesValidationPage({
         },
       }),
       prisma.$queryRaw<{ total: Prisma.Decimal | null }[]>(Prisma.sql`
-        SELECT COALESCE(SUM(i."totalPrice"), 0) AS "total"
-        FROM "OrderItem" i
-        JOIN "Order" o ON o."id" = i."orderId"
+        SELECT COALESCE(SUM(o."total" + o."pointsUsed"), 0) AS "total"
+        FROM "Order" o
         WHERE o."createdAt" >= ${start}
           AND o."createdAt" < ${endExclusive}
           AND o."deletedAt" IS NULL
@@ -527,7 +526,7 @@ export default async function AdminSalesValidationPage({
 
   const linkedMileageUsedTotal = linkedMileageRows[0]?.total ?? 0n;
   const orderMileageUsedTotal = orderTotals._sum.pointsUsed ?? 0;
-  const orderItemTotal = orderItemTotalRows[0]?.total ?? new Prisma.Decimal(0);
+  const orderAmountTotal = orderAmountRows[0]?.total ?? new Prisma.Decimal(0);
 
   const historiesByUser = new Map<string, HistoryRow[]>();
   for (const history of histories) {
@@ -772,7 +771,7 @@ export default async function AdminSalesValidationPage({
           <span className="mx-2 text-neutral-300">|</span>
           <span className="text-neutral-500">총결제금액</span>
           <span className="font-mono text-lg text-neutral-950">
-            {formatNumber(orderItemTotal.toString())}
+            {formatNumber(orderAmountTotal.toString())}
           </span>
         </div>
       </AdminSection>
