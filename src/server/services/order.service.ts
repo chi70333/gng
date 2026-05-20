@@ -14,7 +14,8 @@ import {
 } from '@/server/services/cart.service';
 import { calculateCouponDiscount, markCouponUsed } from '@/server/services/coupon.service';
 import { createPointLedgerEntry, getPointBalance } from '@/server/services/point-ledger.service';
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '@/lib/errors';
+import { AppError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from '@/lib/errors';
+import { isSameKoreanDate } from '@/lib/korean-date-range';
 import { createLegacyOrderCode } from '@/lib/legacy-order-code';
 import { logger } from '@/lib/logger';
 import type { CreateOrderInput } from '@/schemas/order';
@@ -749,6 +750,7 @@ export async function cancelUserOrder(input: {
         userId: true,
         status: true,
         pointsUsed: true,
+        createdAt: true,
       },
     });
 
@@ -758,6 +760,13 @@ export async function cancelUserOrder(input: {
     }
     if (order.status !== 'pending' && order.status !== 'paid') {
       throw new ConflictError('배송 준비 이후 주문은 고객센터로 취소를 요청해 주세요.');
+    }
+    if (!isSameKoreanDate(order.createdAt)) {
+      throw new AppError(
+        'CANCEL_WINDOW_EXPIRED',
+        'Orders can only be cancelled on the same Korea Standard Time date they were placed.',
+        409,
+      );
     }
 
     await tx.payment.updateMany({

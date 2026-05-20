@@ -424,7 +424,7 @@ export default async function AdminSalesValidationPage({
   const hasNext = page < totalPages;
   const userIds = rows.map((row) => row.userId);
 
-  const [histories, orderTotals, linkedMileageRows, linkedLogs] =
+  const [histories, orderTotals, orderItemTotalRows, linkedMileageRows, linkedLogs] =
     await Promise.all([
       userIds.length > 0
         ? prisma.userPointHistory.findMany({
@@ -453,6 +453,15 @@ export default async function AdminSalesValidationPage({
           pointsUsed: true,
         },
       }),
+      prisma.$queryRaw<{ total: Prisma.Decimal | null }[]>(Prisma.sql`
+        SELECT COALESCE(SUM(i."totalPrice"), 0) AS "total"
+        FROM "OrderItem" i
+        JOIN "Order" o ON o."id" = i."orderId"
+        WHERE o."createdAt" >= ${start}
+          AND o."createdAt" < ${endExclusive}
+          AND o."deletedAt" IS NULL
+          AND o."status" <> 'cancelled'
+      `),
       prisma.$queryRaw<{ total: bigint }[]>(Prisma.sql`
         SELECT COALESCE(
           SUM(
@@ -517,9 +526,8 @@ export default async function AdminSalesValidationPage({
     ]);
 
   const linkedMileageUsedTotal = linkedMileageRows[0]?.total ?? 0n;
-  const orderAmountTotal = orderTotals._sum.total ?? new Prisma.Decimal(0);
   const orderMileageUsedTotal = orderTotals._sum.pointsUsed ?? 0;
-  const mileageIncludedOrderTotal = orderAmountTotal.plus(orderMileageUsedTotal);
+  const orderItemTotal = orderItemTotalRows[0]?.total ?? new Prisma.Decimal(0);
 
   const historiesByUser = new Map<string, HistoryRow[]>();
   for (const history of histories) {
@@ -757,14 +765,14 @@ export default async function AdminSalesValidationPage({
             {formatNumber(linkedMileageUsedTotal)}
           </span>
           <span className="mx-2 text-neutral-300">|</span>
-          <span className="text-neutral-500">주문 마일리지 사용</span>
+          <span className="text-neutral-500">주문마일리지사용</span>
           <span className="font-mono text-lg text-rose-700">
             {formatNumber(orderMileageUsedTotal)}
           </span>
           <span className="mx-2 text-neutral-300">|</span>
-          <span className="text-neutral-500">마일리지 포함 주문금액</span>
+          <span className="text-neutral-500">총결제금액</span>
           <span className="font-mono text-lg text-neutral-950">
-            {formatNumber(mileageIncludedOrderTotal.toString())}
+            {formatNumber(orderItemTotal.toString())}
           </span>
         </div>
       </AdminSection>

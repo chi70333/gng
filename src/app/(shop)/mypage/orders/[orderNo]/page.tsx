@@ -8,6 +8,7 @@ import { notFound } from 'next/navigation';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { formatKRW, formatKoreanDateTime } from '@/lib/format';
+import { isSameKoreanDate } from '@/lib/korean-date-range';
 import { getCachedSitePolicy } from '@/server/services/site-policy.service';
 import { cancelOrderAction } from './actions';
 import { OrderDetailScrollTop } from './OrderDetailScrollTop';
@@ -68,6 +69,7 @@ function normalizePhone(value: string | null): string {
 function cancelErrorMessage(code?: string): string | null {
   if (!code) return null;
   const messages: Record<string, string> = {
+    CANCEL_WINDOW_EXPIRED: '주문 당일이 지나면 마이페이지에서 직접 취소할 수 없습니다. 고객센터로 문의해 주세요.',
     CONFLICT: '배송 준비 이후 주문은 고객센터로 취소를 요청해 주세요.',
     FORBIDDEN: '본인 주문만 취소할 수 있습니다.',
     NOT_FOUND: '주문을 찾을 수 없습니다.',
@@ -194,7 +196,8 @@ export default async function MyOrderDetailPage({ params, searchParams }: Detail
       ? `${asString(depositBankName)} ${asString(depositAccount)}`
       : asString(depositBankName) ?? asString(depositAccount);
 
-  const canCancel = order.status === 'pending' || order.status === 'paid';
+  const canCancel =
+    (order.status === 'pending' || order.status === 'paid') && isSameKoreanDate(order.createdAt);
   const cancelAction = cancelOrderAction.bind(null, order.orderNo);
   const cancelError = cancelErrorMessage(searchParams.cancelError);
 

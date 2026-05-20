@@ -26,6 +26,10 @@ export function getKoreanDateString(date = new Date()): string {
   return koreanDateFormatter.format(date);
 }
 
+export function isSameKoreanDate(left: Date, right = new Date()): boolean {
+  return getKoreanDateString(left) === getKoreanDateString(right);
+}
+
 export function koreanDateRangeUtc(parts: KoreanDateParts): {
   start: Date;
   endExclusive: Date;
