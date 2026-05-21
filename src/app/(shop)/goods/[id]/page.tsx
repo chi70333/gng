@@ -9,7 +9,6 @@ import BreadcrumbNav from '@/components/shop/BreadcrumbNav';
 import ProductQnaForm from '@/components/shop/ProductQnaForm';
 import ProductImageGallery from '@/components/shop/ProductImageGallery';
 import ProductMemberPurchasePanel from '@/components/shop/ProductMemberPurchasePanel';
-import ProductViewTracker from '@/components/shop/ProductViewTracker';
 import {
   getCachedProductBySlug,
   getCachedProductMetadataBySlug,
@@ -118,7 +117,6 @@ export default async function GoodsDetailPage({ params }: { params: { id: string
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
-      <ProductViewTracker slug={product.slug} />
 
       <BreadcrumbNav items={breadcrumbs} />
 

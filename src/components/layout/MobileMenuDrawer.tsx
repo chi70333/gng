@@ -4,10 +4,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { signOut } from 'next-auth/react';
 import { ChevronDown, X, Menu } from 'lucide-react';
 import { cn } from '@/lib/cn';
-import { useMemberSession } from '@/hooks/use-member-session';
 import type { SerializedCategory } from '@/server/repositories/category.repository';
 
 type MobileMenuDrawerProps = {
@@ -19,7 +17,6 @@ export default function MobileMenuDrawer({
 }: MobileMenuDrawerProps) {
   const [open, setOpen] = useState(false);
   const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null);
-  const { isMember } = useMemberSession();
 
   const closeDrawer = () => {
     setOpen(false);
@@ -138,35 +135,19 @@ export default function MobileMenuDrawer({
 
         <div className="shrink-0 space-y-1 border-t px-4 py-4">
           <Link
-            href={isMember ? '/mypage' : '/login'}
+            href="/login"
             onClick={closeDrawer}
             className="flex h-11 items-center text-sm text-neutral-700 hover:text-neutral-900"
           >
-            {isMember ? '마이페이지' : '로그인'}
+            로그인
           </Link>
-          {isMember ? (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void signOut({ callbackUrl: '/' });
-              }}
-            >
-              <button
-                type="submit"
-                className="flex h-11 w-full items-center text-left text-sm text-neutral-700 hover:text-neutral-900"
-              >
-                로그아웃
-              </button>
-            </form>
-          ) : (
-            <Link
-              href="/join"
-              onClick={closeDrawer}
-              className="flex h-11 items-center text-sm text-neutral-700 hover:text-neutral-900"
-            >
-              회원가입
-            </Link>
-          )}
+          <Link
+            href="/join"
+            onClick={closeDrawer}
+            className="flex h-11 items-center text-sm text-neutral-700 hover:text-neutral-900"
+          >
+            회원가입
+          </Link>
         </div>
       </nav>
     </>
