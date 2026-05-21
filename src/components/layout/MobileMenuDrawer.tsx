@@ -135,11 +135,11 @@ export default function MobileMenuDrawer({
 
         <div className="shrink-0 space-y-1 border-t px-4 py-4">
           <Link
-            href="/login"
+            href="/mypage"
             onClick={closeDrawer}
             className="flex h-11 items-center text-sm text-neutral-700 hover:text-neutral-900"
           >
-            로그인
+            마이페이지
           </Link>
           <Link
             href="/join"
