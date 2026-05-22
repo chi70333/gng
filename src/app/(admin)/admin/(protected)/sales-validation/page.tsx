@@ -96,6 +96,26 @@ type LinkedMileageLogRow = {
   createdAt: Date;
 };
 
+type ReconciliationRow = {
+  userid: string;
+  linkedMileageUsed: bigint;
+  matchedUserId: bigint | null;
+  matchedName: string | null;
+  matchedLoginId: string | null;
+  matchedEmail: string | null;
+  orderAmountTotal: Prisma.Decimal;
+  paymentDiff: Prisma.Decimal;
+  hasPointHistory: boolean;
+  aliasUserCount: bigint;
+  reason: string;
+};
+
+type ReconciliationTotals = {
+  candidatePaymentDiffTotal: Prisma.Decimal | null;
+  unmatchedLinkedMileageTotal: bigint;
+  matchedWithoutPointHistoryTotal: bigint;
+};
+
 function parseDate(value: string | undefined): string {
   if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   return getKoreanDateString();
@@ -547,7 +567,15 @@ export default async function AdminSalesValidationPage({
   const hasNext = page < totalPages;
   const userIds = rows.map((row) => row.userId);
 
-  const [histories, orderTotals, orderAmountRows, linkedMileageRows, linkedLogs] =
+  const [
+    histories,
+    orderTotals,
+    orderAmountRows,
+    linkedMileageRows,
+    linkedLogs,
+    reconciliationTotalRows,
+    reconciliationRows,
+  ] =
     await Promise.all([
       userIds.length > 0
         ? prisma.userPointHistory.findMany({
@@ -645,11 +673,211 @@ export default async function AdminSalesValidationPage({
             ORDER BY l."createdAt" DESC, l."id" DESC
           `)
         : Promise.resolve([]),
+      prisma.$queryRaw<ReconciliationTotals[]>(Prisma.sql`
+        WITH point_users AS (
+          SELECT DISTINCT h."userId"
+          FROM "UserPointHistory" h
+          WHERE h."createdAt" >= ${start}
+            AND h."createdAt" < ${endExclusive}
+        ),
+        all_aliases_raw AS (
+          SELECT u."id" AS "userId", LOWER(u."loginId") AS alias
+          FROM "User" u
+          WHERE u."deletedAt" IS NULL AND u."loginId" IS NOT NULL
+          UNION ALL
+          SELECT u."id" AS "userId", LOWER(u."email") AS alias
+          FROM "User" u
+          WHERE u."deletedAt" IS NULL AND u."email" IS NOT NULL
+          UNION ALL
+          SELECT u."id" AS "userId", LOWER(u."loginId" || '@legacy.local') AS alias
+          FROM "User" u
+          WHERE u."deletedAt" IS NULL AND u."loginId" IS NOT NULL
+          UNION ALL
+          SELECT s."userId", LOWER(s."provider" || '-' || s."providerUid") AS alias
+          FROM "UserSocialAccount" s
+          JOIN "User" u ON u."id" = s."userId"
+          WHERE u."deletedAt" IS NULL
+        ),
+        alias_users AS (
+          SELECT
+            alias,
+            MIN("userId") AS "userId",
+            COUNT(DISTINCT "userId")::bigint AS "aliasUserCount"
+          FROM all_aliases_raw
+          WHERE alias IS NOT NULL AND alias <> ''
+          GROUP BY alias
+        ),
+        linked_by_userid AS (
+          SELECT
+            LOWER(COALESCE(l."requestPayload"->>'userid', '')) AS userid,
+            SUM((l."requestPayload"->>'amount')::bigint)::bigint AS "linkedMileageUsed"
+          FROM "ApiCommunicationLog" l
+          WHERE l."createdAt" >= ${start}
+            AND l."createdAt" < ${endExclusive}
+            AND l."method" = 'POST'
+            AND l."success" = true
+            AND l."service" IN ('gng-api', 'point-sync')
+            AND COALESCE(l."action", '') IN ('add', 'point_sync')
+            AND NULLIF(l."requestPayload"->>'amount', '') ~ '^-?[0-9]+$'
+            AND (l."requestPayload"->>'amount')::bigint > 0
+          GROUP BY LOWER(COALESCE(l."requestPayload"->>'userid', ''))
+        ),
+        order_amount_by_user AS (
+          SELECT
+            o."userId",
+            COALESCE(SUM(o."total" + o."pointsUsed"), 0) AS "orderAmountTotal"
+          FROM "Order" o
+          WHERE o."createdAt" >= ${start}
+            AND o."createdAt" < ${endExclusive}
+            AND o."deletedAt" IS NULL
+            AND o."status" <> 'cancelled'
+            AND o."userId" IS NOT NULL
+          GROUP BY o."userId"
+        ),
+        candidate_payment_summary AS (
+          SELECT
+            COALESCE(
+              SUM(lu."linkedMileageUsed"::numeric - COALESCE(oau."orderAmountTotal", 0)),
+              0
+            ) AS "candidatePaymentDiffTotal"
+          FROM linked_by_userid lu
+          JOIN alias_users au ON au.alias = lu.userid
+          JOIN point_users pu ON pu."userId" = au."userId"
+          LEFT JOIN order_amount_by_user oau ON oau."userId" = au."userId"
+        )
+        SELECT
+          cps."candidatePaymentDiffTotal",
+          COALESCE(
+            SUM(CASE WHEN au."userId" IS NULL THEN lu."linkedMileageUsed" ELSE 0 END),
+            0
+          )::bigint AS "unmatchedLinkedMileageTotal",
+          COALESCE(
+            SUM(
+              CASE
+                WHEN au."userId" IS NOT NULL AND pu."userId" IS NULL
+                  THEN lu."linkedMileageUsed"
+                ELSE 0
+              END
+            ),
+            0
+          )::bigint AS "matchedWithoutPointHistoryTotal"
+        FROM linked_by_userid lu
+        LEFT JOIN alias_users au ON au.alias = lu.userid
+        LEFT JOIN point_users pu ON pu."userId" = au."userId"
+        CROSS JOIN candidate_payment_summary cps
+        GROUP BY cps."candidatePaymentDiffTotal"
+      `),
+      prisma.$queryRaw<ReconciliationRow[]>(Prisma.sql`
+        WITH point_users AS (
+          SELECT DISTINCT h."userId"
+          FROM "UserPointHistory" h
+          WHERE h."createdAt" >= ${start}
+            AND h."createdAt" < ${endExclusive}
+        ),
+        all_aliases_raw AS (
+          SELECT u."id" AS "userId", LOWER(u."loginId") AS alias
+          FROM "User" u
+          WHERE u."deletedAt" IS NULL AND u."loginId" IS NOT NULL
+          UNION ALL
+          SELECT u."id" AS "userId", LOWER(u."email") AS alias
+          FROM "User" u
+          WHERE u."deletedAt" IS NULL AND u."email" IS NOT NULL
+          UNION ALL
+          SELECT u."id" AS "userId", LOWER(u."loginId" || '@legacy.local') AS alias
+          FROM "User" u
+          WHERE u."deletedAt" IS NULL AND u."loginId" IS NOT NULL
+          UNION ALL
+          SELECT s."userId", LOWER(s."provider" || '-' || s."providerUid") AS alias
+          FROM "UserSocialAccount" s
+          JOIN "User" u ON u."id" = s."userId"
+          WHERE u."deletedAt" IS NULL
+        ),
+        alias_users AS (
+          SELECT
+            alias,
+            MIN("userId") AS "userId",
+            COUNT(DISTINCT "userId")::bigint AS "aliasUserCount"
+          FROM all_aliases_raw
+          WHERE alias IS NOT NULL AND alias <> ''
+          GROUP BY alias
+        ),
+        linked_by_userid AS (
+          SELECT
+            LOWER(COALESCE(l."requestPayload"->>'userid', '')) AS userid,
+            SUM((l."requestPayload"->>'amount')::bigint)::bigint AS "linkedMileageUsed"
+          FROM "ApiCommunicationLog" l
+          WHERE l."createdAt" >= ${start}
+            AND l."createdAt" < ${endExclusive}
+            AND l."method" = 'POST'
+            AND l."success" = true
+            AND l."service" IN ('gng-api', 'point-sync')
+            AND COALESCE(l."action", '') IN ('add', 'point_sync')
+            AND NULLIF(l."requestPayload"->>'amount', '') ~ '^-?[0-9]+$'
+            AND (l."requestPayload"->>'amount')::bigint > 0
+          GROUP BY LOWER(COALESCE(l."requestPayload"->>'userid', ''))
+        ),
+        order_amount_by_user AS (
+          SELECT
+            o."userId",
+            COALESCE(SUM(o."total" + o."pointsUsed"), 0) AS "orderAmountTotal"
+          FROM "Order" o
+          WHERE o."createdAt" >= ${start}
+            AND o."createdAt" < ${endExclusive}
+            AND o."deletedAt" IS NULL
+            AND o."status" <> 'cancelled'
+            AND o."userId" IS NOT NULL
+          GROUP BY o."userId"
+        )
+        SELECT
+          lu.userid,
+          lu."linkedMileageUsed",
+          u."id" AS "matchedUserId",
+          u."name" AS "matchedName",
+          u."loginId" AS "matchedLoginId",
+          u."email" AS "matchedEmail",
+          COALESCE(oau."orderAmountTotal", 0) AS "orderAmountTotal",
+          lu."linkedMileageUsed"::numeric - COALESCE(oau."orderAmountTotal", 0) AS "paymentDiff",
+          (pu."userId" IS NOT NULL) AS "hasPointHistory",
+          COALESCE(au."aliasUserCount", 0)::bigint AS "aliasUserCount",
+          CASE
+            WHEN au."userId" IS NULL THEN '회원매칭없음'
+            WHEN pu."userId" IS NULL THEN '오늘마일리지변동없음'
+            WHEN au."aliasUserCount" > 1 THEN '아이디중복매칭'
+            ELSE '결제차액'
+          END AS reason
+        FROM linked_by_userid lu
+        LEFT JOIN alias_users au ON au.alias = lu.userid
+        LEFT JOIN "User" u ON u."id" = au."userId"
+        LEFT JOIN point_users pu ON pu."userId" = au."userId"
+        LEFT JOIN order_amount_by_user oau ON oau."userId" = au."userId"
+        WHERE au."userId" IS NULL
+          OR pu."userId" IS NULL
+          OR au."aliasUserCount" > 1
+          OR lu."linkedMileageUsed"::numeric <> COALESCE(oau."orderAmountTotal", 0)
+        ORDER BY
+          CASE
+            WHEN au."userId" IS NULL THEN 0
+            WHEN pu."userId" IS NULL THEN 1
+            WHEN au."aliasUserCount" > 1 THEN 2
+            ELSE 3
+          END,
+          ABS(lu."linkedMileageUsed"::numeric - COALESCE(oau."orderAmountTotal", 0)) DESC,
+          lu."linkedMileageUsed" DESC
+        LIMIT 20
+      `),
     ]);
 
   const linkedMileageUsedTotal = linkedMileageRows[0]?.total ?? 0n;
   const orderMileageUsedTotal = orderTotals._sum.pointsUsed ?? 0;
   const orderAmountTotal = orderAmountRows[0]?.total ?? new Prisma.Decimal(0);
+  const reconciliationTotals = reconciliationTotalRows[0] ?? {
+    candidatePaymentDiffTotal: new Prisma.Decimal(0),
+    unmatchedLinkedMileageTotal: 0n,
+    matchedWithoutPointHistoryTotal: 0n,
+  };
+  const paymentDiffTotal = new Prisma.Decimal(linkedMileageUsedTotal.toString()).minus(
+    orderAmountTotal,
+  );
 
   const historiesByUser = new Map<string, HistoryRow[]>();
   for (const history of histories) {
@@ -910,6 +1138,96 @@ export default async function AdminSalesValidationPage({
           <span className="font-mono text-lg text-neutral-950">
             {formatNumber(orderAmountTotal.toString())}
           </span>
+        </div>
+      </AdminSection>
+
+      <AdminSection
+        title="차액 추적"
+        description="상단 합계에는 들어갔지만 회원별 체크 행에서 바로 드러나지 않는 금액을 추적합니다."
+        bodyClassName="space-y-4"
+      >
+        <div className="grid gap-3 md:grid-cols-4">
+          <div className="rounded-md border border-neutral-200 bg-white p-4">
+            <p className="text-xs font-bold text-neutral-500">전체 결제차액</p>
+            <p className="mt-2 font-mono text-xl font-extrabold text-amber-700">
+              {signedDecimal(paymentDiffTotal)}
+            </p>
+          </div>
+          <div className="rounded-md border border-neutral-200 bg-white p-4">
+            <p className="text-xs font-bold text-neutral-500">회원별 표시 차액</p>
+            <p className="mt-2 font-mono text-xl font-extrabold text-neutral-950">
+              {signedDecimal(
+                reconciliationTotals.candidatePaymentDiffTotal ?? new Prisma.Decimal(0),
+              )}
+            </p>
+          </div>
+          <div className="rounded-md border border-neutral-200 bg-white p-4">
+            <p className="text-xs font-bold text-neutral-500">회원매칭 없는 연동액</p>
+            <p className="mt-2 font-mono text-xl font-extrabold text-rose-700">
+              {formatNumber(reconciliationTotals.unmatchedLinkedMileageTotal)}
+            </p>
+          </div>
+          <div className="rounded-md border border-neutral-200 bg-white p-4">
+            <p className="text-xs font-bold text-neutral-500">포인트이력 없는 연동액</p>
+            <p className="mt-2 font-mono text-xl font-extrabold text-blue-700">
+              {formatNumber(reconciliationTotals.matchedWithoutPointHistoryTotal)}
+            </p>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto rounded-md border border-neutral-200">
+          <table className="min-w-[980px] w-full divide-y divide-neutral-200 text-sm">
+            <caption className="sr-only">차액 원인 후보</caption>
+            <thead className="bg-neutral-50 text-xs font-extrabold text-neutral-500">
+              <tr>
+                <th className="px-3 py-2 text-left">구분</th>
+                <th className="px-3 py-2 text-left">연동 userid</th>
+                <th className="px-3 py-2 text-left">매칭회원</th>
+                <th className="px-3 py-2 text-right">연동마일리지</th>
+                <th className="px-3 py-2 text-right">총결제금액</th>
+                <th className="px-3 py-2 text-right">차액</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100 bg-white">
+              {reconciliationRows.length > 0 ? (
+                reconciliationRows.map((row) => (
+                  <tr key={`${row.reason}-${row.userid}`} className="align-top">
+                    <td className="px-3 py-2 font-extrabold text-amber-700">{row.reason}</td>
+                    <td className="px-3 py-2 font-mono text-neutral-900">{row.userid || '-'}</td>
+                    <td className="px-3 py-2">
+                      {row.matchedUserId ? (
+                        <div className="grid gap-0.5">
+                          <span className="font-extrabold text-neutral-950">
+                            {row.matchedName ?? '-'}
+                          </span>
+                          <span className="font-mono text-xs text-neutral-500">
+                            {row.matchedLoginId ?? row.matchedEmail ?? row.matchedUserId.toString()}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="font-bold text-rose-700">매칭 없음</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono font-bold text-rose-700">
+                      {formatNumber(row.linkedMileageUsed)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono font-bold text-neutral-900">
+                      {formatNumber(row.orderAmountTotal.toString())}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono font-extrabold text-amber-700">
+                      {signedDecimal(row.paymentDiff)}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td className="px-3 py-6 text-center font-bold text-neutral-500" colSpan={6}>
+                    추가로 추적할 차액 후보가 없습니다.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </AdminSection>
 
