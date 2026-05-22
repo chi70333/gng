@@ -74,6 +74,7 @@ type SummaryRow = {
   orderCount: bigint;
   linkedMileageUsed: bigint;
   orderMileageUsed: bigint;
+  orderAmountTotal: Prisma.Decimal;
   totalCount: bigint;
 };
 
@@ -144,7 +145,8 @@ function orderSql(sort: SalesValidationSortKey, dir: AdminSortDirection): Prisma
     return Prisma.sql`
       ORDER BY
         CASE
-          WHEN s."linkedMileageUsed" <> s."orderMileageUsed" THEN 0
+          WHEN s."linkedMileageUsed" <> s."orderMileageUsed"
+            OR s."linkedMileageUsed"::numeric <> s."orderAmountTotal" THEN 0
           WHEN s."earned" = s."used" THEN 1
           ELSE 2
         END
@@ -171,8 +173,23 @@ function buildSortHref(
   return nextQuery ? `${basePath}?${nextQuery}` : basePath;
 }
 
-function needsCheck(row: SummaryRow): boolean {
+function hasMileageDiff(row: SummaryRow): boolean {
   return row.linkedMileageUsed !== row.orderMileageUsed;
+}
+
+function hasPaymentDiff(row: SummaryRow): boolean {
+  return !new Prisma.Decimal(row.linkedMileageUsed.toString()).equals(row.orderAmountTotal);
+}
+
+function needsCheck(row: SummaryRow): boolean {
+  return hasMileageDiff(row) || hasPaymentDiff(row);
+}
+
+function checkReasons(row: SummaryRow): string[] {
+  const reasons: string[] = [];
+  if (hasMileageDiff(row)) reasons.push('마일리지차액');
+  if (hasPaymentDiff(row)) reasons.push('결제차액');
+  return reasons;
 }
 
 function statusLabel(row: SummaryRow): '체크' | '정상' | '비정상' {
@@ -192,13 +209,16 @@ function DetailHistories({
   linkedLogs,
   linkedMileageUsed,
   orderMileageUsed,
+  orderAmountTotal,
 }: {
   histories: HistoryRow[];
   linkedLogs: LinkedMileageLogRow[];
   linkedMileageUsed: bigint;
   orderMileageUsed: bigint;
+  orderAmountTotal: Prisma.Decimal;
 }) {
   const diff = linkedMileageUsed - orderMileageUsed;
+  const paymentDiff = new Prisma.Decimal(linkedMileageUsed.toString()).minus(orderAmountTotal);
 
   return (
     <div className="mt-2 max-h-80 min-w-[380px] overflow-auto rounded-md border border-neutral-200 bg-white p-2 shadow-lg">
@@ -213,12 +233,29 @@ function DetailHistories({
             <span className="font-mono text-rose-700">{formatNumber(orderMileageUsed)}</span>
           </div>
           <div className="flex items-center justify-between gap-3 text-xs font-bold text-neutral-700">
+            <span>총결제금액</span>
+            <span className="font-mono text-neutral-900">
+              {formatNumber(orderAmountTotal.toString())}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-3 text-xs font-bold text-neutral-700">
             <span>차이</span>
             <span
               className={`font-mono ${diff === 0n ? 'text-emerald-700' : 'text-amber-800'}`}
             >
               {diff > 0n ? '+' : ''}
               {formatNumber(diff)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-3 text-xs font-bold text-neutral-700">
+            <span>결제차이</span>
+            <span
+              className={`font-mono ${
+                paymentDiff.isZero() ? 'text-emerald-700' : 'text-amber-800'
+              }`}
+            >
+              {paymentDiff.gt(0) ? '+' : ''}
+              {formatNumber(paymentDiff.toString())}
             </span>
           </div>
         </div>
@@ -362,6 +399,18 @@ export default async function AdminSalesValidationPage({
         AND o."userId" IS NOT NULL
       GROUP BY o."userId"
     ),
+    order_amount_summary AS (
+      SELECT
+        o."userId",
+        COALESCE(SUM(o."total" + o."pointsUsed"), 0) AS "orderAmountTotal"
+      FROM "Order" o
+      WHERE o."createdAt" >= ${start}
+        AND o."createdAt" < ${endExclusive}
+        AND o."deletedAt" IS NULL
+        AND o."status" <> 'cancelled'
+        AND o."userId" IS NOT NULL
+      GROUP BY o."userId"
+    ),
     candidate_users AS (
       SELECT
         u."id" AS "userId",
@@ -423,10 +472,12 @@ export default async function AdminSalesValidationPage({
         cu."net",
         COALESCE(os."orderCount", 0)::bigint AS "orderCount",
         COALESCE(ls."linkedMileageUsed", 0)::bigint AS "linkedMileageUsed",
-        COALESCE(ops."orderMileageUsed", 0)::bigint AS "orderMileageUsed"
+        COALESCE(ops."orderMileageUsed", 0)::bigint AS "orderMileageUsed",
+        COALESCE(oas."orderAmountTotal", 0) AS "orderAmountTotal"
       FROM candidate_users cu
       LEFT JOIN order_summary os ON os."userId" = cu."userId"
       LEFT JOIN order_point_summary ops ON ops."userId" = cu."userId"
+      LEFT JOIN order_amount_summary oas ON oas."userId" = cu."userId"
       LEFT JOIN linked_summary ls ON ls."userId" = cu."userId"
     )
     SELECT
@@ -674,6 +725,7 @@ export default async function AdminSalesValidationPage({
           renderRow={(row) => {
             const historiesForUser = historiesByUser.get(row.userId.toString()) ?? [];
             const linkedLogsForUser = linkedLogsByUser.get(row.userId.toString()) ?? [];
+            const reasons = checkReasons(row);
 
             return (
               <tr key={row.userId.toString()} className="bg-white transition hover:bg-neutral-50">
@@ -716,12 +768,25 @@ export default async function AdminSalesValidationPage({
                       >
                         {statusLabel(row)}
                       </span>
+                      {reasons.length > 0 ? (
+                        <span className="mt-1 flex flex-wrap justify-center gap-1">
+                          {reasons.map((reason) => (
+                            <span
+                              key={reason}
+                              className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-extrabold text-amber-800 ring-1 ring-amber-200"
+                            >
+                              {reason}
+                            </span>
+                          ))}
+                        </span>
+                      ) : null}
                     </summary>
                     <DetailHistories
                       histories={historiesForUser}
                       linkedLogs={linkedLogsForUser}
                       linkedMileageUsed={row.linkedMileageUsed}
                       orderMileageUsed={row.orderMileageUsed}
+                      orderAmountTotal={row.orderAmountTotal}
                     />
                   </details>
                 </td>
@@ -731,6 +796,7 @@ export default async function AdminSalesValidationPage({
           renderMobileCard={(row) => {
             const historiesForUser = historiesByUser.get(row.userId.toString()) ?? [];
             const linkedLogsForUser = linkedLogsByUser.get(row.userId.toString()) ?? [];
+            const reasons = checkReasons(row);
 
             return (
               <AdminMobileCard>
@@ -757,12 +823,25 @@ export default async function AdminSalesValidationPage({
                       >
                         {statusLabel(row)}
                       </span>
+                      {reasons.length > 0 ? (
+                        <span className="mt-1 flex flex-wrap justify-end gap-1">
+                          {reasons.map((reason) => (
+                            <span
+                              key={reason}
+                              className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-extrabold text-amber-800 ring-1 ring-amber-200"
+                            >
+                              {reason}
+                            </span>
+                          ))}
+                        </span>
+                      ) : null}
                     </summary>
                     <DetailHistories
                       histories={historiesForUser}
                       linkedLogs={linkedLogsForUser}
                       linkedMileageUsed={row.linkedMileageUsed}
                       orderMileageUsed={row.orderMileageUsed}
+                      orderAmountTotal={row.orderAmountTotal}
                     />
                   </details>
                 </div>
