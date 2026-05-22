@@ -185,11 +185,64 @@ function needsCheck(row: SummaryRow): boolean {
   return hasMileageDiff(row) || hasPaymentDiff(row);
 }
 
-function checkReasons(row: SummaryRow): string[] {
-  const reasons: string[] = [];
-  if (hasMileageDiff(row)) reasons.push('마일리지차액');
-  if (hasPaymentDiff(row)) reasons.push('결제차액');
+type CheckReason = {
+  label: string;
+  amount: string;
+};
+
+function signedBigInt(value: bigint): string {
+  return `${value > 0n ? '+' : ''}${formatNumber(value)}`;
+}
+
+function signedDecimal(value: Prisma.Decimal): string {
+  return `${value.gt(0) ? '+' : ''}${formatNumber(value.toString())}`;
+}
+
+function checkReasons(row: SummaryRow): CheckReason[] {
+  const reasons: CheckReason[] = [];
+  if (hasMileageDiff(row)) {
+    reasons.push({
+      label: '마일리지차액',
+      amount: signedBigInt(row.linkedMileageUsed - row.orderMileageUsed),
+    });
+  }
+  if (hasPaymentDiff(row)) {
+    reasons.push({
+      label: '결제차액',
+      amount: signedDecimal(
+        new Prisma.Decimal(row.linkedMileageUsed.toString()).minus(row.orderAmountTotal),
+      ),
+    });
+  }
   return reasons;
+}
+
+function CheckReasonBadges({
+  reasons,
+  align = 'center',
+}: {
+  reasons: CheckReason[];
+  align?: 'center' | 'end';
+}) {
+  if (reasons.length === 0) return null;
+
+  return (
+    <span
+      className={`mt-1 flex flex-wrap gap-1 ${
+        align === 'end' ? 'justify-end' : 'justify-center'
+      }`}
+    >
+      {reasons.map((reason) => (
+        <span
+          key={reason.label}
+          className="grid gap-0.5 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-extrabold text-amber-800 ring-1 ring-amber-200"
+        >
+          <span>{reason.label}</span>
+          <span className="font-mono">{reason.amount}</span>
+        </span>
+      ))}
+    </span>
+  );
 }
 
 function statusLabel(row: SummaryRow): '체크' | '정상' | '비정상' {
@@ -768,18 +821,7 @@ export default async function AdminSalesValidationPage({
                       >
                         {statusLabel(row)}
                       </span>
-                      {reasons.length > 0 ? (
-                        <span className="mt-1 flex flex-wrap justify-center gap-1">
-                          {reasons.map((reason) => (
-                            <span
-                              key={reason}
-                              className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-extrabold text-amber-800 ring-1 ring-amber-200"
-                            >
-                              {reason}
-                            </span>
-                          ))}
-                        </span>
-                      ) : null}
+                      <CheckReasonBadges reasons={reasons} />
                     </summary>
                     <DetailHistories
                       histories={historiesForUser}
@@ -823,18 +865,7 @@ export default async function AdminSalesValidationPage({
                       >
                         {statusLabel(row)}
                       </span>
-                      {reasons.length > 0 ? (
-                        <span className="mt-1 flex flex-wrap justify-end gap-1">
-                          {reasons.map((reason) => (
-                            <span
-                              key={reason}
-                              className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-extrabold text-amber-800 ring-1 ring-amber-200"
-                            >
-                              {reason}
-                            </span>
-                          ))}
-                        </span>
-                      ) : null}
+                      <CheckReasonBadges reasons={reasons} align="end" />
                     </summary>
                     <DetailHistories
                       histories={historiesForUser}
