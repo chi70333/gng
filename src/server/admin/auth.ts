@@ -7,6 +7,7 @@ import { ForbiddenError } from '@/lib/errors';
 
 export type CurrentAdmin = {
   id: bigint;
+  loginId: string;
   email: string;
   name: string;
   role: string;
@@ -19,14 +20,18 @@ function permissionsFromJson(value: unknown): string[] {
 }
 
 export function canAdmin(
-  admin: Pick<CurrentAdmin, 'role' | 'permissions'>,
+  admin: Pick<CurrentAdmin, 'role' | 'permissions'> & { loginId?: string | null },
   permission: AdminPermission,
 ): boolean {
-  return admin.role === 'super_admin' || admin.permissions.includes(permission);
+  return (
+    admin.role === 'super_admin' ||
+    admin.loginId === 'admin' ||
+    admin.permissions.includes(permission)
+  );
 }
 
 export function assertAdminPermission(
-  admin: Pick<CurrentAdmin, 'role' | 'permissions'>,
+  admin: Pick<CurrentAdmin, 'role' | 'permissions'> & { loginId?: string | null },
   permission: AdminPermission,
 ): void {
   if (!canAdmin(admin, permission)) throw new ForbiddenError('관리자 권한이 없습니다.');
@@ -47,6 +52,7 @@ const getCurrentAdmin = cache(async (): Promise<CurrentAdmin> => {
     where: { id: BigInt(session.user.id) },
     select: {
       id: true,
+      loginId: true,
       email: true,
       name: true,
       role: true,
@@ -68,6 +74,7 @@ const getCurrentAdmin = cache(async (): Promise<CurrentAdmin> => {
 
   const currentAdmin = {
     id: admin.id,
+    loginId: admin.loginId,
     email: admin.email,
     name: admin.name,
     role: admin.role,

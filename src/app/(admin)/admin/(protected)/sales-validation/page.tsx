@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { CalendarDays, Search } from 'lucide-react';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/server/db';
-import { requireAdmin } from '@/server/admin/auth';
+import { canAdmin, requireAdmin } from '@/server/admin/auth';
+import { ForbiddenError } from '@/lib/errors';
 import { formatKoreanDateTime, formatNumber, formatPhone } from '@/lib/format';
 import {
   getKoreanDateString,
@@ -299,7 +300,12 @@ export default async function AdminSalesValidationPage({
 }: {
   searchParams: SalesValidationSearchParams;
 }) {
-  await requireAdmin('user.read');
+  const admin = await requireAdmin();
+  const canReadUsers = canAdmin(admin, 'user.read');
+
+  if (!canReadUsers && !canAdmin(admin, 'order.read')) {
+    throw new ForbiddenError('관리자 권한이 없습니다.');
+  }
 
   const date = parseDate(searchParams.date);
   const q = searchParams.q?.trim().slice(0, 100) ?? '';
@@ -356,21 +362,37 @@ export default async function AdminSalesValidationPage({
         AND o."userId" IS NOT NULL
       GROUP BY o."userId"
     ),
+    candidate_users AS (
+      SELECT
+        u."id" AS "userId",
+        u."name",
+        u."loginId",
+        u."email",
+        u."phone",
+        ps."earned",
+        ps."used",
+        ps."net"
+      FROM point_summary ps
+      JOIN "User" u ON u."id" = ps."userId"
+      WHERE u."deletedAt" IS NULL
+      ${searchSql}
+    ),
     user_aliases AS (
-      SELECT u."id" AS "userId", LOWER(u."loginId") AS alias
-      FROM "User" u
-      WHERE u."loginId" IS NOT NULL
+      SELECT cu."userId", LOWER(cu."loginId") AS alias
+      FROM candidate_users cu
+      WHERE cu."loginId" IS NOT NULL
       UNION
-      SELECT u."id" AS "userId", LOWER(u."email") AS alias
-      FROM "User" u
-      WHERE u."email" IS NOT NULL
+      SELECT cu."userId", LOWER(cu."email") AS alias
+      FROM candidate_users cu
+      WHERE cu."email" IS NOT NULL
       UNION
-      SELECT u."id" AS "userId", LOWER(u."loginId" || '@legacy.local') AS alias
-      FROM "User" u
-      WHERE u."loginId" IS NOT NULL
+      SELECT cu."userId", LOWER(cu."loginId" || '@legacy.local') AS alias
+      FROM candidate_users cu
+      WHERE cu."loginId" IS NOT NULL
       UNION
       SELECT s."userId", LOWER(s."provider" || '-' || s."providerUid") AS alias
       FROM "UserSocialAccount" s
+      JOIN candidate_users cu ON cu."userId" = s."userId"
     ),
     linked_summary AS (
       SELECT
@@ -391,24 +413,21 @@ export default async function AdminSalesValidationPage({
     ),
     scoped AS (
       SELECT
-        u."id" AS "userId",
-        u."name",
-        u."loginId",
-        u."email",
-        u."phone",
-        ps."earned",
-        ps."used",
-        ps."net",
+        cu."userId",
+        cu."name",
+        cu."loginId",
+        cu."email",
+        cu."phone",
+        cu."earned",
+        cu."used",
+        cu."net",
         COALESCE(os."orderCount", 0)::bigint AS "orderCount",
         COALESCE(ls."linkedMileageUsed", 0)::bigint AS "linkedMileageUsed",
         COALESCE(ops."orderMileageUsed", 0)::bigint AS "orderMileageUsed"
-      FROM point_summary ps
-      JOIN "User" u ON u."id" = ps."userId"
-      LEFT JOIN order_summary os ON os."userId" = ps."userId"
-      LEFT JOIN order_point_summary ops ON ops."userId" = ps."userId"
-      LEFT JOIN linked_summary ls ON ls."userId" = ps."userId"
-      WHERE u."deletedAt" IS NULL
-      ${searchSql}
+      FROM candidate_users cu
+      LEFT JOIN order_summary os ON os."userId" = cu."userId"
+      LEFT JOIN order_point_summary ops ON ops."userId" = cu."userId"
+      LEFT JOIN linked_summary ls ON ls."userId" = cu."userId"
     )
     SELECT
       s.*,
@@ -659,12 +678,16 @@ export default async function AdminSalesValidationPage({
             return (
               <tr key={row.userId.toString()} className="bg-white transition hover:bg-neutral-50">
                 <td className={adminGridStickyCellClass}>
-                  <Link
-                    href={`/admin/users/${row.userId.toString()}`}
-                    className="font-extrabold text-neutral-950 hover:text-blue-700 hover:underline"
-                  >
-                    {row.name}
-                  </Link>
+                  {canReadUsers ? (
+                    <Link
+                      href={`/admin/users/${row.userId.toString()}`}
+                      className="font-extrabold text-neutral-950 hover:text-blue-700 hover:underline"
+                    >
+                      {row.name}
+                    </Link>
+                  ) : (
+                    <span className="font-extrabold text-neutral-950">{row.name}</span>
+                  )}
                 </td>
                 <td className={`${adminGridCellClass} break-all font-mono`}>
                   {row.loginId ?? '-'}
@@ -713,12 +736,16 @@ export default async function AdminSalesValidationPage({
               <AdminMobileCard>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <Link
-                      href={`/admin/users/${row.userId.toString()}`}
-                      className="font-extrabold text-neutral-950"
-                    >
-                      {row.name}
-                    </Link>
+                    {canReadUsers ? (
+                      <Link
+                        href={`/admin/users/${row.userId.toString()}`}
+                        className="font-extrabold text-neutral-950"
+                      >
+                        {row.name}
+                      </Link>
+                    ) : (
+                      <span className="font-extrabold text-neutral-950">{row.name}</span>
+                    )}
                     <p className="mt-1 break-all font-mono text-xs font-semibold text-neutral-500">
                       {row.loginId ?? '-'} / {row.email}
                     </p>
