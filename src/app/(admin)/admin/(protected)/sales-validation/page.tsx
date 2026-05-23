@@ -31,6 +31,7 @@ import {
   adminPrimaryButtonClass,
 } from '@/components/admin/AdminUI';
 import { SalesValidationReconciliationButton } from './SalesValidationReconciliationButton';
+import { SalesValidationStatusButton } from './SalesValidationStatusButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -880,8 +881,6 @@ export default async function AdminSalesValidationPage({
           renderRow={(row) => {
             const historiesForUser = historiesByUser.get(row.userId.toString()) ?? [];
             const linkedLogsForUser = linkedLogsByUser.get(row.userId.toString()) ?? [];
-            const reasons = checkReasons(row);
-
             return (
               <tr key={row.userId.toString()} className="bg-white transition hover:bg-neutral-50">
                 <td className={adminGridStickyCellClass}>
@@ -916,23 +915,29 @@ export default async function AdminSalesValidationPage({
                   {formatNumber(row.orderCount)}
                 </td>
                 <td className={`${adminGridCellClass} text-center`}>
-                  <details className="group relative inline-block text-left">
-                    <summary className="list-none cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-blue-200 [&::-webkit-details-marker]:hidden">
-                      <span
-                        className={`inline-flex min-h-7 items-center rounded-full px-3 text-xs font-bold ring-1 ${statusClass(row)}`}
-                      >
-                        {statusLabel(row)}
-                      </span>
-                      <CheckReasonBadges reasons={reasons} />
-                    </summary>
-                    <DetailHistories
-                      histories={historiesForUser}
-                      linkedLogs={linkedLogsForUser}
-                      linkedMileageUsed={row.linkedMileageUsed}
-                      orderMileageUsed={row.orderMileageUsed}
-                      orderAmountTotal={row.orderAmountTotal}
-                    />
-                  </details>
+                  <SalesValidationStatusButton
+                    label={statusLabel(row)}
+                    className={statusClass(row)}
+                    memberName={row.name}
+                    linkedMileageUsed={row.linkedMileageUsed.toString()}
+                    orderMileageUsed={row.orderMileageUsed.toString()}
+                    orderAmountTotal={row.orderAmountTotal.toString()}
+                    histories={historiesForUser.map((history) => ({
+                      id: history.id.toString(),
+                      delta: history.delta,
+                      balance: history.balance,
+                      reason: history.reason,
+                      createdAt: formatKoreanDateTime(history.createdAt),
+                    }))}
+                    linkedLogs={linkedLogsForUser.map((log) => ({
+                      id: log.id.toString(),
+                      service: log.service,
+                      userid: log.userid,
+                      amount: log.amount.toString(),
+                      reason: log.reason,
+                      createdAt: formatKoreanDateTime(log.createdAt),
+                    }))}
+                  />
                 </td>
               </tr>
             );
@@ -940,8 +945,6 @@ export default async function AdminSalesValidationPage({
           renderMobileCard={(row) => {
             const historiesForUser = historiesByUser.get(row.userId.toString()) ?? [];
             const linkedLogsForUser = linkedLogsByUser.get(row.userId.toString()) ?? [];
-            const reasons = checkReasons(row);
-
             return (
               <AdminMobileCard>
                 <div className="flex items-start justify-between gap-3">
@@ -960,23 +963,31 @@ export default async function AdminSalesValidationPage({
                       {row.loginId ?? '-'} / {row.email}
                     </p>
                   </div>
-                  <details className="relative shrink-0 text-right">
-                    <summary className="list-none cursor-pointer [&::-webkit-details-marker]:hidden">
-                      <span
-                        className={`inline-flex min-h-7 items-center rounded-full px-3 text-xs font-bold ring-1 ${statusClass(row)}`}
-                      >
-                        {statusLabel(row)}
-                      </span>
-                      <CheckReasonBadges reasons={reasons} align="end" />
-                    </summary>
-                    <DetailHistories
-                      histories={historiesForUser}
-                      linkedLogs={linkedLogsForUser}
-                      linkedMileageUsed={row.linkedMileageUsed}
-                      orderMileageUsed={row.orderMileageUsed}
-                      orderAmountTotal={row.orderAmountTotal}
+                  <div className="shrink-0 text-right">
+                    <SalesValidationStatusButton
+                      label={statusLabel(row)}
+                      className={statusClass(row)}
+                      memberName={row.name}
+                      linkedMileageUsed={row.linkedMileageUsed.toString()}
+                      orderMileageUsed={row.orderMileageUsed.toString()}
+                      orderAmountTotal={row.orderAmountTotal.toString()}
+                      histories={historiesForUser.map((history) => ({
+                        id: history.id.toString(),
+                        delta: history.delta,
+                        balance: history.balance,
+                        reason: history.reason,
+                        createdAt: formatKoreanDateTime(history.createdAt),
+                      }))}
+                      linkedLogs={linkedLogsForUser.map((log) => ({
+                        id: log.id.toString(),
+                        service: log.service,
+                        userid: log.userid,
+                        amount: log.amount.toString(),
+                        reason: log.reason,
+                        createdAt: formatKoreanDateTime(log.createdAt),
+                      }))}
                     />
-                  </details>
+                  </div>
                 </div>
                 <dl className="mt-3 grid grid-cols-2 gap-2">
                   <AdminMobileField label="휴대전화">{formatPhone(row.phone)}</AdminMobileField>
