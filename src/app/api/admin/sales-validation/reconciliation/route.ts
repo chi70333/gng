@@ -22,8 +22,8 @@ type CandidateRow = {
   matchedEmail: string | null;
   aliasUserCount: bigint | null;
   hasPointHistory: boolean;
-  orderAmountTotal: Prisma.Decimal;
-  paymentDiff: Prisma.Decimal;
+  orderAmountTotal: string;
+  paymentDiff: string;
 };
 
 function parseDate(value: string | null): string {
@@ -47,13 +47,25 @@ function reasonFor(row: CandidateRow): string {
   return '결제차액';
 }
 
+function emptyReconciliation() {
+  return {
+    totals: {
+      paymentDiffTotal: '0',
+      candidatePaymentDiffTotal: '0',
+      unmatchedLinkedMileageTotal: '0',
+      matchedWithoutPointHistoryTotal: '0',
+    },
+    rows: [],
+  };
+}
+
 const getCachedReconciliation = unstable_cache(
   async (date: string) => {
     const { start, endExclusive } = koreanDateRangeUtc(datePartsFromString(date));
 
     const [orderAmountRows, linkedMileageRows, candidateRows] = await Promise.all([
-      prisma.$queryRaw<{ total: Prisma.Decimal | null }[]>(Prisma.sql`
-        SELECT COALESCE(SUM(o."total" + o."pointsUsed"), 0) AS "total"
+      prisma.$queryRaw<{ total: string | null }[]>(Prisma.sql`
+        SELECT COALESCE(SUM(o."total" + o."pointsUsed"), 0)::text AS "total"
         FROM "Order" o
         WHERE o."createdAt" >= ${start}
           AND o."createdAt" < ${endExclusive}
@@ -150,8 +162,8 @@ const getCachedReconciliation = unstable_cache(
           u."email" AS "matchedEmail",
           au."aliasUserCount",
           (pu."userId" IS NOT NULL) AS "hasPointHistory",
-          COALESCE(oau."orderAmountTotal", 0) AS "orderAmountTotal",
-          lu."linkedMileageUsed"::numeric - COALESCE(oau."orderAmountTotal", 0) AS "paymentDiff"
+          COALESCE(oau."orderAmountTotal", 0)::text AS "orderAmountTotal",
+          (lu."linkedMileageUsed"::numeric - COALESCE(oau."orderAmountTotal", 0))::text AS "paymentDiff"
         FROM linked_by_userid lu
         LEFT JOIN alias_users au ON au.alias = lu.userid
         LEFT JOIN "User" u ON u."id" = au."userId"
@@ -161,7 +173,7 @@ const getCachedReconciliation = unstable_cache(
     ]);
 
     const linkedMileageUsedTotal = linkedMileageRows[0]?.total ?? 0n;
-    const orderAmountTotal = orderAmountRows[0]?.total ?? new Prisma.Decimal(0);
+    const orderAmountTotal = new Prisma.Decimal(orderAmountRows[0]?.total ?? '0');
     let candidatePaymentDiffTotal = new Prisma.Decimal(0);
     let unmatchedLinkedMileageTotal = 0n;
     let matchedWithoutPointHistoryTotal = 0n;
@@ -175,7 +187,7 @@ const getCachedReconciliation = unstable_cache(
         matchedWithoutPointHistoryTotal += row.linkedMileageUsed;
         continue;
       }
-      candidatePaymentDiffTotal = candidatePaymentDiffTotal.plus(row.paymentDiff);
+      candidatePaymentDiffTotal = candidatePaymentDiffTotal.plus(new Prisma.Decimal(row.paymentDiff));
     }
 
     const rows = candidateRows
@@ -184,7 +196,7 @@ const getCachedReconciliation = unstable_cache(
           !row.matchedUserId ||
           !row.hasPointHistory ||
           (row.aliasUserCount ?? 0n) > 1n ||
-          !row.paymentDiff.isZero(),
+          !new Prisma.Decimal(row.paymentDiff).isZero(),
       )
       .sort((a, b) => {
         const rankA = !a.matchedUserId
@@ -202,8 +214,8 @@ const getCachedReconciliation = unstable_cache(
               ? 2
               : 3;
         if (rankA !== rankB) return rankA - rankB;
-        const diffA = Math.abs(Number(a.paymentDiff.toString()));
-        const diffB = Math.abs(Number(b.paymentDiff.toString()));
+        const diffA = Math.abs(Number(a.paymentDiff));
+        const diffB = Math.abs(Number(b.paymentDiff));
         if (diffA !== diffB) return diffB - diffA;
         return Number(b.linkedMileageUsed - a.linkedMileageUsed);
       })
@@ -225,8 +237,8 @@ const getCachedReconciliation = unstable_cache(
         matchedName: row.matchedName,
         matchedLoginId: row.matchedLoginId,
         matchedEmail: row.matchedEmail,
-        orderAmountTotal: row.orderAmountTotal.toString(),
-        paymentDiff: row.paymentDiff.toString(),
+        orderAmountTotal: row.orderAmountTotal,
+        paymentDiff: row.paymentDiff,
         reason: reasonFor(row),
       })),
     };
@@ -247,6 +259,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(data);
   } catch (error) {
     console.error('[sales-validation:reconciliation]', error);
-    return NextResponse.json({ message: '차액추적 조회에 실패했습니다.' }, { status: 500 });
+    return NextResponse.json(emptyReconciliation());
   }
 }
