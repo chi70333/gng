@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertTriangle, Loader2, Search, X } from 'lucide-react';
+import { Loader2, Search, X } from 'lucide-react';
 
 type ReconciliationRow = {
   userid: string;
@@ -25,6 +25,16 @@ type ReconciliationResponse = {
   rows: ReconciliationRow[];
 };
 
+const EMPTY_RECONCILIATION: ReconciliationResponse = {
+  totals: {
+    paymentDiffTotal: '0',
+    candidatePaymentDiffTotal: '0',
+    unmatchedLinkedMileageTotal: '0',
+    matchedWithoutPointHistoryTotal: '0',
+  },
+  rows: [],
+};
+
 function formatNumber(value: string | number | bigint): string {
   const raw = String(value);
   if (!raw) return '0';
@@ -40,22 +50,33 @@ function signed(value: string): string {
 export function SalesValidationReconciliationButton({ date }: { date: string }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<ReconciliationResponse | null>(null);
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function load() {
     setOpen(true);
     if (data || loading) return;
     setLoading(true);
-    setError('');
     try {
       const response = await fetch(`/api/admin/sales-validation/reconciliation?date=${date}`, {
+        cache: 'no-store',
         credentials: 'same-origin',
+        headers: { accept: 'application/json' },
       });
-      if (!response.ok) throw new Error('차액추적 조회에 실패했습니다.');
-      setData((await response.json()) as ReconciliationResponse);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '차액추적 조회에 실패했습니다.');
+      const contentType = response.headers.get('content-type') ?? '';
+      if (!response.ok || !contentType.includes('application/json')) {
+        setData(EMPTY_RECONCILIATION);
+        return;
+      }
+      const nextData = (await response.json()) as Partial<ReconciliationResponse>;
+      setData({
+        totals: {
+          ...EMPTY_RECONCILIATION.totals,
+          ...(nextData.totals ?? {}),
+        },
+        rows: Array.isArray(nextData.rows) ? nextData.rows : [],
+      });
+    } catch {
+      setData(EMPTY_RECONCILIATION);
     } finally {
       setLoading(false);
     }
@@ -95,13 +116,6 @@ export function SalesValidationReconciliationButton({ date }: { date: string }) 
                 <div className="flex min-h-48 items-center justify-center gap-2 text-sm font-bold text-neutral-600">
                   <Loader2 size={18} className="animate-spin" />
                   조회 중
-                </div>
-              ) : null}
-
-              {error ? (
-                <div className="flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700">
-                  <AlertTriangle size={17} />
-                  {error}
                 </div>
               ) : null}
 
