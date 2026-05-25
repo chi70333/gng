@@ -55,8 +55,8 @@
 ## 라우팅 전략
 
 - `/` 메인 → ISR 60s
-- `/goods/[slug]` 상품 상세 → ISR 60s + on-demand revalidate
-- `/category/[slug]` → ISR 120s
+- `/goods/[slug]` 상품 상세 → ISR 10m + on-demand revalidate
+- `/category/[slug]` → ISR 10m
 - `/search?q=` → Edge runtime + 30s cache
 - `/cart`, `/order/*`, `/mypage/*` → 동적 SSR (no-cache)
 - `/api/*` → Route Handler (각 엔드포인트별 cache 정책)

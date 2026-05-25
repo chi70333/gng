@@ -1,7 +1,7 @@
 // Legacy sources: legacy/www/goods_list.php, legacy/www/_goods_list.php
 // Legacy behavior: category.idx=Index로 카테고리를 찾고 part_index 트리 기준 목록을 렌더링.
 // Compatibility: CategoryLegacyMap.legacyIndex -> Category.slug 매핑 후 /category/[slug]로 리다이렉트.
-// Cache: route revalidate 120s + Redis 5m(category:legacy-index:N), destination category page ISR 120s.
+// Cache: route revalidate 120s + Redis 5m(category:legacy-index:N), destination category page ISR 10m.
 
 import { NextRequest, NextResponse } from 'next/server';
 import {

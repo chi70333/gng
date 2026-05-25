@@ -1,6 +1,6 @@
 // 상품 서비스 레이어.
 // unstable_cache 로 ISR 주기와 tag 기반 무효화를 관리.
-// docs/07-traffic.md: 상품 목록 ISR 120s, 상세 ISR 60s + tag.
+// docs/07-traffic.md: 상품 목록/상세 페이지 ISR 10m + tag.
 
 import { unstable_cache } from 'next/cache';
 import { TTL, TAGS } from '@/lib/cache';
@@ -81,7 +81,7 @@ async function readThroughRedis<T>(
   }
 }
 
-/** 카테고리별 상품 목록 (ISR 120s, 카테고리 태그). */
+/** 카테고리별 상품 목록 (페이지 ISR 10m, 카테고리 태그). */
 export function getCachedProductsByCategory(
   params: ProductListParams,
 ): Promise<ProductListResult> {
@@ -101,7 +101,7 @@ export function getCachedProductsByCategory(
   )();
 }
 
-/** 상품 상세 (ISR 60s + 상품별 tag). */
+/** 상품 상세 (페이지 ISR 10m + 상품별 tag). */
 export function getCachedProductBySlug(slug: string): Promise<ProductDetail | null> {
   return unstable_cache(
     () =>
@@ -147,7 +147,7 @@ export async function countProductView(
 }
 
 /** 베스트 상품 (ISR 5m). */
-/** Product metadata only (ISR 60s + product tag). */
+/** Product metadata only (페이지 ISR 10m + product tag). */
 export function getCachedProductMetadataBySlug(
   slug: string,
 ): Promise<ProductMetadata | null> {

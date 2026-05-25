@@ -1,5 +1,5 @@
 // Legacy sources: goods_detail.php, _goods_detail2.php
-// Cache: ISR 60s + product:<slug> service cache tag.
+// Cache: ISR 600s + product:<slug> service cache tag.
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -15,7 +15,7 @@ import {
 } from '@/server/services/product.service';
 import { cn } from '@/lib/cn';
 
-export const revalidate = 60; // ISR 60s
+export const revalidate = 600; // ISR 10m
 export const dynamic = 'force-static';
 export const dynamicParams = true;
 

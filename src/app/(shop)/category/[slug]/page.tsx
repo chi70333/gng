@@ -1,7 +1,7 @@
-// 카테고리/상품 목록 페이지 — ISR 120s.
+// 카테고리/상품 목록 페이지 — ISR 10m.
 // 레거시: goods_list.php, _goods_list.php
 // URL: /category/[slug]?page=1&sort=new
-// 캐시: unstable_cache 120s (product-list:<slug> 태그)
+// 캐시: ISR 600s + product-list:<slug> 서비스 캐시 태그
 
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
@@ -21,7 +21,7 @@ import { formatNumber } from '@/lib/format';
 import type { SortOption } from '@/server/repositories/product.repository';
 import type { SerializedCategory } from '@/server/repositories/category.repository';
 
-export const revalidate = 120; // ISR 120s
+export const revalidate = 600; // ISR 10m
 export const dynamic = 'force-static';
 export const dynamicParams = true;
 

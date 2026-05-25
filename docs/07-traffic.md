@@ -52,8 +52,8 @@
 | 페이지 | 예상 부하 | 전략 |
 |---|---|---|
 | 메인 `/` | 최다 | ISR 60s, RSC, 배너 Redis |
-| 카테고리 목록 | 많음 | ISR 120s, 페이지네이션은 url query |
-| 상품 상세 | 많음 | ISR 60s + tag invalidate, 옵션은 Edge API |
+| 카테고리 목록 | 많음 | ISR 10m, 페이지네이션은 url query |
+| 상품 상세 | 많음 | ISR 10m + tag invalidate, 옵션은 Edge API |
 | 검색 | 많음 | Edge runtime + Meilisearch + 30s cache |
 | 장바구니 | 중간 | Redis only, no DB |
 | 주문/결제 | 적지만 critical | 동시성 락(stock), 트랜잭션 |
