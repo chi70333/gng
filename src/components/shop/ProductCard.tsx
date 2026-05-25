@@ -24,6 +24,7 @@ export default function ProductCard({
       {/* 상품 이미지 */}
       <Link
         href={`/goods/${product.slug}`}
+        prefetch={false}
         aria-label={`${product.name} 상품 상세로 이동`}
         className="relative block aspect-square w-full overflow-hidden bg-neutral-100"
       >
@@ -74,7 +75,11 @@ export default function ProductCard({
           </span>
         )}
         <h3 className="min-h-10 text-sm font-medium leading-5 text-neutral-900">
-          <Link href={`/goods/${product.slug}`} className="line-clamp-2 min-h-11">
+          <Link
+            href={`/goods/${product.slug}`}
+            prefetch={false}
+            className="line-clamp-2 min-h-11"
+          >
             {product.name}
           </Link>
         </h3>
